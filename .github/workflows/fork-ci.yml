@@ -1,0 +1,76 @@
+name: fork-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install arduino-cli + ESP32 core + NimBLE
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/.local/bin" sh
+          export PATH="$HOME/.local/bin:$PATH"
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.12
+          arduino-cli lib install "NimBLE-Arduino@2.5.1"
+          arduino-cli lib install "U8g2"
+      - name: Compile firmware (default, opt-outs, display + battery)
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          FQBN="esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB"
+          INC="-include $GITHUB_WORKSPACE/hardware/hid_bridge/nimble_cfg.h"
+          build() {
+            arduino-cli compile -b "$FQBN" \
+              --build-property "compiler.cpp.extra_flags=$INC $1" \
+              --build-property "compiler.c.extra_flags=$INC $1" \
+              hardware/hid_bridge
+          }
+          build ""
+          build "-DSAFETY_CONTROLS=0 -DAP_MAX_CLIENTS=4"
+          build "-DSTATUS_DISPLAY=1 -DBATTERY_PIN=1"
+
+  host-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host tests (bplist, GOP buffer, CLI protocol, Bonjour TXT, …)
+        run: |
+          sudo apt-get update && sudo apt-get install -y libmbedtls-dev
+          make -C hardware/tests
+
+  cli:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build + short-fuzz the bplist parser (libFuzzer + ASan/UBSan)
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang
+          cd hardware/tests/fuzz
+          clang -fsanitize=fuzzer,address,undefined -I../../hid_bridge/src/bplist \
+            -o bplist_fuzz bplist_fuzz.c ../../hid_bridge/src/bplist/bplist.c
+          mkdir -p corpus
+          ./bplist_fuzz -max_total_time=60 -timeout=10 -print_final_stats=1 corpus
