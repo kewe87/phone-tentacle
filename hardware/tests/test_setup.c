@@ -172,6 +172,8 @@ static void test_confirm(void) {
   CHECK(!strcmp(c.l1, "Join this Wi-Fi?") && !strcmp(c.l2, "Home"));
   CHECK(!cf_request(&c, CONFIRM_PAIR, "x", "y", 30000, 200));  // one at a time
   CHECK(cf_state(&c, CONFIRM_WIFI) == CF_WAITING);
+  CHECK(!cf_press(&c, 100 + CF_ARM_MS - 1));  // too soon to be an answer: a normal press, the request still waits
+  CHECK(cf_state(&c, CONFIRM_WIFI) == CF_WAITING);
   CHECK(cf_press(&c, 30099));
   CHECK(cf_state(&c, CONFIRM_WIFI) == CF_ACCEPTED && cf_left_ms(&c, 30099) == 0);
   CHECK(!cf_press(&c, 30100));  // the second press is a normal one again

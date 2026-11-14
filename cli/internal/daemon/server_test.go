@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -24,11 +25,19 @@ func (f fakeTransport) Connect(context.Context, ble.Found) (proto.Link, error) {
 	return f.b.Connect(), nil
 }
 
+// shortTmp is /tmp where there is one (macOS's own temp dir is too long for a socket path), else the system's.
+func shortTmp() string {
+	if st, err := os.Stat("/tmp"); err == nil && st.IsDir() {
+		return "/tmp"
+	}
+	return ""
+}
+
 // start runs a daemon in process on a short temp dir (unix socket paths are limited to ~100 bytes).
 func start(t *testing.T, tr ble.Transport) (*Client, *Server) { return startWith(t, tr, nil) }
 
 func startWith(t *testing.T, tr ble.Transport, dial func(context.Context, string) (proto.Link, error)) (*Client, *Server) {
-	dir, err := os.MkdirTemp("/tmp", "e32a")
+	dir, err := os.MkdirTemp(shortTmp(), "e32a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +98,7 @@ func TestPairInfoAndBusy(t *testing.T) {
 		t.Fatal("key not stored")
 	}
 	st, err := os.Stat(s.Dir + "/config.json")
-	if err != nil || st.Mode().Perm() != 0o600 {
+	if err != nil || (st.Mode().Perm() != 0o600 && runtime.GOOS != "windows") { // Windows has no such mode bits
 		t.Fatalf("config.json mode %v %v", st.Mode(), err)
 	}
 
@@ -130,12 +139,15 @@ func TestPairInfoAndBusy(t *testing.T) {
 	}
 }
 
-func TestPairingWindowClosed(t *testing.T) {
+func TestPairNotConfirmed(t *testing.T) {
 	b := fakeBoard()
-	b.PairOpen = false
-	c, _ := start(t, fakeTransport{b})
-	if r, _ := call(t, c, Request{Cmd: "pair"}); r.Status != "error" || !strings.Contains(r.Error, "pairing window closed") {
+	b.Boot = func(string, string) bool { return false } // nobody presses BOOT
+	c, s := start(t, fakeTransport{b})
+	if r, _ := call(t, c, Request{Cmd: "pair"}); r.Status != "error" || !strings.Contains(r.Error, "BOOT button on the board was not pressed") {
 		t.Fatalf("pair: %+v", r)
+	}
+	if s.Config.Key(mustHex("246f28aa6ad5")) != nil {
+		t.Fatal("a key was stored without the button")
 	}
 }
 

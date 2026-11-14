@@ -1,18 +1,21 @@
 ---
 name: esp32agent
-description: See and drive a real iPhone through an ESP32 Agent board (USB mouse/keyboard + AirPlay screen mirroring, reached over Bluetooth). Use when asked to look at, tap, type on, or operate the iPhone, or to test an iOS app on the device.
+description: See and drive a real iPhone through an ESP32 Agent board (USB mouse/keyboard + AirPlay screen mirroring, reached over Wi-Fi). Use when asked to look at, tap, type on, or operate the iPhone, or to test an iOS app on the device.
 ---
 
 # esp32agent
 
 `esp32agent` talks to an ESP32 Agent board plugged into the iPhone. The board is the phone's USB mouse and
-keyboard and receives its AirPlay screen mirroring; this computer reaches it over Bluetooth. Every command prints
+keyboard and receives its AirPlay screen mirroring; this computer reaches it over Wi-Fi (found by itself on the
+local network, or `--host IP`). Every command prints
 JSON: `{"status":"ok","data":...}` or `{"status":"error","error":"..."}`. The MCP server (`esp32agent mcp`)
 offers the same as tools: screenshot, tap, longpress, swipe, type_text, press_key, press_button, device_info,
 plus history, intent_list, intent_show, intent_save, memory_recall and memory_add.
 
 ## Setup (once)
-- `esp32agent pair` within 3 minutes of plugging the board into the iPhone.
+- `esp32agent pair`: it prints a 6-digit code and waits; the user compares it with the board's display and presses
+  the BOOT button on the board within 30 s. This needs the user at the board: ask them, never retry in a loop
+  (the board locks pairing for a while after a request that was not confirmed).
 - Screen Mirroring on the iPhone: Control Center > Screen Mirroring > ESP32 Agent.
 - `esp32agent calibrate` (also runs by itself on the first tap). It needs the mouse pointer visible on screen.
 
@@ -71,11 +74,14 @@ After a task succeeded, save it so the next run is faster:
 - `busy: the app is using the phone`: the iOS app is driving right now. Wait and retry later; don't fight it.
 - `screen mirroring is off`: ask the user to start Screen Mirroring to ESP32 Agent.
 - `video frozen`: ask the user to stop and restart Screen Mirroring.
-- `not paired`: ask the user to replug the board and run `esp32agent pair` within 3 minutes.
+- `not paired`: run `esp32agent pair` and ask the user to press BOOT on the board when the code shows.
+- `not found on the network`: the board is off, on another Wi-Fi, or not set up yet; ask the user (its address can
+  be given with `--host IP`).
+- `stopped (safety button)`: the user pressed BOOT to stop all input. Stop, and ask before going on.
 - `phone usb asleep`: the phone is locked; ask the user to unlock it.
 - `not supported on ESP32 Agent`: there is no app list, UI tree, file access or webview; work from screenshots.
 
 ## Limits
-- Video comes over Bluetooth: a screenshot can be up to a second behind, animations look choppy.
+- Video comes over Wi-Fi at a few frames a second: a screenshot can be a moment behind, animations look choppy.
 - Only HOME as a button; no volume, power, or app install/launch (open apps from the Home Screen or Spotlight:
   `io button HOME`, swipe down in the middle, `io text 'Settings'`, `io keys enter`).

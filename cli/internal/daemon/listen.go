@@ -136,7 +136,7 @@ func (s *Server) listen(ctx context.Context, c *Conn, arg string) Response {
 		if s.local() != nil {
 			raw = "listen raw on"
 		}
-		c.Send(ctx, raw) // over BLE `on` fails: the Heard text says why
+		c.Send(ctx, raw) // on a link without raw audio `on` fails: the Heard text says why
 	}
 	return ok(s.heard(ctx, c, l))
 }

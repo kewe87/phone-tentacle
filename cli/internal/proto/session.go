@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 )
 
 // Link is one connection to the board's cli service: frames written to cli_in, notifies from cli_out.
@@ -40,6 +41,7 @@ func recv(ctx context.Context, l Link, want byte) ([]byte, error) {
 			if len(f) == 0 {
 				continue
 			}
+			Logf(ctx, "frame <- type 0x%02x, %d bytes", f[0], len(f))
 			switch f[0] {
 			case want:
 				return f[1:], nil
@@ -50,24 +52,38 @@ func recv(ctx context.Context, l Link, want byte) ([]byte, error) {
 	}
 }
 
-// Pair runs PAIR → PAIRED and returns K and the board id.
-func Pair(ctx context.Context, l Link, clientID []byte) (k []byte, boardID []byte, err error) {
+// How long each step of pairing may take, besides the wait for the button (the board says how long that is).
+const pairStep = 8 * time.Second
+
+// Pair runs PAIR → PAIR_KEY → PAIR_NONCE → PAIR_WAIT → (BOOT pressed on the board) → PAIRED and returns K and the
+// board id. name is this computer's, shown on the board's display. prompt is called once the board waits for its
+// button, with the 6-digit code its display shows too and how long it waits.
+func Pair(ctx context.Context, l Link, clientID []byte, name string, prompt func(code string, wait time.Duration)) (k []byte, boardID []byte, err error) {
 	priv, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, nil, err
 	}
 	cPub := priv.PublicKey().Bytes()
-	if err := l.Write(append(append([]byte{TPair}, cPub...), clientID...)); err != nil {
+	nonce := make([]byte, nonceLen)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return nil, nil, err
 	}
-	body, err := recv(ctx, l, TPaired)
+	started := time.Now()
+	Logf(ctx, "pair: PAIR as %q", name)
+	if err := l.Write(PairFrame(cPub, clientID, PairCommit(nonce), name)); err != nil {
+		return nil, nil, err
+	}
+	sctx, cancel := context.WithTimeout(ctx, pairStep)
+	body, err := recv(sctx, l, TPairKey)
+	cancel()
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(body) != keySize+boardLen+macLen {
-		return nil, nil, errors.New("bad PAIRED frame")
+	if len(body) != keySize {
+		return nil, nil, errors.New("bad PAIR_KEY frame")
 	}
-	bPub, err := ecdh.X25519().NewPublicKey(body[:keySize])
+	bPubBytes := bytes.Clone(body)
+	bPub, err := ecdh.X25519().NewPublicKey(bPubBytes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,10 +91,37 @@ func Pair(ctx context.Context, l Link, clientID []byte) (k []byte, boardID []byt
 	if err != nil {
 		return nil, nil, err
 	}
-	k = PairKey(shared, cPub, body[:keySize])
-	if !hmac.Equal(PairMAC(k, clientID), body[keySize+boardLen:]) {
+	k = PairKey(shared, cPub, bPubBytes)
+	if err := l.Write(append([]byte{TPairNonce}, nonce...)); err != nil {
+		return nil, nil, err
+	}
+	sctx, cancel = context.WithTimeout(ctx, pairStep)
+	body, err = recv(sctx, l, TPairWait)
+	cancel()
+	if err != nil {
+		return nil, nil, err
+	}
+	wait := 30 * time.Second
+	if len(body) >= 1 && body[0] > 0 {
+		wait = time.Duration(body[0]) * time.Second
+	}
+	Logf(ctx, "pair: the board waits for BOOT (%v), after %v", wait, time.Since(started).Round(time.Millisecond))
+	if prompt != nil {
+		prompt(PairCode(k, nonce), wait)
+	}
+	sctx, cancel = context.WithTimeout(ctx, wait+pairStep)
+	body, err = recv(sctx, l, TPaired)
+	cancel()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(body) != keySize+boardLen+macLen {
+		return nil, nil, errors.New("bad PAIRED frame")
+	}
+	if !bytes.Equal(body[:keySize], bPubBytes) || !hmac.Equal(PairMAC(k, clientID), body[keySize+boardLen:]) {
 		return nil, nil, errors.New("pairing proof does not match")
 	}
+	Logf(ctx, "pair: PAIRED after %v", time.Since(started).Round(time.Millisecond))
 	return k, bytes.Clone(body[keySize : keySize+boardLen]), nil
 }
 
@@ -100,10 +143,12 @@ func Hello(ctx context.Context, l Link, clientID []byte, keyFor func(boardID []b
 	if _, err := io.ReadFull(rand.Reader, cNonce); err != nil {
 		return nil, err
 	}
+	started := time.Now()
 	if err := l.Write(append(append([]byte{THello}, clientID...), cNonce...)); err != nil {
 		return nil, err
 	}
 	body, err := recv(ctx, l, TWelcome)
+	Logf(ctx, "hello: answered after %v (err %v)", time.Since(started).Round(time.Millisecond), err)
 	if err != nil {
 		return nil, err
 	}

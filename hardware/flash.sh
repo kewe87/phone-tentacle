@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build and flash the board (needs arduino-cli and the esp32 core 3.3.x).
 # Usage: hardware/flash.sh [port] [--debug] [--sta] [--build-only]
-#   --debug       log commands and the AirPlay handshake on USB serial
+#   --debug       bring-up build (TENTACLE_DEBUG): time-stamped state log and `dbg` commands on USB serial, next to
+#                 the command and AirPlay echo. Never hand out such a build (`dbg btn` presses BOOT from serial)
 #   --sta         test build: join the Wi-Fi in hid_bridge/secrets.h instead of opening a hotspot
 #   --build-only  compile only (prints flash/RAM usage)
 #   --info        no build: ask a running board for its setup Wi-Fi (name + password) over USB serial
@@ -40,7 +41,7 @@ for a in "$@"; do
   fi
   case $a in
     --name) NAME_NEXT=1 ;;
-    --debug) DEFS+=" -DDEBUG_SERIAL=1" ;;
+    --debug) DEFS+=" -DTENTACLE_DEBUG=1" ;;  # the one debug switch; DEBUG_SERIAL follows it (nimble_cfg.h)
     --sta) [[ -f hid_bridge/secrets.h ]] || { echo "--sta needs hid_bridge/secrets.h (see secrets.example.h)"; exit 1; }
            DEFS+=" -DSTA_FROM_SECRETS=1" ;;
     --build-only) BUILD_ONLY=1 ;;

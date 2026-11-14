@@ -22,10 +22,12 @@ import (
 // Version is set at build time (-ldflags "-X .../internal/app.Version=1.2.3").
 var Version = "dev"
 
-const usage = `esp32agent: see and drive an iPhone through an ESP32 Agent board, over Bluetooth.
+const usage = `esp32agent: see and drive an iPhone through an ESP32 Agent board, over Wi-Fi.
 
-  devices                          boards nearby
-  pair | unpair                    pair this computer (within 3 min of plugging the board in)
+  devices                          boards on this network (found by mDNS)
+  pair                             pair this computer: the board shows this computer's name and a 6-digit code
+                                   (OLED), its LED blinks; compare the code, press BOOT on the board within 30 s
+  unpair [--board]                 forget the board here; --board: the board forgets every paired computer too
   screenshot [--format png|jpeg] [--quality N] [--scale F] [--max-size N] [--output PATH|-]
   io tap X,Y [--aim] [--count N]   coordinates are screenshot pixels; --count 2 double-taps
   io longpress X,Y [--duration MS]
@@ -35,12 +37,11 @@ const usage = `esp32agent: see and drive an iPhone through an ESP32 Agent board,
   io button HOME
   screencapture --format h264|mjpeg   video to stdout
   device info                      board status
-  net                              the CLI's link (BLE or Wi-Fi) and the board's Wi-Fi
-  net via auto|ble                 auto: move to Wi-Fi when this computer reaches the board (default)
-  net join                         the board joins your Wi-Fi: asks for its name and password, sends them over
-                                   Bluetooth, then moves the link to Wi-Fi (the iPhone mirrors over it too)
+  net                              the CLI's link and the board's Wi-Fi
+  net join                         the board moves to another Wi-Fi: asks for its name and password and sends them
+                                   over the current link (sealed). A new board is set up on its own hotspot's page.
   net join SSID [PASSWORD]         the same, non-interactive
-  net hotspot                      the board opens its own hotspot again
+  net hotspot                      the board forgets its Wi-Fi and opens its setup hotspot again
   calibrate                        measure the pointer (automatic on the first tap)
   listen                           what the iPhone played in the last 30 s, as words (or why it can't be heard)
   listen on|off                    hear the phone's sound while it mirrors (off by default)
@@ -67,6 +68,8 @@ const usage = `esp32agent: see and drive an iPhone through an ESP32 Agent board,
   version
 
   --device ID or ESP32AGENT_DEVICE when several boards are around.
+  --host IP[:PORT] or ESP32AGENT_HOST: the board's address, when it is not found by itself (--host auto: find again).
+  --verbose or ESP32AGENT_VERBOSE=1: show how the board is found, the handshake and timings (also in the daemon's log).
 `
 
 var errUnsupported = errors.New("not supported on ESP32 Agent")
@@ -127,6 +130,11 @@ func (a *App) Run(args []string) int {
 	if args[0] == "--version" {
 		args[0] = "version"
 	}
+	args = a.global(args)
+	if len(args) == 0 {
+		fmt.Fprint(a.Err, usage)
+		return 0
+	}
 	cmd, rest := args[0], args[1:]
 	dev := new(string)
 	fs := newFS(dev)
@@ -162,7 +170,22 @@ func (a *App) Run(args []string) int {
 			return a.fail(errors.New("usage: esp32agent skill install"))
 		}
 		return a.skillInstall()
-	case "devices", "pair", "unpair", "calibrate":
+	case "pair":
+		if _, err := parse(fs, rest); err != nil {
+			return a.fail(err)
+		}
+		return a.pair(*dev)
+	case "unpair":
+		board := fs.Bool("board", false, "the board forgets every paired computer too")
+		if _, err := parse(fs, rest); err != nil {
+			return a.fail(err)
+		}
+		text := ""
+		if *board {
+			text = "board"
+		}
+		return a.call(daemon.Request{Cmd: cmd, Device: *dev, Text: text})
+	case "devices", "calibrate":
 		if _, err := parse(fs, rest); err != nil {
 			return a.fail(err)
 		}
@@ -219,6 +242,71 @@ func (a *App) Run(args []string) int {
 		return a.io(fs, dev, rest)
 	}
 	return a.fail(errUnsupported)
+}
+
+// global takes --host and --verbose out of the arguments (they may stand anywhere) and hands them to the client,
+// which sends them with every request. The environment gives the defaults.
+func (a *App) global(args []string) []string {
+	host, verbose := os.Getenv("ESP32AGENT_HOST"), os.Getenv("ESP32AGENT_VERBOSE") == "1"
+	var out []string
+	for i := 0; i < len(args); i++ {
+		switch arg := args[i]; {
+		case arg == "--":
+			out = append(out, args[i:]...)
+			i = len(args)
+		case arg == "--verbose" || arg == "-verbose":
+			verbose = true
+		case (arg == "--host" || arg == "-host") && i+1 < len(args):
+			i++
+			host = args[i]
+		case strings.HasPrefix(arg, "--host="):
+			host = strings.TrimPrefix(arg, "--host=")
+		default:
+			out = append(out, arg)
+		}
+	}
+	if a.Client != nil {
+		a.Client.Host, a.Client.Verbose = host, verbose
+		if a.Client.Progress == nil {
+			a.Client.Progress = a.progress
+		}
+	}
+	return out
+}
+
+// progress shows what the daemon sends ahead of its response: the --verbose trace, and pairing's code.
+func (a *App) progress(line []byte) {
+	var p struct {
+		Data struct {
+			Log     string `json:"log"`
+			Pair    string `json:"pair"`
+			Code    string `json:"code"`
+			Name    string `json:"name"`
+			WaitS   int    `json:"wait_s"`
+			Message string `json:"message"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(line, &p) != nil {
+		return
+	}
+	switch d := p.Data; {
+	case d.Log != "":
+		fmt.Fprintln(a.Err, "  "+d.Log)
+	case d.Pair == "confirm":
+		fmt.Fprintf(a.Err, "\nPairing with %s.\n\n    Code: %s\n\n"+
+			"Press the BOOT button on the board now (within %d s). Its LED blinks fast while it waits.\n"+
+			"If the board has a display, it must show this computer's name and the same code: if it shows\n"+
+			"another code or another name, do NOT press, someone else is asking.\n", d.Name, d.Code, d.WaitS)
+	case d.Message != "":
+		fmt.Fprintln(a.Err, d.Message+"...")
+	}
+}
+
+// pair runs `pair`: the daemon finds the board and asks; the code arrives as a progress line while the board waits
+// for its button, the response once it was pressed (or not).
+func (a *App) pair(dev string) int {
+	fmt.Fprintln(a.Err, "Looking for the board on this network...")
+	return a.call(daemon.Request{Cmd: "pair", Device: dev})
 }
 
 func newFS(dev *string) *flag.FlagSet {
@@ -341,7 +429,7 @@ func (a *App) daemon(idle time.Duration) int {
 	}
 	log.SetFlags(log.LstdFlags)
 	log.Printf("esp32agent %s daemon on %s", Version, daemon.SocketPath(a.Dir))
-	s := &daemon.Server{Transport: ble.Default(), Config: cfg, Dir: a.Dir, Version: Version, Idle: idle}
+	s := &daemon.Server{Transport: ble.Default(a.Dir), Config: cfg, Dir: a.Dir, Version: Version, Idle: idle}
 	if err := s.Serve(l); err != nil {
 		log.Print(err)
 		return 1

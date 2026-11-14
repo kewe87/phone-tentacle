@@ -1,5 +1,6 @@
-// Package ble finds boards and opens links to their cli service: over BLE, or to the simulated board
-// (hardware/tests/sim) when ESP32AGENT_SIM is set.
+// Package ble finds boards and opens links to them: over Wi-Fi (the default, wifi.go: mDNS and TCP 7202), to the
+// simulated board (hardware/tests/sim) when ESP32AGENT_SIM is set, or over Bluetooth, which nothing needs any more
+// and only ESP32AGENT_TRANSPORT=ble turns on.
 package ble
 
 import (
@@ -12,16 +13,24 @@ import (
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
 )
 
-// Found is one advertising board.
+// Found is one board that was found.
 type Found struct {
-	Name string
-	Addr string
-	RSSI int16
-	ref  any
+	Name   string
+	Addr   string // Wi-Fi: host:port; BLE: the advertising address
+	RSSI   int16
+	ID     string // board id (12 hex) when the board told it (mDNS, a remembered address); "" otherwise
+	FW     string // firmware version (mDNS)
+	Paired int    // computers paired with the board (mDNS); -1 if unknown
+	Via    string // the link Connect gives: "wifi"; "" is BLE
+	Source string // how it was found: "mdns", "remembered", "host", "probe"; "" for BLE and the simulator
+	ref    any
 }
 
-// Suffix is the 4 hex digits of the name, "ESP32 Agent 6AD5" → "6ad5" (the board id's last two bytes).
+// Suffix is the board id's last 4 hex digits: from the id, else from the name ("ESP32 Agent 6AD5" → "6ad5").
 func (f Found) Suffix() string {
+	if len(f.ID) == 12 {
+		return strings.ToLower(f.ID[8:])
+	}
 	i := strings.LastIndexByte(f.Name, ' ')
 	if i < 0 || len(f.Name)-i-1 != 4 {
 		return ""
@@ -35,12 +44,16 @@ type Transport interface {
 	Connect(ctx context.Context, f Found) (proto.Link, error)
 }
 
-// Default is the simulated board when ESP32AGENT_SIM names its binary, BLE otherwise.
-func Default() Transport {
+// Default is the simulated board when ESP32AGENT_SIM names its binary, otherwise Wi-Fi. Bluetooth is never
+// touched unless ESP32AGENT_TRANSPORT=ble asks for it. dir is the config dir (remembered addresses).
+func Default(dir string) Transport {
 	if sim := os.Getenv("ESP32AGENT_SIM"); sim != "" {
 		return &Sim{Bin: sim, Screen: os.Getenv("ESP32AGENT_SIM_SCREEN")}
 	}
-	return &BLE{}
+	if os.Getenv("ESP32AGENT_TRANSPORT") == "ble" {
+		return &BLE{}
+	}
+	return &WiFi{Dir: dir}
 }
 
 // chanLink is a Link fed by a callback: notifies go into a buffered channel.

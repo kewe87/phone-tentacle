@@ -10,7 +10,8 @@ extern "C" {
 #endif
 
 enum { CLI_PAIR = 0x01, CLI_PAIRED = 0x81, CLI_HELLO = 0x02, CLI_WELCOME = 0x82, CLI_DATA = 0x10, CLI_VIDEO = 0x11,
-       CLI_AUDIO = 0x12, CLI_ERROR = 0xE0 };
+       CLI_AUDIO = 0x12, CLI_ERROR = 0xE0,
+       CLI_PAIR_NONCE = 0x03, CLI_PAIR_KEY = 0x83, CLI_PAIR_WAIT = 0x84 };  // pairing over Wi-Fi (pair_gate.h)
 #define CLI_ID_LEN 16
 #define CLI_KEY_LEN 32
 #define CLI_NONCE_LEN 16
@@ -23,6 +24,10 @@ enum { CLI_PAIR = 0x01, CLI_PAIRED = 0x81, CLI_HELLO = 0x02, CLI_WELCOME = 0x82,
 void cli_random(uint8_t *p, size_t n);
 // Board side of pairing: b_priv is 32 random bytes. Writes b_pub and the shared key K. False on bad input.
 bool cli_pair(const uint8_t b_priv[32], const uint8_t c_pub[32], uint8_t b_pub[32], uint8_t k[CLI_KEY_LEN]);
+// Pairing over Wi-Fi: the computer commits to a nonce in PAIR (SHA-256(n_c)) and shows it only after the board's
+// key, so neither side can pick its key to steer the code. The code is 6 digits of HMAC-SHA256(K, "code" || n_c).
+void cli_pair_commit(const uint8_t n_c[16], uint8_t out[32]);
+void cli_pair_code(const uint8_t k[CLI_KEY_LEN], const uint8_t n_c[16], char out[7]);
 // Session keys from K and both nonces.
 bool cli_session(const uint8_t k[CLI_KEY_LEN], const uint8_t c_nonce[16], const uint8_t b_nonce[16],
                  uint8_t k_c2b[16], uint8_t k_b2c[16]);

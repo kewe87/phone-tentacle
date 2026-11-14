@@ -22,6 +22,15 @@
 #define SAFETY_CONTROLS 1
 #endif
 
+// Build switch for the bring-up: 1 (flash.sh --debug / flash.ps1 -Debug) adds the serial debug interface (dbg.h)
+// and the older serial echo (DEBUG_SERIAL). Never hand out such a build: `dbg btn` presses BOOT from the serial port.
+#ifndef TENTACLE_DEBUG
+#define TENTACLE_DEBUG 0
+#endif
+#ifndef DEBUG_SERIAL
+#define DEBUG_SERIAL TENTACLE_DEBUG
+#endif
+
 // Notify mbufs: every queued notify holds ~2-3 blocks until the controller takes it. 12 x 256 ran out
 // at ~300 kbps; 64 x 320 lets ~20 MTU-sized notifies wait in the host. ~22 KB internal RAM.
 #undef CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT

@@ -2,6 +2,7 @@
 // USB mouse + keyboard, an AirPlay screen-mirroring receiver, and a BLE peripheral for the
 // iOS app on the same phone. It holds no logic; the app decides. Protocol: docs/ble-protocol.md.
 // Headless build (APP_LINK 0, the default, nimble_cfg.h): no app; the computer's CLI decides (docs/cli-protocol.md).
+// The CLI finds the board on the Wi-Fi by mDNS (_esp32agent._tcp), pairs and talks on TCP 7202 (cli_tcp.h).
 //
 // HID commands (unchanged from the old TCP protocol, the board answers "ok" or "err <why>"):
 //   ping | pace | home | move <dx> <dy> [speed] | press | release | click
@@ -20,6 +21,7 @@
 #include "USBHIDKeyboard.h"
 #include "USBHIDConsumerControl.h"
 #include "tusb.h"
+#include <mdns.h>
 #include "ble_link.h"
 #include "netcfg.h"
 #include "video_link.h"
@@ -35,6 +37,7 @@
 #include "src/cli/cli_proto.h"
 #include "logbuf.h"
 #include "button.h"
+#include "dbg.h"
 
 const int STEP = 10;      // pointer speed per report while moving (any direction, see pace.h)
 const int ABS_STEP = 245;      // of 32767, per STEP_MS while dragging with `abs`: the relative mouse's speed
@@ -444,8 +447,8 @@ String board(const String &line, const String &id, char who) {
   }
   if (cmd == "unpair") {
     // Answer before the link goes down, and to whoever asked: the CLI's `ok` goes out sealed with the session
-    // that ble_unpair() then ends. It forgets every paired computer (and bond), drops all links and opens a new
-    // pairing window: the computer has to `pair` again within 3 minutes.
+    // that ble_unpair() then ends. It forgets every paired computer (and bond) and drops all links: the computer
+    // has to `pair` again (over Wi-Fi, with the BOOT button).
     ble_reply(id + " ok", who);
     ble_unpair();
     return "";
@@ -547,7 +550,7 @@ void relayLine(const char *msg) {
 // AirPlay log lines: to USB serial, the RAM log and the app.
 void logLine(const char *msg) {
 #if DEBUG_SERIAL
-  Serial.printf("[%lu] %s\n", millis(), msg);
+  Serial.printf("[%lu.%03lu] A %s\n", millis() / 1000, millis() % 1000, msg);  // A: the AirPlay receiver's lines
 #endif
   board_log_keep(msg);
   relayLine(msg);
@@ -569,6 +572,36 @@ void startAirplay() {
   if (!airplay_start(&cfg)) board_log("airplay: start failed");
 }
 
+// How the CLI finds the board on the Wi-Fi (docs/cli-protocol.md, "Discovery"): one more service on the mDNS
+// responder the AirPlay receiver started (src/airplay/mdns.c; same host name, no second responder). The TXT record
+// holds nothing secret: the board id, its name, the firmware version, how many computers are paired.
+static const char *const CLI_SERVICE = "_esp32agent";
+static int advertisedPaired = -1;
+
+static void advertiseCli() {
+  static char id[13], name[40], paired[4];
+  uint8_t m[6];
+  cli_board_id(m);
+  snprintf(id, sizeof id, "%02x%02x%02x%02x%02x%02x", m[0], m[1], m[2], m[3], m[4], m[5]);
+  snprintf(name, sizeof name, "%s %s", BOARD_NAME_TEXT, board_suffix().c_str());
+  advertisedPaired = cli_paired();
+  snprintf(paired, sizeof paired, "%d", advertisedPaired);
+  mdns_txt_item_t txt[] = {{"id", id}, {"name", name}, {"fw", FW_VERSION}, {"paired", paired}, {"v", "1"}};
+  esp_err_t e = mdns_service_add(name, CLI_SERVICE, "_tcp", CLI_TCP_PORT, txt, sizeof txt / sizeof txt[0]);
+  if (e != ESP_OK) {
+    advertisedPaired = -1;  // nothing to keep up to date
+    board_log("mdns: %s._tcp failed (%d): the CLI needs --host <ip>", CLI_SERVICE, (int)e);
+  } else board_log("mdns: %s._tcp on port %d as \"%s\"", CLI_SERVICE, CLI_TCP_PORT, name);
+}
+
+static void advertisePaired() {  // loop(): the count in the TXT record follows pair / unpair
+  int n = cli_paired();
+  if (n == advertisedPaired || advertisedPaired < 0) return;
+  char paired[4];
+  snprintf(paired, sizeof paired, "%d", n);
+  if (mdns_service_txt_item_set(CLI_SERVICE, "_tcp", "paired", paired) == ESP_OK) advertisedPaired = n;
+}
+
 void setup() {
   Serial.begin(115200);
 #if OTA_CRASH_TEST  // flash.sh --crash-test: an image that never comes up, to check the rollback after an update
@@ -587,6 +620,9 @@ void setup() {
   esp_task_wdt_reconfigure(&wdt);
   esp_task_wdt_add(NULL);
   readCrash();
+#if TENTACLE_DEBUG
+  dbg_begin(resetReason(), lastCrash.c_str());
+#endif
   button_begin();
 #if STATUS_DISPLAY
   display_begin();
@@ -603,6 +639,7 @@ void setup() {
   if (!cli_tcp_begin()) board_log("cli: Wi-Fi link failed to start");
   ble_begin(String(BOARD_NAME_TEXT " ") + board_suffix());
   startAirplay();
+  advertiseCli();  // after AirPlay: it starts the mDNS responder
   xTaskCreatePinnedToCore(statusTask, "status", 4096, NULL, 1, NULL, 1);
   board_log("boot %s fw %s: free internal heap %u (largest %u), PSRAM %u, reset %s\n", receiverName.c_str(), FW_VERSION,
                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
@@ -617,6 +654,10 @@ void loop() {
   display_poll();
 #endif
   net_poll();
+  advertisePaired();
+#if TENTACLE_DEBUG
+  dbg_poll();
+#endif
   bool cli = cli_slot() >= 0;
   // A gesture cut off mid-way must not leave the button held (long press); only the side that went holds it.
 #if APP_LINK
@@ -678,6 +719,9 @@ void loop() {
     line = serialLine;
     serialLine = "";
     line.trim();
+#if TENTACLE_DEBUG
+    if (dbg_command(line.c_str())) return;
+#endif
     if (line.startsWith("0 net ")) { net_request(line.substring(6)); Serial.println("0 ok"); return; }
     if (line == "0 netinfo") { Serial.println("0 " + net_json(true)); return; }  // what the app reads over BLE (incl. vtok; headless: none)
     if (line == "0 setup") { Serial.println(net_setup_line()); return; }  // the setup hotspot's name and password (flash.sh reads it)
@@ -702,6 +746,8 @@ void loop() {
     ble_reply(id + " " + reply, who);
   }
 #if DEBUG_SERIAL
-  Serial.printf("%s -> %s (%lu ms)\n", line.c_str(), reply.c_str(), millis() - started);
+  // A Wi-Fi password never goes to the serial log: `net {...}` is shown without its argument.
+  Serial.printf("[%lu.%03lu] C %s -> %s (%lu ms)\n", started / 1000, started % 1000,
+                rest.startsWith("net ") ? (id + " net {...}").c_str() : line.c_str(), reply.c_str(), millis() - started);
 #endif
 }

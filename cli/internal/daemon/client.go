@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,8 +21,15 @@ func LogPath(dir string) string    { return filepath.Join(dir, "daemon.log") }
 type Client struct {
 	Dir     string
 	Version string
-	NoSpawn bool // tests: the daemon runs in process
+	NoSpawn bool   // tests: the daemon runs in process
+	Host    string // --host: sent with every request
+	Verbose bool   // --verbose: sent with every request
+	// Progress gets the lines the daemon sends ahead of its response (the pairing code, the --verbose trace).
+	Progress func(line []byte)
 }
+
+// progressLine: one of the lines before the response.
+func progressLine(line []byte) bool { return bytes.HasPrefix(line, []byte(`{"status":"progress"`)) }
 
 func (c *Client) dial() (net.Conn, error) {
 	return net.DialTimeout("unix", SocketPath(c.Dir), 2*time.Second)
@@ -81,14 +89,26 @@ func (c *Client) roundTrip(req Request) ([]byte, error) {
 		return nil, err
 	}
 	defer conn.Close()
+	if req.Host == "" {
+		req.Host = c.Host
+	}
+	req.Verbose = req.Verbose || c.Verbose
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return nil, err
 	}
-	line, err := bufio.NewReaderSize(conn, 1<<20).ReadBytes('\n')
-	if err != nil && len(line) == 0 {
-		return nil, errors.New("daemon closed the connection (see " + LogPath(c.Dir) + ")")
+	r := bufio.NewReaderSize(conn, 1<<20)
+	for {
+		line, err := r.ReadBytes('\n')
+		if err != nil && len(line) == 0 {
+			return nil, errors.New("daemon closed the connection (see " + LogPath(c.Dir) + ")")
+		}
+		if !progressLine(line) {
+			return line, nil
+		}
+		if c.Progress != nil {
+			c.Progress(line)
+		}
 	}
-	return line, nil
 }
 
 // Call runs one request and returns the daemon's JSON response line.
@@ -109,6 +129,9 @@ func (c *Client) Stream(req Request, w io.Writer) ([]byte, error) {
 		return nil, err
 	}
 	defer conn.Close()
+	if req.Host == "" {
+		req.Host = c.Host
+	}
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return nil, err
 	}

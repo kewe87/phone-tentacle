@@ -25,7 +25,12 @@ void board_log(const char *fmt, ...) {
   va_end(ap);
   size_t n = strlen(line);
   if (n && line[n - 1] == '\n') line[--n] = 0;
+#if TENTACLE_DEBUG
+  uint32_t ms = millis();
+  Serial.printf("[%lu.%03lu] %s\n", (unsigned long)(ms / 1000), (unsigned long)(ms % 1000), line);
+#else
   Serial.println(line);
+#endif
   board_log_keep(line);
   relayLine(line);
 }

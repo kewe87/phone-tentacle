@@ -5,6 +5,7 @@
 #include <mbedtls/gcm.h>
 #include <mbedtls/hkdf.h>
 #include <mbedtls/md.h>
+#include "pair_gate.h"
 
 static const mbedtls_md_info_t *sha256(void) { return mbedtls_md_info_from_type(MBEDTLS_MD_SHA256); }
 
@@ -80,6 +81,14 @@ void cli_mac(const uint8_t k[CLI_KEY_LEN], const char *label, const uint8_t *a, 
   mbedtls_md_hmac_finish(&c, full);
   mbedtls_md_free(&c);
   memcpy(out, full, CLI_MAC_LEN);
+}
+
+void cli_pair_commit(const uint8_t n_c[16], uint8_t out[32]) { mbedtls_md(sha256(), n_c, 16, out); }
+
+void cli_pair_code(const uint8_t k[CLI_KEY_LEN], const uint8_t n_c[16], char out[7]) {
+  uint8_t mac[CLI_MAC_LEN];
+  cli_mac(k, "code", n_c, 16, NULL, 0, mac);
+  pair_code_text(mac, out);
 }
 
 static void nonce(char stream, uint32_t ctr, uint8_t n[12]) {

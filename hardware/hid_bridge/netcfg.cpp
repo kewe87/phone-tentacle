@@ -9,6 +9,7 @@
 #include <esp_wifi.h>
 #include <dhcpserver/dhcpserver.h>
 #include "button.h"
+#include "dbg.h"
 #include "logbuf.h"
 #include "setup_portal.h"
 #include "src/setup/setup_text.h"
@@ -30,6 +31,10 @@
 static Preferences prefs;
 static String apSsid, apPass, staSsid, staPass, mode;  // mode: "ap" (the setup hotspot) | "sta" | "off"
 static String pending;
+static uint32_t pendingAt;
+// A `net` request waits this long before it is applied: its `ok` is still on its way out over the link that the
+// change takes down (a session over Wi-Fi asking for another Wi-Fi).
+const uint32_t APPLY_AFTER_MS = 400;
 static SemaphoreHandle_t pendingLock = xSemaphoreCreateMutex();
 // STA retries back off: a tight reconnect loop starves BLE, which shares the radio.
 static uint32_t retryAt = 0, retryGap = 5000;
@@ -275,15 +280,26 @@ static void pollSetup() {
   }
 }
 
-#if DEBUG_SERIAL
+#if TENTACLE_DEBUG
 static void logWifi(arduino_event_id_t e, arduino_event_info_t info) {
-  if (e == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) board_log("wifi: disconnected, reason %d", info.wifi_sta_disconnected.reason);
-  if (e == ARDUINO_EVENT_WIFI_STA_GOT_IP) board_log("wifi: got ip %s", WiFi.localIP().toString().c_str());
+  switch (e) {
+    case ARDUINO_EVENT_WIFI_STA_START: DBG("wifi: station started"); break;
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED: DBG("wifi: associated, channel %d", info.wifi_sta_connected.channel); break;
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: DBG("wifi: disconnected, reason %d", info.wifi_sta_disconnected.reason); break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP: DBG("wifi: got ip %s", WiFi.localIP().toString().c_str()); break;
+    case ARDUINO_EVENT_WIFI_STA_LOST_IP: DBG("wifi: lost ip"); break;
+    case ARDUINO_EVENT_WIFI_AP_START: DBG("wifi: hotspot up"); break;
+    case ARDUINO_EVENT_WIFI_AP_STOP: DBG("wifi: hotspot down"); break;
+    case ARDUINO_EVENT_WIFI_AP_STACONNECTED: DBG("wifi: a station joined the hotspot"); break;
+    case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED: DBG("wifi: a station left the hotspot"); break;
+    case ARDUINO_EVENT_WIFI_SCAN_DONE: DBG("wifi: scan done"); break;
+    default: break;
+  }
 }
 #endif
 
 void net_begin() {
-#if DEBUG_SERIAL
+#if TENTACLE_DEBUG
   WiFi.onEvent(logWifi);
 #endif
   WiFi.persistent(false);  // the driver keeps no copy of a network in flash: ours in NVS is the only one
@@ -333,11 +349,12 @@ const char *net_coex_mode() { return coexNames[coexPref]; }
 void net_request(const String &json) {
   xSemaphoreTake(pendingLock, portMAX_DELAY);
   pending = json;
+  pendingAt = millis();
   xSemaphoreGive(pendingLock);
 }
 
 // A stored network that is out of reach or has a new password is retried forever; the setup hotspot never comes
-// back by itself (hold BOOT 10 s, or `net` over Bluetooth).
+// back by itself (hold BOOT 10 s, or `net {"mode":"ap"}` on USB serial).
 static void retrySta() {
   if (mode != "sta") return;
   if (WiFi.status() == WL_CONNECTED) {
@@ -358,11 +375,15 @@ void net_poll() {
   }
   retrySta();
   pollSetup();
+  String j;
   xSemaphoreTake(pendingLock, portMAX_DELAY);
-  String j = pending;
-  pending = "";
+  if (!pending.isEmpty() && millis() - pendingAt >= APPLY_AFTER_MS) {
+    j = pending;
+    pending = "";
+  }
   xSemaphoreGive(pendingLock);
   if (j.isEmpty()) return;
+  DBG("wifi: applying a net request");
   // From a paired computer (or USB serial): no button press, the sender is trusted already.
   String m = jsonStr(j, "mode");
   if (m == "ap") {

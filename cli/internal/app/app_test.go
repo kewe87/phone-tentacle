@@ -126,7 +126,7 @@ func TestSimPairScreenshotTapText(t *testing.T) {
 	if _, err := video.FFmpeg(); err != nil {
 		t.Skip(err)
 	}
-	dir, _ := os.MkdirTemp("/tmp", "e32s")
+	dir, _ := os.MkdirTemp("/tmp", "e32s") // the sim is POSIX: this test runs where /tmp is
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	t.Setenv("ESP32AGENT_HOME", dir)
 	t.Setenv("CLI_SIM_NVS", filepath.Join(dir, "nvs"))

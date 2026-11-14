@@ -28,6 +28,9 @@ uint32_t btn_held_ms(const btn_state *b, uint32_t now);  // 0 when up
 enum { CONFIRM_NONE = 0, CONFIRM_WIFI = 1, CONFIRM_PAIR = 2 };       // who asks
 enum { CF_IDLE = 0, CF_WAITING, CF_ACCEPTED, CF_EXPIRED };           // CF_ACCEPTED / CF_EXPIRED stay until cleared
 #define CF_TEXT 22  // one display line (21 characters of the 6-pixel font)
+// A press this soon after a request opened was on its way before anyone could have seen the request: it is not an
+// answer (it stays a normal press, the stop toggle). A request from the network must not catch a press meant to stop.
+#define CF_ARM_MS 1000
 
 typedef struct {
   int kind, state;
@@ -39,7 +42,8 @@ void cf_init(confirm_slot *c);
 // Opens a request. The same kind may ask again (new text, new timeout); false while another kind is waiting.
 bool cf_request(confirm_slot *c, int kind, const char *l1, const char *l2, uint32_t timeout_ms, uint32_t now);
 void cf_tick(confirm_slot *c, uint32_t now);         // CF_WAITING -> CF_EXPIRED once the time is up
-bool cf_press(confirm_slot *c, uint32_t now);        // a press: true if it accepted an open request (it is used up)
+bool cf_press(confirm_slot *c, uint32_t now);        // a press: true if it accepted an open request (it is used up);
+                                                     // false also within CF_ARM_MS of the request
 int cf_state(const confirm_slot *c, int kind);       // CF_IDLE for a kind that did not ask
 void cf_clear(confirm_slot *c, int kind);            // the asker read the result, or withdraws the request
 uint32_t cf_left_ms(const confirm_slot *c, uint32_t now);  // 0 unless waiting

@@ -19,6 +19,7 @@
 
 static int fails;
 int test_setup(void);  // test_setup.c: the Wi-Fi setup page's text helpers, the BOOT button and its confirmation
+int test_pair(void);   // test_pair.c: the PAIR frame, the pairing code's text, the one-request gate
 #define CHECK(c) do { if (!(c)) { fails++; printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); } } while (0)
 
 static void test_bplist_roundtrip(void) {
@@ -283,6 +284,20 @@ static void test_cli_proto(void) {
   uint8_t zero[32] = {0};
   CHECK(!cli_pair(b_priv, zero, b_pub, k));  // low-order point: refused
 
+  // Pairing over Wi-Fi: the computer's commitment to its nonce, and the 6-digit code both sides show.
+  uint8_t nc[16], commit[32];
+  char code[7];
+  hex("efcbf0a5e51d114b9d6c9570183c9e44cb623c0581ee3ae762c00d6acc18fbf9", k);
+  hex("303132333435363738393a3b3c3d3e3f", nc);
+  cli_pair_commit(nc, commit);
+  hex("816b9e7c25d559c5766755b3bbb36654ad451e080ffa93694a793d6eed41f40a", want);
+  CHECK(!memcmp(commit, want, 32));
+  cli_pair_code(k, nc, code);
+  CHECK(!strcmp(code, "615618"));
+  nc[0] ^= 1;  // another nonce, another code
+  cli_pair_code(k, nc, code);
+  CHECK(strcmp(code, "615618") && strlen(code) == 6);
+
   hex("efcbf0a5e51d114b9d6c9570183c9e44cb623c0581ee3ae762c00d6acc18fbf9", k);
   hex("101112131415161718191a1b1c1d1e1f", cn);
   hex("202122232425262728292a2b2c2d2e2f", bn);
@@ -534,6 +549,7 @@ int main(void) {
   test_arbiter();
   test_pace();
   fails += test_setup();
+  fails += test_pair();
   printf(fails ? "%d FAILED\n" : "all tests passed\n", fails);
   return fails != 0;
 }

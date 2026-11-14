@@ -6,10 +6,17 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // Debug (ESP32AGENT_DEBUG=1) logs every request's command and outcome to daemon.log.
 var Debug = os.Getenv("ESP32AGENT_DEBUG") == "1"
+
+// verbose (ESP32AGENT_VERBOSE=1, or any request with --verbose): discovery, connects, the handshake's frames and
+// every command's name and timing go to daemon.log, and to the client that asked with --verbose.
+var verbose atomic.Bool
+
+func init() { verbose.Store(os.Getenv("ESP32AGENT_VERBOSE") == "1") }
 
 // boardLog reads the board's RAM log a page at a time (firmware 0.2.3+: "logs <offset> <max>") and its last
 // reset and crash. Older firmware answers neither; that is reported, not an error.

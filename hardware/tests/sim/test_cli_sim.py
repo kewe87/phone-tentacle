@@ -2,7 +2,7 @@
 # dependencies = ["cryptography>=42"]
 # ///
 """Drives the simulated board (cli_sim) as a CLI would, with an independent client (Python's cryptography):
-pairing, the pairing window, sessions, replays, commands, status and video. uv run test_cli_sim.py"""
+pairing with the BOOT button and the code, sessions, replays, commands, status and video. uv run test_cli_sim.py"""
 import hashlib, hmac, json, os, struct, subprocess, sys, tempfile, time
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -26,7 +26,15 @@ class Board:
         self.p = subprocess.Popen([os.path.join(HERE, "cli_sim"), os.path.join(HERE, "screen.h264")], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, "CLI_SIM_NVS": nvs, **env})
         os.set_blocking(self.p.stdout.fileno(), False)
+        os.set_blocking(self.p.stderr.fileno(), False)
         self.buf = b""
+        self.err = b""
+
+    def log(self):
+        """What the board printed so far (commands, what its display shows)."""
+        chunk = self.p.stderr.read()
+        if chunk: self.err += chunk
+        return self.err.decode()
 
     def send(self, frame):
         self.p.stdin.write(struct.pack("<H", len(frame)) + frame)
@@ -46,8 +54,11 @@ class Board:
         return None
 
     def close(self):
+        time.sleep(0.05)
+        self.log()
         self.p.kill()
-        return self.p.stderr.read().decode()
+        self.p.wait()
+        return self.log()
 
 class Client:
     def __init__(self):
@@ -56,13 +67,23 @@ class Client:
         self.id = os.urandom(16)
         self.k = None
 
-    def pair(self, b):
-        b.send(b"\x01" + self.pub + self.id)
+    def pair(self, b, name=b"Test-PC", wait=6.0, nonce=None):
+        """PAIR -> PAIR_KEY -> PAIR_NONCE -> PAIR_WAIT -> (BOOT) -> PAIRED. Returns the last frame; self.code is the
+        code this side shows."""
+        self.code = None
+        nc = os.urandom(16)
+        b.send(b"\x01" + self.pub + self.id + hashlib.sha256(nc).digest() + name)
         f = b.recv()
-        if not f or f[0] != 0x81: return f
+        if not f or f[0] != 0x83: return f
         b_pub = f[1:33]
         k = hkdf(self.priv.exchange(X25519PublicKey.from_public_bytes(b_pub)), b"esp32agent-pair-v1", self.pub + b_pub)
-        self.k = k if mac(k, b"paired" + self.id) == f[39:55] else None
+        b.send(b"\x03" + (nonce if nonce is not None else nc))
+        f = b.recv()
+        if not f or f[0] != 0x84: return f
+        self.code = "%06d" % (int.from_bytes(hmac.new(k, b"code" + nc, hashlib.sha256).digest()[:4], "big") % 1000000)
+        f = b.recv(wait)
+        if not f or f[0] != 0x81: return f
+        self.k = k if mac(k, b"paired" + self.id) == f[39:55] and f[1:33] == b_pub else None
         return f
 
     def hello(self, b):
@@ -109,20 +130,84 @@ def frames(b, client, seconds):
 tmp = tempfile.mkdtemp()
 nvs = os.path.join(tmp, "nvs")
 
-# Pairing window closed: refused, nothing stored.
-b = Board(nvs, CLI_SIM_WINDOW="0")
+# The old PAIR (no commitment, no button) is refused; an unpaired client gets nothing.
+b = Board(nvs)
 c = Client()
-f = c.pair(b)
-check(f and f[0] == 0xE0 and b"pairing window closed" in f, "pairing outside the window is refused")
+b.send(b"\x01" + c.pub + c.id)
+f = b.recv()
+check(f and f[0] == 0xE0 and b"too old" in f, "the old PAIR frame (no code, no button) is refused")
 f = c.hello(b)
 check(f and f[0] == 0xE0 and f[1:] == b"not paired", "an unpaired client gets 'not paired'")
 b.close()
 
-# Pair, then a session: board proves K, commands get replies, status arrives.
+# Nobody presses BOOT: an error, nothing stored, and a lock before the next request.
+b = Board(nvs, CLI_SIM_BOOT="never", CLI_SIM_CONFIRM_MS="1500")
+f = c.pair(b)
+check(f and f[0] == 0xE0 and b"not confirmed" in f, "pairing without the button press times out with an error")
+shown = c.code
+f = c.pair(b)
+check(f and f[0] == 0xE0 and b"pairing locked" in f, "... and the next request is locked out for a few seconds")
+f = c.hello(b)
+check(f and f[0] == 0xE0 and f[1:] == b"not paired", "... and nothing was stored")
+log = b.close()
+check("confirm: Test-PC | Code " + (shown or "?") in log, "the board showed the computer's name and the same code")
+
+# A press that comes too soon to be an answer (within a second of the request) does not pair.
+b = Board(nvs, CLI_SIM_BOOT="300", CLI_SIM_CONFIRM_MS="2000")
+f = c.pair(b)
+check(f and f[0] == 0xE0 and b"not confirmed" in f, "a press within a second of the request is not a confirmation")
+check("boot: pressed, not an answer" in b.close(), "... the button was pressed, and it counted as a normal press")
+
+# A wrong nonce (not the one committed to) ends the request.
+b = Board(nvs)
+f = c.pair(b, nonce=os.urandom(16))
+check(f and f[0] == 0xE0 and b"bad pairing nonce" in f, "a nonce that does not match the commitment is refused")
+check("confirm:" not in b.close(), "... before anything is shown on the board")
+
+# Only one open request: a second PAIR is refused and does not replace the first one's name, code or key.
+b = Board(nvs, CLI_SIM_BOOT="2500")
+s2 = Client()
+nc = os.urandom(16)
+b.send(b"\x01" + c.pub + c.id + hashlib.sha256(nc).digest() + b"First-PC")
+f1 = b.recv()
+b.send(b"\x01" + s2.pub + s2.id + hashlib.sha256(os.urandom(16)).digest() + b"Stranger")
+f2 = b.recv()
+check(f1 and f1[0] == 0x83 and f2 and f2[0] == 0xE0 and b"another pairing request is open" in f2,
+      "a second PAIR while one is open gets 'busy'")
+k1 = hkdf(c.priv.exchange(X25519PublicKey.from_public_bytes(f1[1:33])), b"esp32agent-pair-v1", c.pub + f1[1:33])
+b.send(b"\x03" + nc)
+f = b.recv()
+b.send(b"\x01" + s2.pub + s2.id + hashlib.sha256(os.urandom(16)).digest() + b"Stranger")
+f2 = b.recv()
+check(f and f[0] == 0x84 and f2 and f2[0] == 0xE0 and b"another pairing request is open" in f2,
+      "... also while the code is shown")
+f = b.recv(6.0)
+check(f and f[0] == 0x81 and mac(k1, b"paired" + c.id) == f[39:55], "... and the first request completes with its own key")
+log = b.close()
+check("confirm: First-PC" in log and "Stranger" not in log, "... the display never showed the second one")
+
+# The link drops while the request waits: withdrawn, nothing stored.
+b = Board(nvs, CLI_SIM_BOOT="never")
+d = Client()
+nc = os.urandom(16)
+b.send(b"\x01" + d.pub + d.id + hashlib.sha256(nc).digest() + b"Gone-PC")
+f = b.recv()
+b.send(b"\x03" + nc)
+f = b.recv()
+check(f and f[0] == 0x84, "a request waits for the button")
+b.send(b"")  # the link dropped (a zero-length record on the sim's pipe)
+time.sleep(0.3)
+check("pairing request withdrawn" in b.log(), "the link drops while waiting: the request is withdrawn")
+f = d.hello(b)
+check(f and f[0] == 0xE0 and f[1:] == b"not paired", "... and nothing was stored")
+b.close()
+
+# Pair (BOOT pressed), then a session: board proves K, commands get replies, status arrives.
 b = Board(nvs)
 f = c.pair(b)
 check(f and f[0] == 0x81 and c.k is not None, "pairing gives a key both sides derive (mac verifies)")
 check(f[33:39] == bytes.fromhex("246f28aa6ad5"), "PAIRED carries the board id")
+check("confirm: Test-PC | Code " + c.code in b.log(), "board and computer show the same 6-digit code")
 c.hello(b)
 check(c.proved, "WELCOME proves the board holds K")
 c.cmd(b, "1 ping")
@@ -134,6 +219,13 @@ check(status and json.loads(status[0][1:])["ap"] == "streaming", "status reaches
 ctrs = [n for s, n, p in got if s == "B"]
 check(ctrs == list(range(1, len(ctrs) + 1)), "board control counters go 1, 2, 3 …")
 check(all(p is not None for _, _, p in got), "every board frame verifies")
+
+# While a paired computer's session is up, a pairing request is refused at once (BOOT stays the stop button).
+x = Client()
+b.send(b"\x01" + x.pub + x.id + hashlib.sha256(os.urandom(16)).digest() + b"Stranger")
+got = frames(b, c, 0.8)
+check(any(s == "plain" and p[:1] == b"\xe0" and b"board in use" in p for s, _, p in got), "PAIR during a session: 'busy: board in use'")
+check("confirm: Stranger" not in b.log(), "... and nothing is shown on the board")
 
 # Video: stream on, reassemble, decode.
 c.cmd(b, "2 stream on")

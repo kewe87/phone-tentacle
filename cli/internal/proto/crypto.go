@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
 // Frame types.
@@ -21,6 +22,10 @@ const (
 	TVideo   = 0x11
 	TAudio   = 0x12 // phone audio records, Wi-Fi only (docs/cli-protocol.md, "Phone audio")
 	TError   = 0xE0
+	// Pairing over Wi-Fi with the BOOT button (docs/cli-protocol.md, "Pairing").
+	TPairNonce = 0x03 // → n_c[16], after PAIR_KEY
+	TPairKey   = 0x83 // ← b_pub[32]
+	TPairWait  = 0x84 // ← seconds u8: the board shows the code and waits for BOOT
 )
 
 // Streams, the first nonce byte of a DATA frame.
@@ -32,13 +37,14 @@ const (
 )
 
 const (
-	tagSize  = 12
-	hdrSize  = 5
-	keySize  = 32
-	idSize   = 16
-	nonceLen = 16
-	boardLen = 6
-	macLen   = 16
+	tagSize   = 12
+	hdrSize   = 5
+	keySize   = 32
+	idSize    = 16
+	nonceLen  = 16
+	boardLen  = 6
+	macLen    = 16
+	sha256Len = 32
 )
 
 var errAuth = errors.New("frame does not authenticate")
@@ -62,6 +68,39 @@ func mac(k []byte, parts ...[]byte) []byte {
 // PairKey is K = HKDF(shared, "esp32agent-pair-v1", c_pub || b_pub).
 func PairKey(shared, cPub, bPub []byte) []byte {
 	return derive(shared, []byte("esp32agent-pair-v1"), append(append([]byte{}, cPub...), bPub...))
+}
+
+// PairCommit is what PAIR carries instead of the nonce itself: SHA-256(n_c). The computer shows n_c only after the
+// board's key, so neither side can pick its key to steer the code.
+func PairCommit(nonce []byte) []byte {
+	h := sha256.Sum256(nonce)
+	return h[:]
+}
+
+// PairCode is the 6 digits both sides show: HMAC-SHA256(K, "code" || n_c)[0:4], big-endian, mod 1 000 000.
+func PairCode(k, nonce []byte) string {
+	m := mac(k, []byte("code"), nonce)
+	return fmt.Sprintf("%06d", binary.BigEndian.Uint32(m[:4])%1000000)
+}
+
+// PairNameMax is the longest computer name a PAIR frame carries (bytes).
+const PairNameMax = 32
+
+// PairFrame builds PAIR: c_pub[32] client_id[16] commit[32] name[0..32]. The name is cut at a rune boundary.
+func PairFrame(cPub, clientID, commit []byte, name string) []byte {
+	for len(name) > PairNameMax {
+		name = name[:len(name)-1]
+		for len(name) > 0 && name[len(name)-1]&0xC0 == 0x80 { // inside a multi-byte rune
+			name = name[:len(name)-1]
+		}
+		if len(name) > 0 && name[len(name)-1]&0xC0 == 0xC0 { // its lead byte
+			name = name[:len(name)-1]
+		}
+	}
+	f := append([]byte{TPair}, cPub...)
+	f = append(f, clientID...)
+	f = append(f, commit...)
+	return append(f, name...)
 }
 
 // PairMAC is the board's proof in PAIRED.

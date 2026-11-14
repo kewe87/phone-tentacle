@@ -1,10 +1,11 @@
-// The computer's link (esp32agent CLI, docs/cli-protocol.md): pairing, session keys and sealed frames on the
-// cli_in / cli_out characteristics, next to the app's bonded link. ble_link.cpp owns the radio side.
+// The computer's link (esp32agent CLI, docs/cli-protocol.md): pairing, session keys and sealed frames. The link
+// is Wi-Fi (cli_tcp.h, slot CLI_TCP_SLOT); the BLE characteristics (ble_link.cpp, slots 0-1) still carry sessions
+// but no pairing, and nothing needs them.
 #pragma once
 #include <Arduino.h>
 
 void cli_begin();                                         // loads the paired clients from NVS
-void cli_on_frame(int slot, const uint8_t *p, size_t n);  // a cli_in write (NimBLE host task)
+void cli_on_frame(int slot, const uint8_t *p, size_t n);  // a frame (cli_tcp task; NimBLE host task)
 void cli_reset(int slot);                                 // that peer disconnected
 bool cli_authed(int slot);                                // its first sealed frame verified
 bool cli_known(int slot);                                 // a paired computer's link (its session may be elsewhere now)
@@ -14,6 +15,11 @@ bool cli_wifi();                                          // that session runs o
 uint16_t cli_mtu();                                       // its link's MTU (23 without one)
 void cli_drop();                                          // drops the CLI's links
 void cli_forget_all();                                    // unpair: every client must pair again
+// Pairing (cli_link.cpp, "Pairing"): only over Wi-Fi, confirmed with the BOOT button.
+void cli_pair_poll();                                     // cli_tcp's task, a few times a second: button, timeouts
+bool cli_pair_open();                                     // a request is open (its link must stay up)
+int cli_paired();                                         // paired computers (at most 4)
+void cli_board_id(uint8_t out[6]);                        // the id the CLI knows the board by (BT MAC)
 // Sealed board → CLI frames. Control (replies, status) only from the BLE TX task; video only from the video task:
 // each stream's counter then grows in send order.
 bool cli_send_ctrl(char kind, const char *text, size_t n, uint32_t timeout_ms);

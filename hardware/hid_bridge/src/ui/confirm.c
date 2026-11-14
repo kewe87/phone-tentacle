@@ -53,7 +53,7 @@ void cf_tick(confirm_slot *c, uint32_t now) {
 
 bool cf_press(confirm_slot *c, uint32_t now) {
   cf_tick(c, now);
-  if (c->state != CF_WAITING) return false;
+  if (c->state != CF_WAITING || now - c->start < CF_ARM_MS) return false;
   c->state = CF_ACCEPTED;
   return true;
 }

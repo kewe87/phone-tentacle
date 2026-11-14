@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/binary"
@@ -12,8 +13,12 @@ import (
 
 // FakeBoard is the board side of docs/cli-protocol.md, in process, for tests.
 type FakeBoard struct {
-	ID       []byte
-	PairOpen bool
+	ID []byte
+	// Boot stands for the BOOT button: called with what the display shows once a pairing request waits; true =
+	// pressed (paired), false = not pressed in time. nil: pressed at once.
+	Boot func(name, code string) bool
+	// PairErr, if set, is the board's answer to PAIR (e.g. "busy: board in use").
+	PairErr string
 	// Handle answers one command (without the id), e.g. "ok" or "err unknown command".
 	Handle func(cmd string) string
 
@@ -24,7 +29,7 @@ type FakeBoard struct {
 }
 
 func NewFakeBoard(id []byte) *FakeBoard {
-	return &FakeBoard{ID: id, PairOpen: true, keys: map[string][]byte{}, Handle: func(string) string { return "ok" }}
+	return &FakeBoard{ID: id, keys: map[string][]byte{}, Handle: func(string) string { return "ok" }}
 }
 
 type fakeConn struct {
@@ -33,11 +38,17 @@ type fakeConn struct {
 	closeOnce sync.Once
 	closed    chan struct{}
 
+	pend             *fakePair // an open pairing request
 	c2b, b2c         *AEAD
 	authed           bool
 	ctrC             uint32
 	ctrB, ctrV, ctrA uint32
 	Sent             [][]byte
+}
+
+type fakePair struct {
+	clientID, commit, bPub, k []byte
+	name                      string
 }
 
 // Connect returns the client end of a new connection; the board serves it until Close.
@@ -85,11 +96,20 @@ func (c *fakeConn) Write(f []byte) error {
 	defer b.mu.Unlock()
 	switch f[0] {
 	case TPair:
-		if !b.PairOpen {
-			c.send(append([]byte{TError}, "pairing window closed: unplug and replug the board, then pair within 3 minutes"...))
+		if b.PairErr != "" {
+			c.send(append([]byte{TError}, b.PairErr...))
 			return nil
 		}
-		if len(f) != 1+keySize+idSize {
+		if len(f) == 1+keySize+idSize {
+			c.send(append([]byte{TError}, "this CLI is too old to pair: update esp32agent"...))
+			return nil
+		}
+		if len(f) < 1+keySize+idSize+sha256Len || len(f) > 1+keySize+idSize+sha256Len+PairNameMax {
+			c.send(append([]byte{TError}, "bad pair request"...))
+			return nil
+		}
+		if c.pend != nil {
+			c.send(append([]byte{TError}, "busy: another pairing request is open"...))
 			return nil
 		}
 		priv, _ := ecdh.X25519().GenerateKey(rand.Reader)
@@ -99,10 +119,28 @@ func (c *fakeConn) Write(f []byte) error {
 		}
 		shared, _ := priv.ECDH(cPub)
 		bPub := priv.PublicKey().Bytes()
-		clientID := f[1+keySize:]
-		k := PairKey(shared, f[1:1+keySize], bPub)
-		b.keys[hex.EncodeToString(clientID)] = k
-		c.send(append(append(append([]byte{TPaired}, bPub...), b.ID...), PairMAC(k, clientID)...))
+		rest := f[1+keySize:]
+		c.pend = &fakePair{clientID: bytes.Clone(rest[:idSize]), commit: bytes.Clone(rest[idSize : idSize+sha256Len]),
+			name: string(rest[idSize+sha256Len:]), bPub: bPub, k: PairKey(shared, f[1:1+keySize], bPub)}
+		c.send(append([]byte{TPairKey}, bPub...))
+	case TPairNonce:
+		p := c.pend
+		if p == nil {
+			c.send(append([]byte{TError}, "no pairing request open"...))
+			return nil
+		}
+		c.pend = nil
+		if len(f) != 1+nonceLen || !bytes.Equal(PairCommit(f[1:]), p.commit) {
+			c.send(append([]byte{TError}, "bad pairing nonce"...))
+			return nil
+		}
+		c.send([]byte{TPairWait, 30})
+		if b.Boot != nil && !b.Boot(p.name, PairCode(p.k, f[1:])) {
+			c.send(append([]byte{TError}, "pairing not confirmed: BOOT was not pressed within 30 s"...))
+			return nil
+		}
+		b.keys[hex.EncodeToString(p.clientID)] = p.k
+		c.send(append(append(append([]byte{TPaired}, p.bPub...), b.ID...), PairMAC(p.k, p.clientID)...))
 	case THello:
 		if len(f) != 1+idSize+nonceLen {
 			return nil
@@ -145,6 +183,13 @@ func (c *fakeConn) Write(f []byte) error {
 func (c *fakeConn) sealB(kind byte, s string) {
 	c.ctrB++
 	c.send(c.b2c.Seal(StreamB, TData, c.ctrB, append([]byte{kind}, s...)))
+}
+
+// SetPairErr changes PairErr while the board is in use.
+func (b *FakeBoard) SetPairErr(msg string) {
+	b.mu.Lock()
+	b.PairErr = msg
+	b.mu.Unlock()
 }
 
 // Status sends a status JSON to an authenticated client.

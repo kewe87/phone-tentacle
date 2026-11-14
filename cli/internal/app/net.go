@@ -14,15 +14,16 @@ import (
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
 )
 
-// netJoin is `net join` without arguments: over the BLE session, ask for the Wi-Fi's name and password (not
-// echoed, not in the shell history), send them to the board, and wait until the CLI's link moves to that Wi-Fi.
+// netJoin is `net join` without arguments: ask for the Wi-Fi's name and password (not echoed, not in the shell
+// history), send them to the board over the current session (sealed), and wait until the board is found again on
+// that Wi-Fi. The session drops in between: the board leaves the network it ran on.
 func (a *App) netJoin(dev string) int {
 	in := a.In
 	if in == nil {
 		in = os.Stdin
 	}
 	r := bufio.NewReader(in)
-	if _, err := a.Client.Call(daemon.Request{Cmd: "net", Device: dev}); err != nil { // connected over BLE first
+	if _, err := a.Client.Call(daemon.Request{Cmd: "net", Device: dev}); err != nil { // a session first
 		return a.fail(err)
 	}
 	fmt.Fprint(a.Err, "Wi-Fi name (SSID): ")
@@ -47,7 +48,7 @@ func (a *App) netJoin(dev string) int {
 	if _, err := a.Client.Call(daemon.Request{Cmd: "net", Device: dev, Text: "join " + ssid + "\x00" + pass}); err != nil {
 		return a.fail(err)
 	}
-	fmt.Fprintf(a.Err, "Sent over Bluetooth. The board is joining %q; put the iPhone on the same Wi-Fi to mirror.\n", ssid)
+	fmt.Fprintf(a.Err, "Sent. The board is joining %q; this computer and the iPhone have to be on that Wi-Fi too.\n", ssid)
 	var last []byte
 	for deadline := time.Now().Add(45 * time.Second); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
 		line, err := a.Client.Call(daemon.Request{Cmd: "net", Device: dev})
@@ -65,19 +66,18 @@ func (a *App) netJoin(dev string) int {
 			} `json:"data"`
 		}
 		json.Unmarshal(line, &resp)
-		if d := resp.Data; d.Via == "wifi" {
-			fmt.Fprintf(a.Err, "Done: commands and video now go over Wi-Fi (%s).\n", d.Board.IP)
+		if d := resp.Data; d.Via == "wifi" && d.Board.Mode == "sta" && d.Board.IP != "" && d.Board.IP != "0.0.0.0" {
+			fmt.Fprintf(a.Err, "Done: the board is on that Wi-Fi (%s).\n", d.Board.IP)
 			a.waitMirroring(dev)
 			a.Out.Write(line)
 			return 0
-		} else if d.Board.Mode == "sta" && d.Board.IP != "" && d.Board.IP != "0.0.0.0" {
-			fmt.Fprintf(a.Err, "board is on Wi-Fi at %s; moving the link...\n", d.Board.IP)
 		}
 	}
 	if last != nil {
 		a.Out.Write(last)
 	}
-	return a.fail(errors.New("the link did not move to Wi-Fi in 45 s: is this computer on the same Wi-Fi, and the password right? (esp32agent net shows the board's state; commands still work over BLE)"))
+	return a.fail(errors.New("the board was not found on that Wi-Fi in 45 s: is this computer on the same Wi-Fi, and the password right? " +
+		"A board that cannot join keeps trying and is not reachable meanwhile: hold its BOOT button 10 s for the setup hotspot"))
 }
 
 // waitMirroring walks the user through the step after the network: the iPhone mirroring to the board.

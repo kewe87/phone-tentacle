@@ -594,7 +594,7 @@ void ble_unpair() {
   NimBLEDevice::deleteAllBonds();  // unpairs each bond (also drops it from the controller's resolving list)
   ble_store_clear();               // and any CCCD/peer records left in NVS
   cli_forget_all();                // and paired computers
-  knownCount = 0;                  // forgotten phones are strangers now; a new pairing window opens
+  knownCount = 0;                  // forgotten phones are strangers now (computers pair over Wi-Fi, with BOOT)
   pairOpened = millis();
   bool any = false;
   for (int i = 0; i < MAX_PEERS; i++)

@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
+#include "dbg.h"
 #include "netcfg.h"
 #include "version.h"
 #include "src/setup/setup_text.h"
@@ -93,6 +94,10 @@ static String esc(const char *s) {
 }
 
 static void headers() {
+#if TENTACLE_DEBUG
+  if (server.uri() != "/status")  // the wait page asks every second
+    DBG("portal: %s %s", server.method() == HTTP_POST ? "POST" : "GET", server.uri().c_str());
+#endif
   server.sendHeader("Cache-Control", "no-store");
   server.sendHeader("X-Content-Type-Options", "nosniff");
   server.sendHeader("Content-Security-Policy",
@@ -294,10 +299,12 @@ static void portalTask(void *) {
       dns.start(53, "*", WiFi.softAPIP());
       server.begin();
       up = true;
+      DBG("portal: up");
     } else if (!want && up) {
       server.stop();
       dns.stop();
       up = false;
+      DBG("portal: down");
     }
     if (up) server.handleClient();
     vTaskDelay(pdMS_TO_TICKS(up ? 2 : 50));

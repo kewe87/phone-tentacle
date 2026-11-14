@@ -208,7 +208,7 @@ func (s *Server) net(ctx context.Context, c *Conn, arg string) Response {
 	verb, rest, _ := strings.Cut(strings.TrimSpace(arg), " ")
 	switch verb {
 	case "":
-	case "via":
+	case "via": // only with ESP32AGENT_TRANSPORT=ble: a session that starts on Wi-Fi stays there
 		if rest != "auto" && rest != "ble" {
 			return fail(errors.New("usage: net via auto|ble"))
 		}
@@ -229,6 +229,11 @@ func (s *Server) net(ctx context.Context, c *Conn, arg string) Response {
 			return fail(err)
 		}
 		c.wifi.setMode(TransportMode()) // try the new network soon
+		if c.Via() == "wifi" {
+			// The board answered, and now leaves the network this session runs on. It is found again (mDNS) on
+			// the new one by the next request; its old address is no use.
+			return ok(map[string]any{"via": "wifi", "sent": verb, "message": "sent; the board changes its Wi-Fi now and this link drops"})
+		}
 	default:
 		return fail(errors.New("usage: net [via auto|ble | join SSID [PASSWORD] | hotspot]"))
 	}
@@ -238,7 +243,7 @@ func (s *Server) net(ctx context.Context, c *Conn, arg string) Response {
 	}
 	var board map[string]any
 	if json.Unmarshal([]byte(reply), &board) != nil {
-		return fail(errors.New("board firmware too old for net: update the board in the app"))
+		return fail(errors.New("board firmware too old for net: flash the current firmware"))
 	}
 	if board["mode"] == "sta" {
 		delete(board, "pass") // your Wi-Fi's password stays out of logs; the hotspot's is needed to join it

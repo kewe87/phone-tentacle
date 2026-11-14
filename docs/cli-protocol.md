@@ -1,68 +1,102 @@
-# CLI protocol (ESP32 ⇄ computer, over BLE and Wi-Fi)
+# CLI protocol (ESP32 ⇄ computer, over Wi-Fi)
 
-The `esp32agent` CLI talks to the board over BLE next to the iOS app (both can be connected at once). It never uses
-OS-level BLE pairing: a stale bond on either side (macOS `CBError 14`, "Peer removed pairing information") cannot
-break it, and Windows/Linux need no pairing dialog. Instead the link is authenticated and encrypted here, in the
-application layer.
+The `esp32agent` CLI finds the board on the local network (mDNS), pairs with it and talks to it on **TCP port
+7202**. Nothing needs Bluetooth: no adapter on the computer, no OS pairing. The link is authenticated and
+encrypted here, in the application layer; pairing is confirmed by a person at the board, with its BOOT button.
+
+The firmware still has the same frames on a BLE service (see "Bluetooth" at the end); it is no longer needed,
+cannot pair, and is going away.
 
 ## Discovery
-A headless build (the default, `APP_LINK 0`) has only the CLI's identity and service: it advertises that one all
-the time while a connection slot is free, and nothing below about the app applies to it.
+The board announces itself by **mDNS / DNS-SD** on whatever network it is on (its Wi-Fi, or its own setup
+hotspot), through the same responder as its AirPlay receiver (host `iphone-agent.local`):
 
-A build with the app's side (`flash.sh --app-link`) advertises (legacy PDUs, connectable) under one of two
-identities at a time:
-- the app's: the board's public address, service `...0000` (docs/ble-protocol.md).
-- the CLI's: a random static address picked at every boot, service `...0010`, same name `ESP32 Agent XXXX`.
-  No central can hold a bond for an address that changes every boot, so the OS never tries to encrypt.
+| | |
+|---|---|
+| Service | `_esp32agent._tcp.local`, port 7202 |
+| Instance | the board's name and id suffix, e.g. `ESP32 Agent 6AD5` |
+| TXT `id` | board id, 12 hex digits |
+| TXT `name` | as the instance |
+| TXT `fw` | firmware version |
+| TXT `paired` | how many computers are paired (0-4) |
+| TXT `v` | `1` |
 
-With the app connected it advertises the CLI's (which then gets `owner app`, busy); with the CLI connected, the app's
-(the app can always take over); with neither, they take turns, the app's 750 ms and the CLI's 250 ms of each second.
-One set, not two at once: two need extended advertising, ~9 KB of the board's internal RAM.
+Nothing in it is secret; who answers at that address is proven by the session keys, not by the record.
 
-Both addresses lead to the same GATT server. Full UUID = `6e400001-a9e8-4b1b-9c39-6d6f8a3c` + suffix.
+The CLI asks on every IPv4 interface that is up (a computer often has several: cable, Wi-Fi, VPN, virtual
+switches): one PTR question for the service with the unicast-response bit, sent from an ephemeral port to
+224.0.0.251:5353 at 0, 0.25, 1 and 2.5 s. The board answers straight to that port (PTR, and SRV, TXT, A in the
+additional section). The CLI takes the answer's source address as the board's, stops 0.6 s after the first answer
+(4 s without one), and also listens on the mDNS group where it can. In this order it uses:
+1. an address given by hand: `--host IP[:PORT]` or `ESP32AGENT_HOST` (`--host auto` goes back to finding);
+2. mDNS;
+3. the address each board had last time (`hosts.json` in the CLI's config dir);
+4. if all that finds nothing: a try of TCP 7202 on every address of the computer's private /24 networks
+   (`ESP32AGENT_NO_PROBE=1` turns it off). It finds a board behind a router that keeps multicast from crossing
+   between Wi-Fi and cable.
 
-Service `...0010`
-| Characteristic | UUID suffix | Props | Purpose |
-|---|---|---|---|
-| `cli_in`  | `...0011` | write | frames from the computer |
-| `cli_out` | `...0012` | notify | frames from the board |
-| `cli_in_nr` | `...0013` | write without response | the same frames, when one fits a packet (newer firmware; the CLI uses it if present) |
-
-A frame that fits `MTU − 3` goes to `cli_in_nr`: a write request waits for its ATT response, and behind the board's
-video that took seconds. Longer frames (the OS splits them into a long write) use `cli_in`. One write at a time, so
-frames reach the board in counter order.
-
-A connection that is neither link-encrypted (the app) nor authenticated here within 15 s is dropped, so a stranger
-cannot sit on one of the board's connection slots.
+`esp32agent devices` lists what was found; `--verbose` shows every step.
 
 ## Identity
 - `board_id`: the board's 6-byte BT MAC. The CLI shows it as 12 hex digits (`device id`).
 - `client_id`: 16 random bytes made by the CLI once per install.
 - `K`: 32-byte key shared by one client and one board. The board keeps up to 4 (NVS, oldest replaced);
-  `unpair` forgets them all (headless: from the CLI or USB serial; with the app's side: from the app).
+  `unpair` forgets them all (from a paired CLI, or `0 unpair` on USB serial).
 
 ## Frames
-`[type u8][body]`, one frame per write / notify (writes may be long writes; notifies are at most MTU-3 bytes).
+`[type u8][body]`, one frame per record (see "Wi-Fi link").
 
 | type | dir | body |
 |---|---|---|
-| `0x01` PAIR | → | `c_pub[32] client_id[16]` |
+| `0x01` PAIR | → | `c_pub[32] client_id[16] commit[32] name[0..32]` |
+| `0x83` PAIR_KEY | ← | `b_pub[32]` |
+| `0x03` PAIR_NONCE | → | `n_c[16]` |
+| `0x84` PAIR_WAIT | ← | `seconds u8` (how long the board waits for its button) |
 | `0x81` PAIRED | ← | `b_pub[32] board_id[6] mac[16]` |
 | `0x02` HELLO | → | `client_id[16] c_nonce[16]` |
 | `0x82` WELCOME | ← | `b_nonce[16] board_id[6] mac[16]` |
 | `0x10` DATA (control) | ↔ | `ctr u32 LE, ciphertext, tag[12]` |
 | `0x11` DATA (video) | ← | `ctr u32 LE, ciphertext, tag[12]` |
-| `0x12` DATA (audio) | ← | `ctr u32 LE, ciphertext, tag[12]` (Wi-Fi only, after `listen raw on`) |
+| `0x12` DATA (audio) | ← | `ctr u32 LE, ciphertext, tag[12]` (after `listen raw on`) |
 | `0xE0` ERROR | ← | UTF-8 reason, plain (only before a session exists) |
 
-### Pairing (only within 3 min of board power-on, like the app's)
+### Pairing (over Wi-Fi, confirmed with the BOOT button)
 ```
-shared = X25519(b_priv, c_pub)                       # b_priv: fresh per pairing
+C → B  PAIR        c_pub, client_id, commit = SHA-256(n_c), name     n_c: 16 random bytes, kept back
+B → C  PAIR_KEY    b_pub                                             b_priv: fresh per request
+C → B  PAIR_NONCE  n_c                                               the board checks it against commit
+B → C  PAIR_WAIT   30                                                code on the display, LED blinks fast
+        ... a person presses BOOT on the board (short press) ...
+B → C  PAIRED      b_pub, board_id, mac                              only now is K stored (NVS)
+
+shared = X25519(b_priv, c_pub)
 K      = HKDF-SHA256(ikm=shared, salt="esp32agent-pair-v1", info=c_pub || b_pub, L=32)
+code   = first 4 bytes of HMAC-SHA256(K, "code" || n_c), big-endian, mod 1 000 000, as 6 digits
 mac    = HMAC-SHA256(K, "paired" || client_id)[0:16]
 ```
-Outside the window the board answers `0xE0 "pairing window closed: unplug and replug the board, then pair within 3 minutes"`.
-An unauthenticated exchange, like BLE Just Works: it guards against everyone who is not there during the window.
+- `name` is the computer's host name (UTF-8, at most 32 bytes, optional). The board's display shows it (ASCII; other
+  bytes as `?`) with `Code 123456`; the CLI prints the same code. **Compare them, then press BOOT.** A different
+  code or name means someone else is asking, or sits in the middle: do not press.
+- Why the commitment: the code depends on `n_c`, which the computer reveals only after the board fixed its key, and
+  which the computer fixed (by `commit`) before it saw that key. So neither side, and nobody between them, can
+  pick a key until the two codes match; a guess is right once in a million.
+- No press within 30 s: `0xE0 "pairing not confirmed: BOOT was not pressed within 30 s"`. Nothing was stored.
+  The same if the link drops while the board waits (the request is withdrawn), or `n_c` does not match.
+- A press counts as an answer only once the request has waited a second; before that it is an ordinary press (the
+  stop toggle), so a request from the network cannot catch a press that was already on its way.
+- While it waits the board sends a keepalive record every 2 s, and the computer its own: the link stays up.
+- The board's answers to PAIR instead of PAIR_KEY (`0xE0`):
+  - `busy: another pairing request is open`: only one at a time. A second PAIR (another connection, or the same)
+    never replaces the first one's name, code or key.
+  - `busy: board in use …`: a paired computer has a session, or had one in the last 10 s. No request opens then,
+    so the BOOT button stays the stop button while something drives the phone. (The CLI asks again for 20 s: its
+    own session, closed for the pairing, counts too.)
+  - `busy: pairing locked for N s …`: after a request that ended without the button (timeout, dropped link, bad
+    nonce) pairing is locked for 5 s, then 10, 20 … up to 5 min; a pairing that succeeds, or 10 min without a
+    failed one, starts over at 5 s. So the LED and the display cannot be kept busy from the network.
+  - `this CLI is too old to pair: update esp32agent`: a PAIR without `commit` (the 48-byte form of older CLIs).
+- Without a display the code cannot be compared: the press then only says "someone at the board agrees that a
+  computer pairs now". Pair right after you asked for it yourself, or fit the OLED (docs/hardware-addons.md).
 
 ### Session (every connection)
 ```
@@ -98,37 +132,39 @@ What the iPhone plays while it mirrors (AirPlay audio), two ways; the CLI's `lis
   don't count as the app using the phone. The CLI's `heard` answers
   `ok {"app":0|1,"lines":[{"ago":ms,"t":"…"},…]}`: newest first, the last 60 s, as many as fit its link's reply.
   `app` 0: the app doesn't share (not running, listening off, or sharing off).
-- **Raw audio** (`listen raw on|off`, CLI only, Wi-Fi link only: `err …` over BLE). The board also sends the CLI
+- **Raw audio** (`listen raw on|off`, CLI only, on the Wi-Fi link). The board also sends the CLI
   the audio records (stream `A`, frame `0x12`), and the CLI transcribes them. Off with every new session.
 - Status `aud`: `hear` (1: the app shares), `raw` (1: records go to this CLI), with the packet and segment counts.
 
 ## Wi-Fi link
-When this computer can reach the board's IP (both on the same Wi-Fi, or the computer joined the board's hotspot),
-the session moves there and BLE stays connected as the way back.
-- **TCP port 7202**, one computer at a time. Records `[u16 LE length][frame]` carry the frames above, unchanged.
-  A zero-length record is a keepalive: the CLI sends one every 2 s, and the board drops a link quiet for 6 s.
-  The board sends status every second, so the CLI drops a link quiet for 5 s.
-- **HELLO/WELCOME as over BLE**, with the paired key. PAIR answers `err pair over Bluetooth`: pairing needs the
-  board's pairing window, so whoever pairs is near the board.
-- **Moving.** The CLI learns the IP from the status (`net` `ap`/`sta`, `ip`), opens a session on TCP, and sends
-  `stream on` on it. A session's first DATA frame on a new link takes over from the same client's session on the
-  other link: the old one stops (no replies, status or video), its link stays up. Video starts over from the GOP's
-  IDR. Another client's session can't take over. When the TCP link drops, the CLI opens a new session on its BLE
-  link; after a failed try it waits 10 s, doubling up to a minute.
-- **`net`** (CLI only): `ok {"mode","ssid","pass","ip"}`, the board's Wi-Fi. `net {"mode":"ap"}` or
-  `net {"mode":"sta","ssid":…,"pass":…}` changes it, as the app's `net` write does (the iPhone has to mirror over
-  the same network). The CLI's status has `link`: `{"via":"ble"|"wifi","mtu":…,"kbps":…}` for its own link.
+- **TCP port 7202**, one computer at a time (a second connection waits until the first is gone). Records
+  `[u16 LE length][frame]` carry the frames above. A zero-length record is a keepalive: the CLI sends one every
+  2 s, and the board drops a link quiet for 6 s. The board sends status every second (keepalives while a pairing
+  request waits), so the CLI drops a link quiet for 5 s.
+- A connection that has neither a session (HELLO, then a DATA frame that decrypts) nor an open pairing request
+  within 10 s is closed, so a stranger cannot hold the board's only link.
+- **Reconnecting.** When the link drops (Wi-Fi gone, the board moved), the CLI's daemon opens a new session on the
+  next request: it finds the board again (the steps under "Discovery") and sends `stream on`; video starts over
+  from the GOP's IDR. A board that is not found or not reachable is tried again after 1 s, then 2, 4 … 15 s at
+  most; requests in between get the last error at once.
+- **`net`**: `ok {"mode","ssid","pass","ip"}`, the board's Wi-Fi. `net {"mode":"ap"}` or
+  `net {"mode":"sta","ssid":…,"pass":…}` changes it (the iPhone has to mirror over the same network). The board
+  answers `ok` first and changes 0.4 s later, which ends the session that asked; the CLI finds the board again on
+  the new network. The status has `link`: `{"via":"wifi","mtu":…,"kbps":…}`.
   - `sta`: stored and joined at once, without the BOOT button (a paired computer is trusted already); a name over
     32 bytes or a password that is neither empty nor 8-63 bytes is ignored. A network that is out of reach or has
-    the wrong password is retried forever (status `net` `none`); the board does not fall back to its hotspot.
+    the wrong password is retried forever (status `net` `none`); the board does not fall back to its hotspot, and
+    is not reachable meanwhile: hold BOOT 10 s for the setup hotspot.
   - `ap`: forgets the stored Wi-Fi and opens the **setup hotspot** (mode `ap`; the same as holding BOOT 10 s):
     WPA2, the board's own random password, and on it a setup page (port 80, captive portal) where a network is
-    chosen and then confirmed with the BOOT button. Port 80 is closed in every other mode.
-  - In a headless build `pass` is the setup hotspot's password in mode `ap` and empty in mode `sta`: a stored
-    Wi-Fi password never leaves the board.
-- `ESP32AGENT_TRANSPORT=ble` (or `esp32agent net via ble`) keeps the session on BLE.
+    chosen and then confirmed with the BOOT button. Port 80 is closed in every other mode. A new board is set up
+    there; the CLI reaches a board on its hotspot too (join it, the board is at 192.168.4.1).
+  - `pass` is the setup hotspot's password in mode `ap` and empty in mode `sta`: a stored Wi-Fi password never
+    leaves the board.
 
 ## Sharing the phone with the app
+Only in a build with the app's side (`flash.sh --app-link`); the default build has no app, see the next section.
+
 One side drives the phone at a time, and the app wins (`hardware/hid_bridge/src/hid/arbiter.h`). The app runs
 unchanged and never sees a new error.
 - **While the app's link is up** (an encrypted connection) every CLI command except `crash` answers
@@ -151,8 +187,17 @@ Built with `APP_LINK 0` the board has no app side at all: no service `...0000`, 
 - `log TEXT`: writes a marker line into the board's log (`logs`) and to USB serial.
 - `app …`: `err no app: this firmware is driven by the CLI only`.
 - `unpair`: the board answers `<id> ok` on the session that asked, then forgets **every** paired computer (all
-  keys in NVS, and any BLE bond), drops all BLE and Wi-Fi links, and opens a new 3-minute pairing window. The
-  computer's stored key is now useless (`0xE0 "not paired"`): forget the board there too (`esp32agent unpair`)
-  and `pair` again within the window. Without `unpair`, the same reset is `<id> unpair` on USB serial.
+  keys in NVS) and drops all links. A computer's stored key is now useless (`0xE0 "not paired"`): it has to
+  `pair` again, with the BOOT button. `esp32agent unpair --board` sends it and forgets the board on the computer
+  too; plain `esp32agent unpair` only forgets it on the computer. Without a paired computer the same reset is
+  `0 unpair` on USB serial.
 
-Test vectors: `cli/testdata/vectors.json` (checked by `hardware/tests` and `go test ./cli/...`).
+## Bluetooth (not needed, going away)
+The firmware still advertises a BLE service with the same frames: service `6e400001-a9e8-4b1b-9c39-6d6f8a3c0010`,
+characteristics `…0011` (`cli_in`, write), `…0012` (`cli_out`, notify), `…0013` (`cli_in_nr`, write without
+response), on a random static address made at every boot. A paired computer could open a session there
+(HELLO/WELCOME); **PAIR is refused** (`pair over Wi-Fi (TCP 7202): it needs the BOOT button`). The CLI does not
+touch Bluetooth unless `ESP32AGENT_TRANSPORT=ble` is set.
+
+Test vectors: `cli/testdata/vectors.json` (checked by `hardware/tests` and `go test ./cli/...`): `pair_nonce`,
+`pair_commit` and `pair_code` are `n_c`, `SHA-256(n_c)` and the code for the vectors' `K`.

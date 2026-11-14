@@ -24,11 +24,12 @@ import (
 type Conn struct {
 	ID   string // board id, 12 hex
 	Name string
+	addr string // where it was reached (host:port); guarded by the server's mu
 
 	mu       sync.Mutex
 	swap     sync.RWMutex // Send holds it shared across a write, attach exclusively: no frame on a replaced session
 	sess     *proto.Session
-	via      string        // the session's link: "ble" or "wifi"
+	via      string        // the session's link: "wifi", or "ble" (ESP32AGENT_TRANSPORT=ble)
 	quit     chan struct{} // stops the session's reader (a BLE session moved to Wi-Fi keeps its link)
 	bleLink  proto.Link    // the BLE link, kept while the session runs over Wi-Fi: the way back
 	links    int
@@ -60,7 +61,7 @@ type Conn struct {
 	keyMu   sync.Mutex // held across the gap and the send of key/type commands
 	lastKey time.Time  // when the board acknowledged the last one
 
-	wifi *wifiLink // moves the session to the board's Wi-Fi and back (wifi.go); nil: BLE only
+	wifi *wifiLink // only with the BLE transport: moves the session to the board's Wi-Fi and back (wifi.go)
 
 	hear      *hearing    // phone audio transcribed here (listen.go); nil: never
 	rawWanted func() bool // ask each session for the raw audio
@@ -232,8 +233,15 @@ func (c *Conn) Send(ctx context.Context, line string) (string, error) {
 		s = c.sess
 	}
 	c.mu.Unlock()
+	sent := time.Now()
 	err := s.Send(id + " " + line)
 	c.swap.RUnlock()
+	if verbose.Load() { // the command's name only: never typed text
+		name, _, _ := strings.Cut(line, " ")
+		defer func() {
+			log.Printf("verbose: %s: %s #%s done after %v", c.ID, name, id, time.Since(sent).Round(time.Millisecond))
+		}()
+	}
 	if err != nil {
 		c.detach(s, err)
 		return "", err

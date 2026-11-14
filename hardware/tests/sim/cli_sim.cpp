@@ -1,9 +1,13 @@
-// A simulated board for the esp32agent CLI: the real cli_link.cpp (pairing, sessions, sealed frames) behind a pipe
-// instead of BLE, with an H.264 file as the mirrored screen. Usage (the CLI's sim transport runs it):
+// A simulated board for the esp32agent CLI: the real cli_link.cpp (pairing with the BOOT button, sessions, sealed
+// frames) behind a pipe that stands for the Wi-Fi link (TCP 7202), with an H.264 file as the mirrored screen.
+// Usage (the CLI's sim transport runs it):
 //   cli_sim [screen.h264]      stdin/stdout: records [u16 LE length][frame]; length 0 = the link dropped
-// Env: CLI_SIM_NVS=path (pairings survive restarts), CLI_SIM_WINDOW=0 (pairing window closed), CLI_SIM_FROZEN=1,
-//      CLI_SIM_WAIT_IDR=1 (empty GOP waiting for IDR), CLI_SIM_AP=idle|connected|streaming (AirPlay state for snap).
-// Commands are logged to stderr as "cmd: <line>" so tests can check what the CLI sent.
+// Env: CLI_SIM_NVS=path (pairings survive restarts), CLI_SIM_FROZEN=1,
+//      CLI_SIM_WAIT_IDR=1 (empty GOP waiting for IDR), CLI_SIM_AP=idle|connected|streaming (AirPlay state for snap),
+//      CLI_SIM_BOOT=MS|never (the BOOT button is pressed MS after a pairing request opens; default 1500),
+//      CLI_SIM_CONFIRM_MS=MS (how long a request waits for the button instead of the board's 30 s).
+// Commands are logged to stderr as "cmd: <line>" so tests can check what the CLI sent; a pairing request is logged
+// as "confirm: <computer> | Code <6 digits>", what the board's display shows.
 #include <poll.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -14,7 +18,9 @@
 #include "esp_mac.h"
 #include "esp_random.h"
 #include "ble_link.h"
+#include "button.h"
 #include "cli_link.h"
+#include "cli_tcp.h"
 #include "src/video/gop.h"
 #include "src/log/logring.h"
 #include <stdarg.h>
@@ -83,7 +89,33 @@ size_t Preferences::getBytes(const char *k, void *p, size_t n) {
 size_t Preferences::putUChar(const char *k, uint8_t v) { *slotFor(k) = std::string(1, (char)v); nvsSave(); return 1; }
 uint8_t Preferences::getUChar(const char *k, uint8_t def) { std::string *v = slotFor(k); return v->size() == 1 ? (uint8_t)(*v)[0] : def; }
 
-// The radio side cli_link.cpp talks to.
+// The BOOT button and the request it confirms (button.cpp on the board): the real state machine, pressed by env.
+static confirm_slot confirmSlot;
+static uint32_t pressAt;
+static bool pressDue;
+bool confirm_request(int kind, const char *l1, const char *l2, uint32_t timeout_ms) {
+  const char *t = getenv("CLI_SIM_CONFIRM_MS"), *b = getenv("CLI_SIM_BOOT");
+  if (!cf_request(&confirmSlot, kind, l1, l2, t ? (uint32_t)atoi(t) : timeout_ms, millis())) return false;
+  fprintf(stderr, "confirm: %s | %s\n", l1, l2);
+  pressDue = !(b && !strcmp(b, "never"));
+  pressAt = millis() + (b ? (uint32_t)atoi(b) : 1500);
+  return true;
+}
+int confirm_state(int kind) {
+  uint32_t now = millis();
+  if (pressDue && (int32_t)(now - pressAt) >= 0) {
+    pressDue = false;
+    fprintf(stderr, "boot: pressed, %s\n", cf_press(&confirmSlot, now) ? "confirmed" : "not an answer");
+  }
+  cf_tick(&confirmSlot, now);
+  return cf_state(&confirmSlot, kind);
+}
+void confirm_clear(int kind) {
+  cf_clear(&confirmSlot, kind);
+  pressDue = false;
+}
+
+// The radio side cli_link.cpp talks to: the pipe is the Wi-Fi link, there is no BLE.
 static bool linked = true;
 static void writeRecord(const uint8_t *p, size_t n) {
   uint8_t hdr[2] = {(uint8_t)n, (uint8_t)(n >> 8)};
@@ -91,24 +123,23 @@ static void writeRecord(const uint8_t *p, size_t n) {
   fwrite(p, 1, n, stdout);
   fflush(stdout);
 }
-bool ble_pair_window_open() { const char *w = getenv("CLI_SIM_WINDOW"); return !w || strcmp(w, "0"); }
-uint16_t ble_cli_mtu(int) { return 247; }
-bool ble_cli_subscribed(int) { return linked; }
-bool ble_cli_notify(int, const uint8_t *p, size_t n, bool, uint32_t) {
-  if (!linked || n > 244) return false;
-  writeRecord(p, n);
+bool ble_pair_window_open() { return false; }
+uint16_t ble_cli_mtu(int) { return 23; }
+bool ble_cli_subscribed(int) { return false; }
+bool ble_cli_notify(int, const uint8_t *, size_t, bool, uint32_t) { return false; }
+void ble_cli_drop(int) {}
+bool cli_tcp_up() { return linked; }
+bool cli_tcp_send(const uint8_t *p, size_t n, uint32_t) {
+  if (!linked || n > CLI_TCP_MTU) return false;
+  if (n) writeRecord(p, n);  // a keepalive is nothing on a pipe (a zero-length record means "dropped" here)
   return true;
 }
-void ble_cli_drop(int) {
+void cli_tcp_drop() {
   if (!linked) return;
   linked = false;
   writeRecord(NULL, 0);
-  cli_reset(0);
+  cli_reset(CLI_TCP_SLOT);
 }
-// No Wi-Fi link in the sim (cli_tcp.h).
-bool cli_tcp_up() { return false; }
-bool cli_tcp_send(const uint8_t *, size_t, uint32_t) { return false; }
-void cli_tcp_drop() {}
 static std::vector<std::string> cmds;
 void ble_cli_push_cmd(const char *line, size_t n) { cmds.push_back(std::string(line, n)); }
 
@@ -141,6 +172,7 @@ static bool sendAu(const std::vector<uint8_t> &d, uint8_t flags) {
   uint8_t chunk[VCHUNK_HDR + 512];
   size_t room = cli_video_room();
   if (room < 5) return false;
+  if (room > 512) room = 512;  // the chunk buffer above
   vchunk c;
   vchunk_begin(&c, d.data(), d.size(), flags, millis());
   for (size_t len; (len = vchunk_next(&c, chunk, room, seq)) > 0; seq++)
@@ -183,16 +215,17 @@ int main(int argc, char **argv) {
     if (poll(&p, 1, 20) > 0) {
       uint8_t buf[4096];
       ssize_t n = read(0, buf, sizeof buf);
-      if (n <= 0) return 0;
+      if (n <= 0) { cli_reset(CLI_TCP_SLOT); return 0; }
       in.insert(in.end(), buf, buf + n);
       while (in.size() >= 2) {
         size_t len = in[0] | in[1] << 8;
         if (in.size() < 2 + len) break;
-        if (len == 0) { cli_reset(0); linked = true; streaming = false; }  // the CLI reconnected
-        else { linked = true; cli_on_frame(0, in.data() + 2, len); }
+        if (len == 0) { cli_reset(CLI_TCP_SLOT); linked = true; streaming = false; }  // the CLI reconnected
+        else { linked = true; cli_on_frame(CLI_TCP_SLOT, in.data() + 2, len); }
         in.erase(in.begin(), in.begin() + 2 + len);
       }
     }
+    cli_pair_poll();  // the button's answer to an open pairing request (cli_tcp.cpp's task on the board)
     for (std::string line : cmds) {
       fprintf(stderr, "cmd: %s\n", line.c_str());
       size_t sp = line.find(' ');
