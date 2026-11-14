@@ -29,9 +29,7 @@ type Conn struct {
 	mu       sync.Mutex
 	swap     sync.RWMutex // Send holds it shared across a write, attach exclusively: no frame on a replaced session
 	sess     *proto.Session
-	via      string        // the session's link: "wifi", or "ble" (ESP32AGENT_TRANSPORT=ble)
-	quit     chan struct{} // stops the session's reader (a BLE session moved to Wi-Fi keeps its link)
-	bleLink  proto.Link    // the BLE link, kept while the session runs over Wi-Fi: the way back
+	quit     chan struct{} // stops the session's reader
 	links    int
 	nextID   int
 	pending  map[string]chan string
@@ -53,15 +51,12 @@ type Conn struct {
 	frameSubs map[chan image.Image]bool
 	wake      chan struct{} // closed and replaced on every new frame
 
-	onApp      func() // the board said the app is using it
 	ptr        *pointer.Pointer
 	lastAction time.Time
 	lastShot   time.Time
 
 	keyMu   sync.Mutex // held across the gap and the send of key/type commands
 	lastKey time.Time  // when the board acknowledged the last one
-
-	wifi *wifiLink // only with the BLE transport: moves the session to the board's Wi-Fi and back (wifi.go)
 
 	hear      *hearing    // phone audio transcribed here (listen.go); nil: never
 	rawWanted func() bool // ask each session for the raw audio
@@ -81,44 +76,36 @@ func (c *Conn) connected() bool {
 	return c.sess != nil
 }
 
-// attach takes over a fresh session on link l (via "ble" or "wifi") and turns on the CLI's own video stream.
-// The session it replaces stops: a BLE one keeps its link as the way back, a Wi-Fi one is closed.
-func (c *Conn) attach(s *proto.Session, via string, l proto.Link) error {
+// attach takes over a fresh session. The session it replaces is closed.
+func (c *Conn) attach(s *proto.Session) {
 	c.swap.Lock()
 	defer c.swap.Unlock()
 	c.mu.Lock()
-	old, oldVia := c.sess, c.via
+	old := c.sess
 	if c.quit != nil {
 		close(c.quit)
 	}
 	quit := make(chan struct{})
-	c.sess, c.via, c.quit, c.links = s, via, quit, c.links+1
-	if via == "ble" {
-		if c.bleLink != nil && c.bleLink != l {
-			c.bleLink.Close()
-		}
-		c.bleLink = l
-	}
+	c.sess, c.quit, c.links = s, quit, c.links+1
 	c.re = video.NewReassembler()
 	if c.dec != nil { // the new stream starts over from the GOP
 		c.dec.Close()
 		c.dec = nil
 	}
 	c.mu.Unlock() // pending commands stay: the board sends their replies on the new session
-	if old != nil && oldVia == "wifi" {
+	if old != nil {
 		old.Close()
 	}
 	go c.read(s, quit)
-	return nil
 }
 
 // start turns on the CLI's video stream on a fresh session; also the client's proof of K (the board sends
-// nothing before it), so the board moves the session to this link now.
+// nothing before it).
 func (c *Conn) start() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, err := c.Send(ctx, "stream on")
-	if err == nil && c.rawWanted != nil && c.rawWanted() && c.Via() == "wifi" {
+	if err == nil && c.rawWanted != nil && c.rawWanted() {
 		c.Send(ctx, "listen raw on") // the board forgets it with every session
 	}
 	return err
@@ -131,11 +118,6 @@ func (c *Conn) detach(s *proto.Session, why error) {
 		return
 	}
 	s.Close()
-	if c.via == "ble" {
-		c.bleLink = nil
-	} else if c.wifi != nil && c.bleLink != nil {
-		go c.wifi.fallBack(c, c.bleLink) // after mu is released
-	}
 	c.sess = nil
 	for id, ch := range c.pending {
 		close(ch)
@@ -149,29 +131,12 @@ func (c *Conn) detach(s *proto.Session, why error) {
 }
 
 func (c *Conn) close() {
-	if c.wifi != nil {
-		c.wifi.stop()
-	}
 	c.mu.Lock()
-	s, bl := c.sess, c.bleLink
-	c.bleLink = nil
+	s := c.sess
 	c.mu.Unlock()
 	if s != nil {
 		c.detach(s, errors.New("closed"))
 	}
-	if bl != nil {
-		bl.Close()
-	}
-}
-
-// Via is the current session's link ("ble", "wifi"), "" without one.
-func (c *Conn) Via() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.sess == nil {
-		return ""
-	}
-	return c.via
 }
 
 func (c *Conn) read(s *proto.Session, quit chan struct{}) {
@@ -227,7 +192,7 @@ func (c *Conn) Send(ctx context.Context, line string) (string, error) {
 	ch := make(chan string, 1)
 	c.pending[id] = ch
 	c.mu.Unlock()
-	c.swap.RLock() // the session may have moved to another link since: send on the current one
+	c.swap.RLock() // a reconnect may have replaced the session since: send on the current one
 	c.mu.Lock()
 	if c.sess != nil {
 		s = c.sess
@@ -263,17 +228,7 @@ func (c *Conn) Send(ctx context.Context, line string) (string, error) {
 		if r == "ok" || strings.HasPrefix(r, "ok ") {
 			return strings.TrimPrefix(strings.TrimPrefix(r, "ok"), " "), nil
 		}
-		if strings.HasPrefix(r, "err busy: the app") {
-			c.appBusy()
-			return "", ErrAppBusy
-		}
 		return "", errors.New(strings.TrimPrefix(r, "err "))
-	}
-}
-
-func (c *Conn) appBusy() {
-	if c.onApp != nil {
-		c.onApp()
 	}
 }
 
@@ -285,13 +240,7 @@ func (c *Conn) onStatus(b []byte) {
 	}
 	now := time.Now()
 	c.mu.Lock()
-	notify := false
-	defer func() {
-		c.mu.Unlock()
-		if notify {
-			c.appBusy()
-		}
-	}()
+	defer c.mu.Unlock()
 	for k, v := range m {
 		if sub, ok := v.(map[string]any); ok {
 			if old, ok := c.status[k].(map[string]any); ok {
@@ -304,7 +253,6 @@ func (c *Conn) onStatus(b []byte) {
 		c.status[k] = v
 	}
 	c.statusAt = now
-	notify = m["owner"] == "app" || m["busy"] == float64(1)
 	if up, ok := m["up"].(float64); ok {
 		c.learnClock(now, uint32(up))
 	}

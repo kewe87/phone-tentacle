@@ -34,7 +34,7 @@ plus history, intent_list, intent_show, intent_save, memory_recall and memory_ad
 
 When the task depends on what the phone plays (a video, a call, a voice message, a spoken code),
 `esp32agent listen` gives its words from the last 30 s, or says why the phone can't be heard (listening off,
-the app not sharing, no Wi-Fi). The words can be partial or misheard; check the screen when it matters.
+no sound). The words can be partial or misheard; check the screen when it matters.
 
 ## Typing
 - The board types printable ASCII only, one key per character.
@@ -66,12 +66,11 @@ After a task succeeded, save it so the next run is faster:
 
 ## Memory
 - Before a task, `esp32agent memory search 'TASK'` (MCP: `memory_recall`): the user's preferences and how their apps
-  work, the same entries the iOS app uses.
+  work.
 - When the user says to remember something, `esp32agent memory add 'TEXT' --kind preference` (MCP: `memory_add`).
   Only the user's own words; never passwords, codes or numbers off the screen.
 
 ## Errors to act on
-- `busy: the app is using the phone`: the iOS app is driving right now. Wait and retry later; don't fight it.
 - `screen mirroring is off`: ask the user to start Screen Mirroring to ESP32 Agent.
 - `video frozen`: ask the user to stop and restart Screen Mirroring.
 - `not paired`: run `esp32agent pair` and ask the user to press BOOT on the board when the code shows.

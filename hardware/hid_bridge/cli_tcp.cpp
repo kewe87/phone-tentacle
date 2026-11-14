@@ -1,5 +1,5 @@
 // CLI link over Wi-Fi, see cli_tcp.h. Reads run on this file's task and hand each frame to cli_on_frame(); the same
-// task runs the pairing (cli_pair_poll()). Sends come from cli_link.cpp (this task, the TX and video tasks), under
+// task runs the pairing (cli_pair_poll()). Sends come from cli_link.cpp (this task, link.cpp's TX task, the video and audio tasks), under
 // a lock.
 #include "cli_tcp.h"
 #include <esp_heap_caps.h>
@@ -63,12 +63,12 @@ static void serve(int fd) {
       size_t n = hdr[0] | hdr[1] << 8;
       if (n > FRAME_MAX || (n && !readAll(fd, rx, n))) break;
       lastRx = millis();
-      if (n) cli_on_frame(CLI_TCP_SLOT, rx, n);
+      if (n) cli_on_frame(rx, n);
     }
     cli_pair_poll();  // the BOOT button's answer to an open request, or its timeout
     uint32_t now = millis();
     if (now - lastRx >= (uint32_t)IDLE_TIMEOUT_MS) { why = "quiet for 6 s"; break; }
-    if (cli_authed(CLI_TCP_SLOT) || cli_pair_open()) since = now;
+    if (cli_up() || cli_pair_open()) since = now;
     else if (now - since >= UNAUTH_MS) { why = "no session within 10 s"; break; }
     if (cli_pair_open() && now - lastKeep >= KEEPALIVE_MS) {
       lastKeep = now;
@@ -78,7 +78,7 @@ static void serve(int fd) {
   xSemaphoreTake(lock, portMAX_DELAY);
   client = -1;
   xSemaphoreGive(lock);
-  cli_reset(CLI_TCP_SLOT);
+  cli_reset();
   close(fd);
   board_log("cli: wifi link down (%s)", why);
 }

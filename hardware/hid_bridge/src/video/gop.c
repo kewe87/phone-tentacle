@@ -1,4 +1,4 @@
-// GOP buffer and BLE video chunker, see gop.h.
+// GOP buffer and video chunker, see gop.h.
 #include "gop.h"
 #include <string.h>
 

@@ -17,7 +17,7 @@
 #include "Preferences.h"
 #include "esp_mac.h"
 #include "esp_random.h"
-#include "ble_link.h"
+#include "link.h"
 #include "button.h"
 #include "cli_link.h"
 #include "cli_tcp.h"
@@ -115,7 +115,7 @@ void confirm_clear(int kind) {
   pressDue = false;
 }
 
-// The radio side cli_link.cpp talks to: the pipe is the Wi-Fi link, there is no BLE.
+// The network side cli_link.cpp talks to (cli_tcp.cpp on the board): the pipe is the Wi-Fi link.
 static bool linked = true;
 static void writeRecord(const uint8_t *p, size_t n) {
   uint8_t hdr[2] = {(uint8_t)n, (uint8_t)(n >> 8)};
@@ -123,11 +123,6 @@ static void writeRecord(const uint8_t *p, size_t n) {
   fwrite(p, 1, n, stdout);
   fflush(stdout);
 }
-bool ble_pair_window_open() { return false; }
-uint16_t ble_cli_mtu(int) { return 23; }
-bool ble_cli_subscribed(int) { return false; }
-bool ble_cli_notify(int, const uint8_t *, size_t, bool, uint32_t) { return false; }
-void ble_cli_drop(int) {}
 bool cli_tcp_up() { return linked; }
 bool cli_tcp_send(const uint8_t *p, size_t n, uint32_t) {
   if (!linked || n > CLI_TCP_MTU) return false;
@@ -138,10 +133,10 @@ void cli_tcp_drop() {
   if (!linked) return;
   linked = false;
   writeRecord(NULL, 0);
-  cli_reset(CLI_TCP_SLOT);
+  cli_reset();
 }
 static std::vector<std::string> cmds;
-void ble_cli_push_cmd(const char *line, size_t n) { cmds.push_back(std::string(line, n)); }
+void link_push_cmd(const char *line, size_t n) { cmds.push_back(std::string(line, n)); }  // link.cpp on the board
 
 // The mirrored screen: the file's access units, a config record first, about 5 per second.
 struct Au { std::vector<uint8_t> data; bool idr; };
@@ -215,13 +210,13 @@ int main(int argc, char **argv) {
     if (poll(&p, 1, 20) > 0) {
       uint8_t buf[4096];
       ssize_t n = read(0, buf, sizeof buf);
-      if (n <= 0) { cli_reset(CLI_TCP_SLOT); return 0; }
+      if (n <= 0) { cli_reset(); return 0; }
       in.insert(in.end(), buf, buf + n);
       while (in.size() >= 2) {
         size_t len = in[0] | in[1] << 8;
         if (in.size() < 2 + len) break;
-        if (len == 0) { cli_reset(CLI_TCP_SLOT); linked = true; streaming = false; }  // the CLI reconnected
-        else { linked = true; cli_on_frame(CLI_TCP_SLOT, in.data() + 2, len); }
+        if (len == 0) { cli_reset(); linked = true; streaming = false; }  // the CLI reconnected
+        else { linked = true; cli_on_frame(in.data() + 2, len); }
         in.erase(in.begin(), in.begin() + 2 + len);
       }
     }
@@ -259,7 +254,7 @@ int main(int argc, char **argv) {
       }
     }
     cmds.clear();
-    if (cli_slot() < 0) continue;
+    if (!cli_up()) continue;
     uint32_t now = millis();
     if (now - lastAu >= 200 && shown < aus.size() && !frozen && !wait_idr) { shown++; lastAu = now; }
     if (streaming && !frozen) {

@@ -28,8 +28,8 @@ const (
 	MaxMiss         = 0.06                   // bigger misses are still corrected, but not learned from
 	SettleLag       = 300 * time.Millisecond // after a key, frames captured sooner still show the old screen
 	ChangeWait      = 5 * time.Second        // how long GoHome watches for the screen to change
-	// FreshWait: how long a wiggle waits for a frame captured after it. Over BLE, video yields to commands, and a
-	// frame often took over a second: calibration with 1 s saw no pointer (2026-11-06).
+	// FreshWait: how long a wiggle waits for a frame captured after it. On a slow link a frame can take over a
+	// second: calibration with 1 s saw no pointer (2026-11-06).
 	FreshWait = 3 * time.Second
 )
 
@@ -575,7 +575,7 @@ func (p *Pointer) frame() image.Image {
 }
 
 // changedSince: a frame captured at least SettleLag after `sent` differs from before in more than a sliver (the
-// pointer alone is not it). Frames from the first SettleLag still show the old screen, and over BLE the picture
+// pointer alone is not it). Frames from the first SettleLag still show the old screen, and the picture
 // lags the phone and the Home Screen animation starts late: one look after 1.5 s, and later a 3 s window, missed
 // it and the next fallback ran on top (2026-10-21). So: board capture time >= sent+SettleLag, for up to ChangeWait.
 func (p *Pointer) changedSince(ctx context.Context, before image.Image, sent time.Time) bool {

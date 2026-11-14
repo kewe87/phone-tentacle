@@ -9,7 +9,7 @@ import (
 
 // Heard is one segment of sound and its words.
 type Heard struct {
-	Start, End time.Time // End zero while it goes on; Start == End when only the end is known (the app's lines)
+	Start, End time.Time // End zero while it goes on
 	Text       string
 	Final      bool // transcribed (Text "" then means no words)
 }
@@ -17,8 +17,7 @@ type Heard struct {
 // Within is how far back `listen` looks.
 const Within = 30 * time.Second
 
-// Block is the Heard text for the agent, in the app's wording (ios/IPhoneAgent/Audio/AudioFeed.swift); "" if
-// nothing was heard in the window. how says how the words were made.
+// Block is the Heard text for the agent; "" if nothing was heard in the window. how says how the words were made.
 func Block(now time.Time, items []Heard, how string) string {
 	var lines []string
 	for _, h := range items {

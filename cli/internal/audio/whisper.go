@@ -25,7 +25,7 @@ type Local struct {
 // QuietDB: a segment this quiet has no words (whisper makes some up from silence).
 const QuietDB = -50.0
 
-// ModelPath is where `listen mode local` looks for the model.
+// ModelPath is where `listen` looks for the model.
 func ModelPath(dir string) string { return filepath.Join(dir, "whisper", "ggml-base.bin") }
 
 // FindWhisper is whisper.cpp's command line tool on PATH ("" if none).

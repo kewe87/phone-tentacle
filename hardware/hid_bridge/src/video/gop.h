@@ -1,4 +1,4 @@
-// GOP buffer (every access unit since the latest IDR) and the BLE video chunker.
+// GOP buffer (every access unit since the latest IDR) and the video chunker.
 // Plain C with caller-provided memory so it can be unit-tested on the host.
 #pragma once
 #include <stddef.h>
@@ -9,9 +9,8 @@
 extern "C" {
 #endif
 
-// video notify flags (docs/ble-protocol.md)
-// VF_RESUME: the first AU after a reconnect that goes on from the app's last one (`hello <token> at <ts>`).
-enum { VF_START = 1, VF_END = 2, VF_IDR = 4, VF_CONFIG = 8, VF_BENCH = 16, VF_SNAP = 32, VF_RESUME = 64 };
+// video chunk flags (docs/cli-protocol.md, "Video")
+enum { VF_START = 1, VF_END = 2, VF_IDR = 4, VF_CONFIG = 8, VF_BENCH = 16, VF_SNAP = 32 };
 #define VCHUNK_HDR 3  // seq u16 LE + flags u8
 #define GOP_CFG_MAX 512
 
@@ -64,7 +63,7 @@ typedef struct {
 } vchunk;
 
 void vchunk_begin(vchunk *c, const uint8_t *data, size_t len, uint8_t flags, uint32_t ts);
-// Writes the next notify into out (room for VCHUNK_HDR + max_payload bytes); 0 when done.
+// Writes the next chunk into out (room for VCHUNK_HDR + max_payload bytes); 0 when done.
 size_t vchunk_next(vchunk *c, uint8_t *out, size_t max_payload, uint16_t seq);
 
 #ifdef __cplusplus

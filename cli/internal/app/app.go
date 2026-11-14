@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/ble"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
+	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
 )
 
 // Version is set at build time (-ldflags "-X .../internal/app.Version=1.2.3").
@@ -37,17 +37,16 @@ const usage = `esp32agent: see and drive an iPhone through an ESP32 Agent board,
   io button HOME
   screencapture --format h264|mjpeg   video to stdout
   device info                      board status
-  net                              the CLI's link and the board's Wi-Fi
+  net                              the board's Wi-Fi
   net join                         the board moves to another Wi-Fi: asks for its name and password and sends them
                                    over the current link (sealed). A new board is set up on its own hotspot's page.
   net join SSID [PASSWORD]         the same, non-interactive
   net hotspot                      the board forgets its Wi-Fi and opens its setup hotspot again
   calibrate                        measure the pointer (automatic on the first tap)
   listen                           what the iPhone played in the last 30 s, as words (or why it can't be heard)
-  listen on|off                    hear the phone's sound while it mirrors (off by default)
-  listen mode phone|local          phone: the ESP32 Agent app's words (default); local: whisper.cpp on this
-                                   computer, over Wi-Fi (brew install whisper-cpp, plus a model)
-  listen lang CODE|none            local: the language besides English (e.g. zh); default this computer's
+  listen on|off                    hear the phone's sound while it mirrors (off by default); the words are made
+                                   by whisper.cpp on this computer (install whisper-cpp, plus a model)
+  listen lang CODE|none            the language besides English (e.g. zh); default this computer's
   history list | show RUN | new    what was done on the phone (runs; a new one after 10 min idle)
   intent list | show NAME          saved intents (the app's format)
   intent save --name N --prompt P [--hint H ...] [--from-run RUN [--steps 1,3,4]]
@@ -429,7 +428,7 @@ func (a *App) daemon(idle time.Duration) int {
 	}
 	log.SetFlags(log.LstdFlags)
 	log.Printf("esp32agent %s daemon on %s", Version, daemon.SocketPath(a.Dir))
-	s := &daemon.Server{Transport: ble.Default(a.Dir), Config: cfg, Dir: a.Dir, Version: Version, Idle: idle}
+	s := &daemon.Server{Transport: link.Default(a.Dir), Config: cfg, Dir: a.Dir, Version: Version, Idle: idle}
 	if err := s.Serve(l); err != nil {
 		log.Print(err)
 		return 1

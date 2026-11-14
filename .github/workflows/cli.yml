@@ -49,10 +49,10 @@ jobs:
     strategy:
       matrix:
         include:
-          # CoreBluetooth (tinygo bluetooth via cbgo) needs cgo: darwin builds on macOS
+          # darwin builds on macOS with cgo (the system resolver)
           - { runner: macos-latest, goos: darwin, goarch: arm64, cgo: "1" }
           - { runner: macos-latest, goos: darwin, goarch: amd64, cgo: "1" }
-          # BlueZ (D-Bus) and WinRT are pure Go
+          # the rest cross-compiles as pure Go
           - { runner: ubuntu-latest, goos: linux, goarch: amd64, cgo: "0" }
           - { runner: ubuntu-latest, goos: linux, goarch: arm64, cgo: "0" }
           - { runner: ubuntu-latest, goos: windows, goarch: amd64, cgo: "0" }

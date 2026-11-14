@@ -1,11 +1,12 @@
 # CLI protocol (ESP32 ⇄ computer, over Wi-Fi)
 
 The `esp32agent` CLI finds the board on the local network (mDNS), pairs with it and talks to it on **TCP port
-7202**. Nothing needs Bluetooth: no adapter on the computer, no OS pairing. The link is authenticated and
-encrypted here, in the application layer; pairing is confirmed by a person at the board, with its BOOT button.
+7202**. That is the board's only link to a computer: the firmware has no Bluetooth and there is no phone app. The
+link is authenticated and encrypted here, in the application layer; pairing is confirmed by a person at the board,
+with its BOOT button.
 
-The firmware still has the same frames on a BLE service (see "Bluetooth" at the end); it is no longer needed,
-cannot pair, and is going away.
+Open ports: 7202 (this protocol), the AirPlay receiver's, mDNS, and port 80 only while
+the setup hotspot is up. Firmware updates go over USB.
 
 ## Discovery
 The board announces itself by **mDNS / DNS-SD** on whatever network it is on (its Wi-Fi, or its own setup
@@ -38,7 +39,9 @@ additional section). The CLI takes the answer's source address as the board's, s
 `esp32agent devices` lists what was found; `--verbose` shows every step.
 
 ## Identity
-- `board_id`: the board's 6-byte BT MAC. The CLI shows it as 12 hex digits (`device id`).
+- `board_id`: 6 bytes derived from the chip's factory MAC address (`esp_read_mac(…, ESP_MAC_BT)`: only the name of
+  the address, nothing uses a Bluetooth radio). The CLI shows it as 12 hex digits (`device id`); the board's name
+  ends in its last 4.
 - `client_id`: 16 random bytes made by the CLI once per install.
 - `K`: 32-byte key shared by one client and one board. The board keeps up to 4 (NVS, oldest replaced);
   `unpair` forgets them all (from a paired CLI, or `0 unpair` on USB serial).
@@ -60,7 +63,7 @@ additional section). The CLI takes the answer's source address as the board's, s
 | `0x12` DATA (audio) | ← | `ctr u32 LE, ciphertext, tag[12]` (after `listen raw on`) |
 | `0xE0` ERROR | ← | UTF-8 reason, plain (only before a session exists) |
 
-### Pairing (over Wi-Fi, confirmed with the BOOT button)
+### Pairing (confirmed with the BOOT button)
 ```
 C → B  PAIR        c_pub, client_id, commit = SHA-256(n_c), name     n_c: 16 random bytes, kept back
 B → C  PAIR_KEY    b_pub                                             b_priv: fresh per request
@@ -86,8 +89,8 @@ mac    = HMAC-SHA256(K, "paired" || client_id)[0:16]
   stop toggle), so a request from the network cannot catch a press that was already on its way.
 - While it waits the board sends a keepalive record every 2 s, and the computer its own: the link stays up.
 - The board's answers to PAIR instead of PAIR_KEY (`0xE0`):
-  - `busy: another pairing request is open`: only one at a time. A second PAIR (another connection, or the same)
-    never replaces the first one's name, code or key.
+  - `busy: another pairing request is open`: only one at a time. A second PAIR never replaces the first one's
+    name, code or key.
   - `busy: board in use …`: a paired computer has a session, or had one in the last 10 s. No request opens then,
     so the BOOT button stays the stop button while something drives the phone. (The CLI asks again for 20 s: its
     own session, closed for the pairing, counts too.)
@@ -117,24 +120,115 @@ Each stream's `ctr` starts at 1 and must grow by exactly 1; anything else is dro
 handled like a video seq gap (wait for the next IDR/CONFIG), one in `A` loses that much sound; a gap in `C` or `B` ends the session (reconnect).
 
 Plaintext:
-- `C`: `'c'` + one command line `<id> <command>`, exactly the app's command set (docs/ble-protocol.md). `stream on|off`
-  and `snap` act on the CLI's own video, independent of the app's.
-- `B`: `'r'` + reply line `<id> ok…|<id> err…` (only replies to the CLI's own commands), or `'s'` + status JSON
-  (once a second; the compact form when the full one does not fit). Both statuses carry `owner`
-  (`app`, `cli` or `none`: who drives the phone); the CLI's has `busy` too (1 while the app's link is up).
-- `V`: one video chunk exactly as on the app's `video` characteristic: `[seq u16 LE][flags u8][payload]`.
-- `A`: one phone audio record as on the app's Wi-Fi link (docs/ble-protocol.md, "Wi-Fi audio"), its own seq.
+- `C`: `'c'` + one command line `<id> <command>` (see "Commands"), at most 511 bytes.
+- `B`: `'r'` + reply line `<id> ok…|<id> err…`, or `'s'` + status JSON (once a second, see "Status"). At most 514
+  bytes each.
+- `V`: one video chunk (see "Video").
+- `A`: one phone audio record (see "Phone audio").
+
+## Commands
+`<id>` is a decimal request id chosen by the CLI; the reply echoes it: `<id> ok [text]` or `<id> err <reason>`.
+
+Input (the board is the phone's USB mouse and keyboard):
+
+| Command | Behavior |
+|---|---|
+| `ping` | `ok`. Answers also while stopped or asleep. |
+| `pace` | `ok <n>`: the version of how moves are paced (the CLI recalibrates when it changes). |
+| `home` | Slams the pointer into the top-left corner (left first, then up). |
+| `move DX DY [SPEED]` | Relative move, paced; SPEED 1-40 mouse units per report (default 10). |
+| `abs X Y [STEP]` | Only in `flash.sh --abs` builds (status has `"abs":1`): absolute position, 0-32767 across the screen; while the button is held it glides (STEP per report). |
+| `press`, `release`, `click` | The left button. |
+| `press_for MS` | Holds the left button; it comes up by itself after MS (1-60000), or at `release`, `click` or `reset`. Moves in between drag. |
+| `flick DX DY [SPEED]` | Press, move, release with no pause between: a fast swipe. |
+| `scroll V H` | Wheel. |
+| `type TEXT` | Types printable ASCII. |
+| `key COMBO` | Keys joined by `+`: `enter esc tab backspace space up down left right cmd ctrl alt shift` or one character, e.g. `cmd+h`. `key eject` toggles the on-screen keyboard (do not retry it after a lost reply: a second press reverses the first). |
+| `homescreen` | The consumer-control Home key: iOS goes to the Home Screen. |
+| `reset` | Releases all buttons, keys and consumer controls in place. Safe to retry. |
+
+All but `ping` and `pace` answer `err stopped (safety button)` while the stop toggle is on (BOOT, short press), and
+`err phone usb asleep (unlock the phone)` when the phone suspended USB and does not wake. When the session ends,
+the board lets go of a button the session held.
+
+Board:
+
+| Command | Behavior |
+|---|---|
+| `stream on\|off` | Sends every access unit as it comes (`V`), starting with the config and the whole GOP since the last IDR. Off again when the session ends. |
+| `snap` | Sends the config and the current GOP once (chunks flagged SNAP), then replies `ok`. `err no video (start screen mirroring)`, `err waiting for keyframe` (mirroring is up, no IDR yet), `err video frozen (restart screen mirroring)`. |
+| `bench KB` | Sends KB kilobytes (1-4096) of filler chunks (flag BENCH), then `ok <ms>`. |
+| `res W H`, `fps N` | The mirroring format (default 480 1040, 5 fps), stored on the board; it applies to the next mirroring session. |
+| `listen raw on\|off` | Phone audio records on stream `A`. Off again with every new session. |
+| `net`, `net {…}` | The board's Wi-Fi, see "Wi-Fi link". |
+| `result ID` | `ok <the reply>` the board gave to request ID, from this boot's last 8 replies; `err unknown id …` otherwise. Read only: ask it when a reply is late instead of sending the command again. |
+| `logs [OFFSET [MAX]]` | The board's log in RAM, a page at a time: `ok <next> <end> <text>` (`\n` escaped); read until next = end. |
+| `log TEXT` | Writes a marker line into that log and to USB serial. |
+| `crash` | `ok rst <reset reason>, last dump: <task, pc, backtrace of the last crash \| none>`. |
+| `vdbg` | The video stream's state in short form, for a frozen screen. |
+| `txpower 8-84` | The Wi-Fi's TX power in 0.25 dBm steps; an A/B knob, not stored. |
+| `unpair` | The board answers `<id> ok` on the session that asked, then forgets **every** paired computer (all keys in NVS) and closes the connection. A computer's stored key is now useless (`0xE0 "not paired"`): it has to `pair` again, with the BOOT button. `esp32agent unpair --board` sends it and forgets the board on the computer too; plain `esp32agent unpair` only forgets it on the computer. |
+
+Anything else: `err unknown command`. A line without a numeric id: `err missing request id`.
+
+### USB serial
+The board's USB serial port (115200) takes the same `<id> <command>` lines, for debugging and recovery without a
+paired computer; replies come back on the port. `stream`, `snap`, `bench`, `listen` and `result` need a session
+(`err needs the computer's session …`). Besides those lines:
+- `0 setup`: `wifi-setup {…}`, the setup hotspot's name and password, or the stored Wi-Fi and the board's address
+  (flash.sh / flash.ps1 read it after flashing).
+- `0 net {…}`: as `net {…}`; `0 netinfo`: as `net`; `0 status`: the status JSON.
+- `0 unpair`: forgets every paired computer.
+
+## Status
+Once a second on stream `B`, one JSON object:
+```json
+{"fw":"0.2.5","up":123456,"rst":"power-on","heap":81234,"psram":6200000,"usb":"ok",
+ "net":"sta","ip":"192.168.1.50","sta":1,
+ "ap":"streaming","w":480,"h":1040,"kbps":180,"fps":4.8,"idr":2000,"gop":42000,"vage":120,"ovf":0,"fz":0,
+ "link":{"kbps":350},"aud":{"pk":0,"seg":0,"snd":0,"vol":0,"drop":0,"raw":0},"lost":0}
+```
+- `fw` firmware version, `up` ms since boot, `rst` reset reason of this boot
+  (`power-on|brownout|watchdog|crash|software|usb|other`), `heap` / `psram` free bytes.
+- `usb`: `ok`, `asleep` (the phone suspended USB) or `off` (not plugged into a host). `abs` 1 in `--abs` builds.
+- `net`: `sta` (on a Wi-Fi), `none` (a Wi-Fi is stored but not connected) or `ap` (setup hotspot); `ip`; `sta`:
+  stations on the hotspot, or 1/0 connected.
+- `ap`: the AirPlay receiver, `idle|connected|streaming`. `w`, `h`: the mirroring format. `kbps`, `fps`: video
+  coming in; `idr` ms between the last two IDRs; `gop` bytes buffered since the last IDR; `vage` ms since the last
+  frame; `ovf` times the GOP buffer filled; `fz` 1: the GOP is full and the stream is not going on from it, no new
+  picture until the next IDR (restart Screen Mirroring).
+- `lost`: AirPlay video packets the board dropped for good since boot. After one, the frames that follow may not
+  decode until the next IDR.
+- `link.kbps`: bytes out to the computer in the last second.
+- `aud`: see "Phone audio".
+
+Should the object ever outgrow a reply (514 bytes), the board sends a short form instead:
+`{"fw","up","rst","usb","net","ip","ap","fz","lost"}`. The CLI merges every status into what it has.
+
+## Video
+Each chunk: `[seq u16 LE][flags u8][payload]`, payload up to 1380 bytes.
+flags: bit0 START of access unit, bit1 END of access unit, bit2 IDR, bit3 CONFIG (payload is SPS+PPS),
+bit4 BENCH (filler, ignore), bit5 SNAP (part of a `snap` reply).
+Payload is Annex-B (`00 00 00 01` start codes). On a START chunk the first 4 payload bytes are a u32 LE
+board timestamp (ms), followed by the Annex-B data.
+`seq` increments per chunk; after a gap the CLI waits for the next IDR/CONFIG.
+
+The board keeps the GOP since the last IDR (up to 4 MB) and, once that is full, a ring of the newest units after
+it: a stream that is in step goes on from the ring, anyone else needs the next IDR (`fz`). A new session, and every
+`stream on`, starts from the GOP's IDR. A still screen gets an IDR only rarely, so the GOP can hold minutes.
 
 ## Phone audio
-What the iPhone plays while it mirrors (AirPlay audio), two ways; the CLI's `listen` picks one.
-- **Words from the app** (default). The app transcribes the audio on the phone and, when it listens and shares,
-  sends the board `hear on|off` and one `heard <text>` per segment (`[en] …` / `[zh] …`, at most 400 bytes). These
-  don't count as the app using the phone. The CLI's `heard` answers
-  `ok {"app":0|1,"lines":[{"ago":ms,"t":"…"},…]}`: newest first, the last 60 s, as many as fit its link's reply.
-  `app` 0: the app doesn't share (not running, listening off, or sharing off).
-- **Raw audio** (`listen raw on|off`, CLI only, on the Wi-Fi link). The board also sends the CLI
-  the audio records (stream `A`, frame `0x12`), and the CLI transcribes them. Off with every new session.
-- Status `aud`: `hear` (1: the app shares), `raw` (1: records go to this CLI), with the packet and segment counts.
+What the iPhone plays while it mirrors (AirPlay audio). After `listen raw on` the board sends the audio records on
+stream `A` (frame `0x12`), and the CLI transcribes them (`esp32agent listen`, whisper.cpp on the computer).
+- A record is `[seq u16 LE][flags u8][payload]` with flag `0x80` set and its own seq; payload
+  `[u32 LE board ms][u32 LE RTP ts][AAC-ELD frame]`.
+- The board decrypts the mirroring audio (AAC-ELD, 44.1 kHz stereo, 480 samples per frame, AudioSpecificConfig
+  `F8 E8 50 00`). Only sound goes out: a segment starts with the first sounding frame (`START`, 0x01) and ends
+  500 ms after the last one with an empty `END` (0x02) record. A session that joins mid-segment gets `START` on its
+  first frame.
+- Status `aud`: `pk` packets received, `seg` segments, `snd` 1 while one goes on, `vol` the sender's volume in dB
+  (-144 muted), `drop` records lost on the way to the computer (queue full, a failed send, or nobody asked), `raw`
+  1: records go to this session.
 
 ## Wi-Fi link
 - **TCP port 7202**, one computer at a time (a second connection waits until the first is gone). Records
@@ -150,7 +244,7 @@ What the iPhone plays while it mirrors (AirPlay audio), two ways; the CLI's `lis
 - **`net`**: `ok {"mode","ssid","pass","ip"}`, the board's Wi-Fi. `net {"mode":"ap"}` or
   `net {"mode":"sta","ssid":…,"pass":…}` changes it (the iPhone has to mirror over the same network). The board
   answers `ok` first and changes 0.4 s later, which ends the session that asked; the CLI finds the board again on
-  the new network. The status has `link`: `{"via":"wifi","mtu":…,"kbps":…}`.
+  the new network.
   - `sta`: stored and joined at once, without the BOOT button (a paired computer is trusted already); a name over
     32 bytes or a password that is neither empty nor 8-63 bytes is ignored. A network that is out of reach or has
     the wrong password is retried forever (status `net` `none`); the board does not fall back to its hotspot, and
@@ -161,43 +255,6 @@ What the iPhone plays while it mirrors (AirPlay audio), two ways; the CLI's `lis
     there; the CLI reaches a board on its hotspot too (join it, the board is at 192.168.4.1).
   - `pass` is the setup hotspot's password in mode `ap` and empty in mode `sta`: a stored Wi-Fi password never
     leaves the board.
-
-## Sharing the phone with the app
-Only in a build with the app's side (`flash.sh --app-link`); the default build has no app, see the next section.
-
-One side drives the phone at a time, and the app wins (`hardware/hid_bridge/src/hid/arbiter.h`). The app runs
-unchanged and never sees a new error.
-- **While the app's link is up** (an encrypted connection) every CLI command except `crash` answers
-  `err busy: the app is using the board`, and the board drops the CLI's link so it doesn't share the radio.
-- **The app takes over.** When the app connects during a CLI session, the board stops the CLI's video, releases a
-  button it held, sends it a status with `owner: app`, `busy: 1`, and drops its link about 300 ms later. The CLI
-  waits 30 s before it tries again.
-- **When the app's link goes down** the CLI may connect and drive; it re-homes its pointer on every new session.
-- **Settings stay the app's.** `res fps txpower coex app log unpair` answer `err not available from the CLI`
-  (`net` is allowed: the Wi-Fi link needs it). Only in a build with the app's side; see below.
-- **Video.** The CLI's video runs on its own task and buffers; it only runs while the CLI owns the board.
-- **Intents** stay in the app: what the CLI does is not recorded there.
-
-## Headless build (no app, the default)
-Built with `APP_LINK 0` the board has no app side at all: no service `...0000`, no bonding, no Wi-Fi video
-(7200/7201), no OTA server (7300; updates go over USB). The CLI never gets `err busy`, `owner` is `cli` or `none`,
-`busy` is 0, and `heard` answers `{"app":0,"lines":[]}` (`listen raw on` works). The settings are the CLI's:
-- `res W H`, `fps N`: the mirroring format, stored on the board; it applies to the next mirroring session.
-- `txpower 8-84` (0.25 dBm steps), `coex [bt|balance|wifi]`: radio A/B knobs, not stored; a reboot resets them.
-- `log TEXT`: writes a marker line into the board's log (`logs`) and to USB serial.
-- `app …`: `err no app: this firmware is driven by the CLI only`.
-- `unpair`: the board answers `<id> ok` on the session that asked, then forgets **every** paired computer (all
-  keys in NVS) and drops all links. A computer's stored key is now useless (`0xE0 "not paired"`): it has to
-  `pair` again, with the BOOT button. `esp32agent unpair --board` sends it and forgets the board on the computer
-  too; plain `esp32agent unpair` only forgets it on the computer. Without a paired computer the same reset is
-  `0 unpair` on USB serial.
-
-## Bluetooth (not needed, going away)
-The firmware still advertises a BLE service with the same frames: service `6e400001-a9e8-4b1b-9c39-6d6f8a3c0010`,
-characteristics `…0011` (`cli_in`, write), `…0012` (`cli_out`, notify), `…0013` (`cli_in_nr`, write without
-response), on a random static address made at every boot. A paired computer could open a session there
-(HELLO/WELCOME); **PAIR is refused** (`pair over Wi-Fi (TCP 7202): it needs the BOOT button`). The CLI does not
-touch Bluetooth unless `ESP32AGENT_TRANSPORT=ble` is set.
 
 Test vectors: `cli/testdata/vectors.json` (checked by `hardware/tests` and `go test ./cli/...`): `pair_nonce`,
 `pair_commit` and `pair_code` are `n_c`, `SHA-256(n_c)` and the code for the vectors' `K`.

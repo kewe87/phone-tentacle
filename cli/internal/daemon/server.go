@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/ble"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/history"
+	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/video"
 )
@@ -52,21 +52,18 @@ func ok(data any) Response    { return Response{Status: "ok", Data: data} }
 func fail(err error) Response { return Response{Status: "error", Error: err.Error()} }
 
 type Server struct {
-	Transport ble.Transport
+	Transport link.Transport
 	Config    *config.Config
 	Dir       string
 	Version   string
 	Idle      time.Duration // exit after this long without requests (0 = never)
 	ScanTime  time.Duration
-	DialWiFi  func(ctx context.Context, ip string) (proto.Link, error) // the board's Wi-Fi link; nil: ble.DialWiFi
-	WiFiCheck time.Duration                                            // how often to try it (0: 2 s)
 
 	mu     sync.Mutex
 	conns  map[string]*Conn
 	last   time.Time
 	active int
 	linkMu sync.Mutex // one scan or connect at a time
-	appAt  time.Time  // the board last said the app is using it (it then drops us)
 	// After the board could not be found or reached, the next tries wait: 1 s, 2 s ... 15 s (a loop of requests
 	// then does not scan the network over and over).
 	failAt  time.Time
@@ -255,7 +252,7 @@ func (s *Server) Do(ctx context.Context, req Request) Response {
 		st, age := c.Status()
 		st["id"], st["name"] = c.ID, c.Name
 		l := s.Config.GetListen()
-		st["listen"] = map[string]any{"on": l.On, "mode": l.ListenMode()}
+		st["listen"] = map[string]any{"on": l.On}
 		if age >= 0 {
 			st["age_ms"] = age.Milliseconds()
 		}
@@ -332,14 +329,14 @@ func (s *Server) devices(ctx context.Context) Response {
 	return ok(map[string]any{"devices": list})
 }
 
-func (s *Server) scan(ctx context.Context) ([]ble.Found, error) {
+func (s *Server) scan(ctx context.Context) ([]link.Found, error) {
 	s.linkMu.Lock()
 	defer s.linkMu.Unlock()
 	return s.Transport.Scan(ctx, s.ScanTime)
 }
 
 // matches: a selector is a full board id or its last 4 hex digits; a board whose name was not seen matches any.
-func matches(f ble.Found, sel string) bool {
+func matches(f link.Found, sel string) bool {
 	if sel == "" || f.Suffix() == "" {
 		return true
 	}
@@ -348,12 +345,12 @@ func matches(f ble.Found, sel string) bool {
 }
 
 // pick chooses the board to connect to: the one matching sel, else the only one, else the only paired one.
-func (s *Server) pick(ctx context.Context, sel string, wantPaired bool) (ble.Found, error) {
+func (s *Server) pick(ctx context.Context, sel string, wantPaired bool) (link.Found, error) {
 	found, err := s.scan(ctx)
 	if err != nil {
-		return ble.Found{}, err
+		return link.Found{}, err
 	}
-	var cand, paired []ble.Found
+	var cand, paired []link.Found
 	for _, f := range found {
 		if matches(f, sel) {
 			cand = append(cand, f)
@@ -364,9 +361,9 @@ func (s *Server) pick(ctx context.Context, sel string, wantPaired bool) (ble.Fou
 	}
 	switch {
 	case len(cand) == 0 && sel != "":
-		return ble.Found{}, fmt.Errorf("board %s %w", sel, errNotFound)
+		return link.Found{}, fmt.Errorf("board %s %w", sel, errNotFound)
 	case len(cand) == 0:
-		return ble.Found{}, fmt.Errorf("board %w", errNotFound)
+		return link.Found{}, fmt.Errorf("board %w", errNotFound)
 	case len(cand) == 1:
 		return cand[0], nil
 	case wantPaired && len(paired) == 1:
@@ -380,7 +377,7 @@ func (s *Server) pick(ctx context.Context, sel string, wantPaired bool) (ble.Fou
 			names = append(names, f.Addr)
 		}
 	}
-	return ble.Found{}, fmt.Errorf("several boards found (%s): pass --device <id> or set ESP32AGENT_DEVICE", strings.Join(names, ", "))
+	return link.Found{}, fmt.Errorf("several boards found (%s): pass --device <id> or set ESP32AGENT_DEVICE", strings.Join(names, ", "))
 }
 
 // errNotFound: nothing answered. The text says what to check, in the order it usually is.
@@ -405,31 +402,13 @@ const (
 func (s *Server) noteReach(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var nr *ble.NotReachable
+	var nr *link.NotReachable
 	if err == nil || !(errors.Is(err, errNotFound) || errors.As(err, &nr)) {
 		s.failAt, s.failGap, s.failErr = time.Time{}, 0, nil
 		return
 	}
 	s.failGap = min(max(s.failGap*2, reachBackoffMin), reachBackoffMax)
 	s.failAt, s.failErr = time.Now().Add(s.failGap), err
-}
-
-// ErrAppBusy: the app owns the board (docs/cli-protocol.md, "Sharing the phone with the app").
-var ErrAppBusy = errors.New("busy: the app is using the board; try again when it's closed")
-
-// The board drops the CLI while the app's link is up: don't reconnect for appWait after it said so.
-const appWait = 30 * time.Second
-
-func (s *Server) noteApp() {
-	s.mu.Lock()
-	s.appAt = time.Now()
-	s.mu.Unlock()
-}
-
-func (s *Server) appBusy() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return !s.appAt.IsZero() && time.Since(s.appAt) < appWait
 }
 
 // conn returns the connected board for sel, connecting (scan + HELLO) if needed.
@@ -444,9 +423,6 @@ func (s *Server) conn(ctx context.Context, sel string) (*Conn, error) {
 	s.mu.Unlock()
 	if len(live) == 1 {
 		return live[0], nil
-	}
-	if s.appBusy() {
-		return nil, ErrAppBusy
 	}
 	s.mu.Lock()
 	wait, last := time.Until(s.failAt), s.failErr
@@ -464,19 +440,14 @@ func (s *Server) conn(ctx context.Context, sel string) (*Conn, error) {
 }
 
 // open connects to f and starts a session. l: an already open link (after PAIR).
-func (s *Server) open(ctx context.Context, f ble.Found, sel string, l proto.Link) (*Conn, error) {
+func (s *Server) open(ctx context.Context, f link.Found, sel string, l proto.Link) (*Conn, error) {
 	s.linkMu.Lock()
 	defer s.linkMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	var err error
 	if l == nil {
-		// macOS's first connect after a peripheral reboots, or after the daemon restarts, sometimes times out
-		// discovering services (2026-10-21); the second goes through.
-		if l, err = s.Transport.Connect(ctx, f); err != nil && ctx.Err() == nil {
-			l, err = s.Transport.Connect(ctx, f)
-		}
-		if err != nil {
+		if l, err = s.Transport.Connect(ctx, f); err != nil {
 			return nil, err
 		}
 	}
@@ -490,47 +461,31 @@ func (s *Server) open(ctx context.Context, f ble.Found, sel string, l proto.Link
 		sess.Close()
 		return nil, fmt.Errorf("board %s not found (found %s)", sel, id)
 	}
-	if r, ok := s.Transport.(interface{ Remember(string, ble.Found) }); ok {
+	if r, ok := s.Transport.(interface{ Remember(string, link.Found) }); ok {
 		r.Remember(id, f) // where it is, for when mDNS finds nothing
 	}
 	name := s.boardName(f, id)
-	via := "ble"
-	if f.Via != "" {
-		via = f.Via
-	}
 	s.mu.Lock()
 	c := s.conns[id]
 	if c == nil {
 		ff, _ := video.FFmpeg()
 		c = newConn(id, name, ff)
-		c.onApp = s.noteApp
 		s.hearingFor(c)
-		dial := s.DialWiFi
-		if dial == nil {
-			dial = ble.DialWiFi
-		}
-		c.wifi = newWifiLink(dial, func(ctx context.Context, l proto.Link) (*proto.Session, error) {
-			return proto.Hello(ctx, l, s.Config.ClientIDBytes(), s.Config.Key)
-		})
-		if s.WiFiCheck > 0 {
-			c.wifi.every = s.WiFiCheck
-		}
-		go c.wifi.run(c)
 		s.conns[id] = c
 	}
 	c.addr = f.Addr
 	s.mu.Unlock()
-	c.attach(sess, via, l)
+	c.attach(sess)
 	if err := c.start(); err != nil {
 		c.detach(sess, err)
 		return nil, fmt.Errorf("board %s did not answer: %w", id, err)
 	}
-	log.Printf("%s: connected (%s, %s %s)", id, name, via, f.Addr)
+	log.Printf("%s: connected (%s, %s)", id, name, f.Addr)
 	return c, nil
 }
 
 // boardName is the board's name: as it announced it, or, found by address only, the stored one or the default.
-func (s *Server) boardName(f ble.Found, id string) string {
+func (s *Server) boardName(f link.Found, id string) string {
 	if f.Name != "" && f.Source != "host" && f.Source != "probe" {
 		return f.Name
 	}
@@ -628,8 +583,6 @@ func explainPair(err error) error {
 		return errors.New("the board refuses pairing for a moment (" + strings.TrimPrefix(msg, "busy: ") + "): wait, then run esp32agent pair again")
 	case strings.HasPrefix(msg, "busy: board in use"):
 		return errors.New("the board is in use by a paired computer: end that session (esp32agent daemon stop there), then pair again")
-	case strings.HasPrefix(msg, "pair over Bluetooth"), strings.HasPrefix(msg, "pairing window closed"):
-		return errors.New("this board's firmware is too old to pair over Wi-Fi: flash the current firmware")
 	}
 	return err
 }

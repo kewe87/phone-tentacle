@@ -49,12 +49,12 @@ static void state() {
   Serial.printf("dbg state {\"fw\":\"%s\",\"up\":%lu,\"id\":\"%02x%02x%02x%02x%02x%02x\",\"net\":\"%s\",\"ip\":\"%s\","
                 "\"wifi_status\":%d,\"rssi\":%d,\"setup\":%d,\"setup_state\":%d,\"usb\":\"%s\",\"airplay\":\"%s\","
                 "\"stopped\":%d,\"confirm\":%d,\"confirm_l1\":\"%s\",\"confirm_l2\":\"%s\",\"confirm_left\":%lu,"
-                "\"tcp\":%d,\"session\":%d,\"session_wifi\":%d,\"pairing\":%d,\"paired\":%d,"
+                "\"tcp\":%d,\"session\":%d,\"pairing\":%d,\"paired\":%d,"
                 "\"heap\":%u,\"heap_min\":%u,\"psram\":%u}\n",
                 FW_VERSION, (unsigned long)millis(), id[0], id[1], id[2], id[3], id[4], id[5], net_mode(),
                 net_ip().c_str(), (int)WiFi.status(), (int)WiFi.RSSI(), (int)net_setup_active(), su.state, usb(), airplay(),
-                (int)stop_active(), (int)waiting, c1, c2, (unsigned long)left, (int)cli_tcp_up(), (int)(cli_slot() >= 0),
-                (int)cli_wifi(), (int)cli_pair_open(), cli_paired(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                (int)stop_active(), (int)waiting, c1, c2, (unsigned long)left, (int)cli_tcp_up(), (int)cli_up(),
+                (int)cli_pair_open(), cli_paired(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                 (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 }
@@ -134,7 +134,7 @@ bool dbg_command(const char *line) {
 }
 
 static void marks() {
-  static const char *tasks[] = {"loopTask", "cli_tcp", "ble_tx", "button", "status", "rtsp", "portal", "video", "cli_video"};
+  static const char *tasks[] = {"loopTask", "cli_tcp", "link_tx", "button", "status", "rtsp", "portal", "video", "audio"};
   char s[220];
   int n = snprintf(s, sizeof s, "mem: heap %u (min %u, largest %u), psram %u, stack left:",
                    (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
@@ -164,7 +164,7 @@ void dbg_poll() {
   int x;
   if ((x = stop_active()) != stopped) { stopped = x; dbg_log("state: %s", x ? "STOPPED (HID output suppressed)" : "running"); }
   if ((x = cli_tcp_up()) != tcp) { tcp = x; dbg_log("state: tcp 7202 %s", x ? "connected" : "free"); }
-  if ((x = cli_slot() >= 0) != session) { session = x; dbg_log("state: session %s", x ? (cli_wifi() ? "up (wifi)" : "up (ble)") : "none"); }
+  if ((x = cli_up()) != session) { session = x; dbg_log("state: session %s", x ? "up" : "none"); }
   if ((x = cli_pair_open()) != pairing) { pairing = x; dbg_log("state: pairing request %s", x ? "open" : "none"); }
   if ((x = cli_paired()) != paired) { paired = x; dbg_log("state: %d paired computer(s)", x); }
   if ((x = net_setup_active()) != setup) { setup = x; dbg_log("state: setup hotspot %s", x ? "on" : "off"); }

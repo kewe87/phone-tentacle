@@ -10,18 +10,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/ble"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
+	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
 )
 
 type fakeTransport struct{ b *proto.FakeBoard }
 
-func (f fakeTransport) Scan(context.Context, time.Duration) ([]ble.Found, error) {
-	return []ble.Found{{Name: "ESP32 Agent 6AD5", Addr: "fake"}}, nil
+func (f fakeTransport) Scan(context.Context, time.Duration) ([]link.Found, error) {
+	return []link.Found{{Name: "ESP32 Agent 6AD5", Addr: "fake"}}, nil
 }
 
-func (f fakeTransport) Connect(context.Context, ble.Found) (proto.Link, error) {
+func (f fakeTransport) Connect(context.Context, link.Found) (proto.Link, error) {
 	return f.b.Connect(), nil
 }
 
@@ -34,9 +34,7 @@ func shortTmp() string {
 }
 
 // start runs a daemon in process on a short temp dir (unix socket paths are limited to ~100 bytes).
-func start(t *testing.T, tr ble.Transport) (*Client, *Server) { return startWith(t, tr, nil) }
-
-func startWith(t *testing.T, tr ble.Transport, dial func(context.Context, string) (proto.Link, error)) (*Client, *Server) {
+func start(t *testing.T, tr link.Transport) (*Client, *Server) {
 	dir, err := os.MkdirTemp(shortTmp(), "e32a")
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +49,7 @@ func startWith(t *testing.T, tr ble.Transport, dial func(context.Context, string
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{Transport: tr, Config: cfg, Dir: dir, Version: "test", ScanTime: time.Millisecond, DialWiFi: dial}
+	s := &Server{Transport: tr, Config: cfg, Dir: dir, Version: "test", ScanTime: time.Millisecond}
 	go s.Serve(l)
 	t.Cleanup(s.Stop)
 	return &Client{Dir: dir, Version: "test", NoSpawn: true}, s
@@ -76,12 +74,12 @@ func fakeBoard() *proto.FakeBoard {
 	return proto.NewFakeBoard(b)
 }
 
-func TestPairInfoAndBusy(t *testing.T) {
+func TestPairInfoAndErrors(t *testing.T) {
 	b := fakeBoard()
-	busy := false
+	stopped := false
 	b.Handle = func(cmd string) string {
-		if busy && cmd != "stream on" {
-			return "err busy: the app is using the board"
+		if stopped && cmd != "stream on" {
+			return "err stopped (safety button)"
 		}
 		return "ok"
 	}
@@ -102,12 +100,12 @@ func TestPairInfoAndBusy(t *testing.T) {
 		t.Fatalf("config.json mode %v %v", st.Mode(), err)
 	}
 
-	b.Status(`{"fw":"0.2.1","up":5000,"ap":"idle","fz":0,"busy":0,"ble":{"mtu":247,"n":2}}`)
-	b.Status(`{"up":6000,"ap":"idle","ble":{"mtu":23}}`) // the compact form keeps the rest
+	b.Status(`{"fw":"0.2.1","up":5000,"ap":"idle","fz":0,"lost":0,"aud":{"pk":247,"seg":2}}`)
+	b.Status(`{"up":6000,"ap":"idle","aud":{"pk":23}}`) // a status with fewer fields keeps the rest
 	time.Sleep(50 * time.Millisecond)
 	r, data = call(t, c, Request{Cmd: "info"})
-	ble, _ := data["ble"].(map[string]any)
-	if r.Status != "ok" || data["fw"] != "0.2.1" || data["up"] != 6000.0 || ble["mtu"] != 23.0 || ble["n"] != 2.0 || data["busy"] != 0.0 {
+	aud, _ := data["aud"].(map[string]any)
+	if r.Status != "ok" || data["fw"] != "0.2.1" || data["up"] != 6000.0 || aud["pk"] != 23.0 || aud["seg"] != 2.0 || data["lost"] != 0.0 {
 		t.Fatalf("info: %+v", data)
 	}
 
@@ -117,9 +115,9 @@ func TestPairInfoAndBusy(t *testing.T) {
 	if r, _ := call(t, c, Request{Cmd: "screenshot"}); r.Status != "error" || !strings.Contains(r.Error, "mirroring is off") {
 		t.Fatalf("screenshot without mirroring: %+v", r)
 	}
-	busy = true
-	if r, _ := call(t, c, Request{Cmd: "text", Text: "hi"}); r.Status != "error" || r.Error != ErrAppBusy.Error() {
-		t.Fatalf("busy: %+v", r)
+	stopped = true
+	if r, _ := call(t, c, Request{Cmd: "text", Text: "hi"}); r.Status != "error" || r.Error != "stopped (safety button)" {
+		t.Fatalf("stopped: %+v", r)
 	}
 	b.Status(`{"ap":"streaming","fz":1}`)
 	time.Sleep(50 * time.Millisecond)

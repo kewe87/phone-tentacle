@@ -1,4 +1,4 @@
-package ble
+package link
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
 )
 
-// WiFi is the default transport: boards are found on the local network and reached on TCP 7202. No Bluetooth.
+// WiFi is the transport: boards are found on the local network and reached on TCP 7202.
 // Finding, in this order: the address given by hand (--host, ESP32AGENT_HOST); mDNS; the addresses boards had
 // last time (hosts.json in the config dir); and, when all that finds nothing, a try of port 7202 on the local
 // subnets (ESP32AGENT_NO_PROBE=1 turns that off).
@@ -110,12 +110,12 @@ func (w *WiFi) Scan(ctx context.Context, d time.Duration) ([]Found, error) {
 	logf := func(format string, args ...any) { proto.Logf(ctx, format, args...) }
 	if h := w.hostSet(); h != "" {
 		logf("discover: using the address given by hand, %s", h)
-		return []Found{{Name: h, Addr: hostPort(h), Via: "wifi", Source: "host"}}, nil
+		return []Found{{Name: h, Addr: hostPort(h), Source: "host"}}, nil
 	}
 	var out []Found
 	seen := map[string]bool{}
 	for _, b := range discover.Find(ctx, d, logf) {
-		out = append(out, Found{Name: b.Name, Addr: b.Addr(), ID: b.ID, FW: b.FW, Paired: b.Paired, Via: "wifi", Source: "mdns"})
+		out = append(out, Found{Name: b.Name, Addr: b.Addr(), ID: b.ID, FW: b.FW, Paired: b.Paired, Source: "mdns"})
 		seen[b.ID] = true
 	}
 	if len(out) > 0 {
@@ -123,13 +123,13 @@ func (w *WiFi) Scan(ctx context.Context, d time.Duration) ([]Found, error) {
 	}
 	for id, k := range w.known() { // where the boards were last time
 		logf("discover: mDNS found nothing; %s was last at %s", id, k.Addr)
-		out = append(out, Found{Name: k.Name, Addr: k.Addr, ID: id, Paired: -1, Via: "wifi", Source: "remembered"})
+		out = append(out, Found{Name: k.Name, Addr: k.Addr, ID: id, Paired: -1, Source: "remembered"})
 	}
 	if len(out) > 0 || os.Getenv("ESP32AGENT_NO_PROBE") == "1" {
 		return out, nil
 	}
 	for _, addr := range discover.Probe(ctx, logf) {
-		out = append(out, Found{Name: addr, Addr: addr, Paired: -1, Via: "wifi", Source: "probe"})
+		out = append(out, Found{Name: addr, Addr: addr, Paired: -1, Source: "probe"})
 	}
 	return out, nil
 }

@@ -5,7 +5,6 @@
 #include <esp_mac.h>
 #include <esp_random.h>
 #include <esp_netif.h>
-#include <esp_coexist.h>
 #include <esp_wifi.h>
 #include <dhcpserver/dhcpserver.h>
 #include "button.h"
@@ -17,7 +16,6 @@
 #ifndef AP_MAX_CLIENTS
 #define AP_MAX_CLIENTS 1  // fork default: one station on the setup hotspot (flash --multi-client sets 4)
 #endif
-#include "wifi_video.h"
 
 #if STA_FROM_SECRETS
 #if __has_include("secrets.h")
@@ -29,14 +27,14 @@
 #endif
 
 static Preferences prefs;
-static String apSsid, apPass, staSsid, staPass, mode;  // mode: "ap" (the setup hotspot) | "sta" | "off"
+static String apSsid, apPass, staSsid, staPass, mode;  // mode: "ap" (the setup hotspot) | "sta"
 static String pending;
 static uint32_t pendingAt;
 // A `net` request waits this long before it is applied: its `ok` is still on its way out over the link that the
 // change takes down (a session over Wi-Fi asking for another Wi-Fi).
 const uint32_t APPLY_AFTER_MS = 400;
 static SemaphoreHandle_t pendingLock = xSemaphoreCreateMutex();
-// STA retries back off: a tight reconnect loop starves BLE, which shares the radio.
+// STA retries back off: a tight reconnect loop keeps the radio busy scanning.
 static uint32_t retryAt = 0, retryGap = 5000;
 
 String board_suffix() {
@@ -141,10 +139,8 @@ static void startWifi() {
   WiFi.disconnect(true);
   WiFi.softAPdisconnect(true);
   WiFi.setHostname("iphone-agent");
-  if (mode == "off") {  // diagnostics: BLE alone on the radio
-    WiFi.mode(WIFI_OFF);
-  } else if (mode == "sta") {
-    WiFi.mode(WIFI_STA);  // keep modem sleep on: required while BLE shares the radio
+  if (mode == "sta") {
+    WiFi.mode(WIFI_STA);  // modem sleep stays on (the core's default): the phone powers the board
     WiFi.setAutoReconnect(false);
     retryGap = 5000;
     retryAt = millis() + retryGap;
@@ -158,21 +154,13 @@ static void startWifi() {
     // The phone is centimetres away and powers the board: low TX power cuts the current peaks that made the
     // phone drop its USB power (the board then came back with reset reason "power-on").
     WiFi.setTxPower(WIFI_POWER_5dBm);
-#if AP_TUNE  // A/B knob (flash.sh --ap-tune): a 20 MHz channel and fewer beacons leave BLE more airtime
-    WiFi.softAPbandwidth(WIFI_BW_HT20);
-    wifi_config_t c;
-    if (esp_wifi_get_config(WIFI_IF_AP, &c) == ESP_OK) {
-      c.ap.beacon_interval = 300;
-      esp_wifi_set_config(WIFI_IF_AP, &c);
-    }
-#endif
     captiveDhcp();
     suSet(SU_IDLE, NS_IDLE);
     scanWanted = true;
     portal_start();
   }
   Serial.println(net_setup_line());
-  board_log("wifi: %s", mode == "sta" ? "station" : mode == "off" ? "off" : "setup hotspot");
+  board_log("wifi: %s", mode == "sta" ? "station" : "setup hotspot");
 }
 
 // BOOT held 10 s, or `net {"mode":"ap"}`: forget the Wi-Fi and open the setup hotspot. The mode goes first, so a
@@ -315,7 +303,7 @@ void net_begin() {
     prefs.putString("ap_pass", apPass);
   }
   mode = prefs.getString("mode", "ap");
-  if (mode != "sta" && mode != "off") {  // not set up; a reset cut short by a power loss may have left these
+  if (mode != "sta") {  // not set up; a reset cut short by a power loss may have left these
     mode = "ap";
     if (prefs.isKey("sta_ssid")) prefs.remove("sta_ssid");
     if (prefs.isKey("sta_pass")) prefs.remove("sta_pass");
@@ -329,22 +317,7 @@ void net_begin() {
 #endif
   if (mode == "sta" && staSsid.isEmpty()) mode = "ap";
   startWifi();
-  net_coex("balance");
 }
-
-static const char *coexNames[] = {"wifi", "bt", "balance"};  // esp_coex_prefer_t order
-static int coexPref = ESP_COEX_PREFER_BALANCE;
-
-bool net_coex(const String &pref) {
-  for (int i = 0; i < 3; i++)
-    if (pref == coexNames[i] && esp_coex_preference_set((esp_coex_prefer_t)i) == ESP_OK) {
-      coexPref = i;
-      return true;
-    }
-  return false;
-}
-
-const char *net_coex_mode() { return coexNames[coexPref]; }
 
 void net_request(const String &json) {
   xSemaphoreTake(pendingLock, portMAX_DELAY);
@@ -388,10 +361,6 @@ void net_poll() {
   String m = jsonStr(j, "mode");
   if (m == "ap") {
     forgetWifi();
-  } else if (m == "off") {
-    mode = m;
-    prefs.putString("mode", mode);
-    startWifi();
   } else if (m == "sta" && setup_check(jsonStr(j, "ssid").c_str(), jsonStr(j, "pass").c_str()) == SETUP_OK) {
     mode = "sta";
     staSsid = jsonStr(j, "ssid");
@@ -403,21 +372,11 @@ void net_poll() {
   }  // else malformed: keep the current link
 }
 
-String net_json(bool vtok) {
+String net_json() {
   bool sta = mode == "sta";
-#if APP_LINK
-  String pass = sta ? staPass : apPass;
-#else
   String pass = sta ? "" : apPass;  // the hotspot's is needed to join it; the home Wi-Fi's never leaves the board
-#endif
-  String j = String("{\"mode\":\"") + mode + "\",\"ssid\":\"" + jsonEsc(sta ? staSsid : apSsid) + "\",\"pass\":\"" +
-             jsonEsc(pass) + "\",\"ip\":\"" + net_ip() + "\"";
-#if APP_LINK
-  return j + (vtok ? ",\"vtok\":\"" + wv_token() + "\"}" : "}");
-#else
-  (void)vtok;  // headless: no Wi-Fi video or OTA server, so there is no token to hand out
-  return j + "}";
-#endif
+  return String("{\"mode\":\"") + mode + "\",\"ssid\":\"" + jsonEsc(sta ? staSsid : apSsid) + "\",\"pass\":\"" +
+         jsonEsc(pass) + "\",\"ip\":\"" + net_ip() + "\"}";
 }
 
 const char *net_mode() {

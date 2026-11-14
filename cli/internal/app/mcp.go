@@ -56,9 +56,9 @@ var (
 			schema([]string{"key"}, map[string]any{"key": map[string]any{"type": "string"}})},
 		{"press_button", "Press a hardware button. Only HOME (go to the Home Screen).",
 			schema([]string{"button"}, map[string]any{"button": map[string]any{"type": "string", "enum": []string{"HOME"}}})},
-		{"device_info", "Board status: mirroring (ap), video frozen (fz), USB (usb), Wi-Fi (net, ip), the link (link).", schema(nil, map[string]any{})},
+		{"device_info", "Board status: mirroring (ap), video frozen (fz), USB (usb), Wi-Fi (net, ip), the link's throughput (link).", schema(nil, map[string]any{})},
 		{"phone_audio", "What the iPhone played in the last 30 s (a video, a call, an app's voice) as words, or why it can't be heard " +
-			"(listening off, the app not sharing, no Wi-Fi). The words can be partial or misheard.", schema(nil, map[string]any{})},
+			"(listening off, no sound). The words can be partial or misheard.", schema(nil, map[string]any{})},
 	}
 )
 

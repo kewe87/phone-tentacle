@@ -1,4 +1,4 @@
-package ble
+package link
 
 import (
 	"bufio"

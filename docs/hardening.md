@@ -3,11 +3,11 @@
 **English** · [Deutsch](hardening.de.md)
 
 The board drives a real phone and runs a few network services. It's fine for personal/lab use;
-these steps reduce exposure to anyone within Wi-Fi / Bluetooth range.
+these steps reduce exposure to anyone within Wi-Fi range.
 
 ## Threat model
-When the board hosts its own Wi-Fi SoftAP, the AirPlay/RTSP receiver (TCP 7000) and the video/OTA
-ports are reachable by **any device that joins that hotspot**. A hostile device that can join the AP
+When the board hosts its own Wi-Fi SoftAP, the AirPlay/RTSP receiver (TCP 7000) and the CLI's
+port (TCP 7202) are reachable by **any device that joins that hotspot**. A hostile device that can join the AP
 — or is already on your LAN in station mode — can poke those services.
 
 ## Fixed in this fork
@@ -24,7 +24,7 @@ ports are reachable by **any device that joins that hotspot**. A hostile device 
   them with something weak, and don't share them.
 - **Single-client AP (default in this fork).** Only one station — your phone — can associate at a
   time (`AP_MAX_CLIENTS=1`). This also stops a computer from joining the board's hotspot next to the
-  phone: the CLI then stays on Bluetooth, or use `esp32agent net join` for your home Wi-Fi. Build with
+  phone: put the board on your home Wi-Fi instead (the setup page, or `esp32agent net join`). Build with
   `flash.sh --multi-client` (up to 4 stations) only when you need that, e.g. for the debug harness.
 - **Prefer the SoftAP over station mode** in untrusted environments: on your home LAN (station mode)
   the services are reachable by everything on that network.

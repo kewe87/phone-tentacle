@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/ble"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
+	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/video"
 )
 
@@ -140,7 +140,7 @@ func TestSimPairScreenshotTapText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &daemon.Server{Transport: &ble.Sim{Bin: sim, Log: logf}, Config: cfg, Dir: dir, Version: "test"}
+	s := &daemon.Server{Transport: &link.Sim{Bin: sim, Log: logf}, Config: cfg, Dir: dir, Version: "test"}
 	go s.Serve(l)
 	defer s.Stop()
 	a := &App{Err: io.Discard, Dir: dir, Client: &daemon.Client{Dir: dir, NoSpawn: true}}

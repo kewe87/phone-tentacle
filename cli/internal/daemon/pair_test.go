@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/ble"
+	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
 )
 
@@ -123,11 +123,11 @@ func TestUnpairHereAndOnTheBoard(t *testing.T) {
 // noBoards finds nothing.
 type noBoards struct{ scans *int }
 
-func (n noBoards) Scan(context.Context, time.Duration) ([]ble.Found, error) {
+func (n noBoards) Scan(context.Context, time.Duration) ([]link.Found, error) {
 	*n.scans++
 	return nil, nil
 }
-func (n noBoards) Connect(context.Context, ble.Found) (proto.Link, error) {
+func (n noBoards) Connect(context.Context, link.Found) (proto.Link, error) {
 	return nil, io.ErrUnexpectedEOF
 }
 
@@ -206,7 +206,7 @@ func serveTCP(t *testing.T, b *proto.FakeBoard) (addr string, drop func()) {
 	}
 }
 
-// The whole way without Bluetooth: the Wi-Fi transport with the board's address given by hand, pairing with the
+// The whole way: the Wi-Fi transport with the board's address given by hand, pairing with the
 // code, a session, a dropped link and the reconnect, all over a real TCP connection.
 func TestWiFiOnlyOverTCP(t *testing.T) {
 	t.Setenv("ESP32AGENT_NO_PROBE", "1")
@@ -215,7 +215,7 @@ func TestWiFiOnlyOverTCP(t *testing.T) {
 	b.Boot = func(_, code string) bool { boardCode = code; return true }
 	addr, drop := serveTCP(t, b)
 	c, s := start(t, nil)
-	s.Transport = &ble.WiFi{Dir: s.Dir}
+	s.Transport = &link.WiFi{Dir: s.Dir}
 	c.Host = addr
 	var p progressLines
 	c.Progress = p.add
@@ -227,17 +227,11 @@ func TestWiFiOnlyOverTCP(t *testing.T) {
 	if shown := p.find("code"); shown == nil || shown["code"] != boardCode {
 		t.Fatalf("code: progress %+v, board %q", p.lines, boardCode)
 	}
-	b.Status(`{"fw":"0.2.5","net":"sta","ip":"127.0.0.1","ap":"idle","link":{"via":"wifi"}}`)
+	b.Status(`{"fw":"0.2.5","net":"sta","ip":"127.0.0.1","ap":"idle","link":{"kbps":0}}`)
 	time.Sleep(50 * time.Millisecond)
 	r, data = call(t, c, Request{Cmd: "info"})
 	if r.Status != "ok" || data["fw"] != "0.2.5" || data["name"] != "ESP32 Agent 6AD5" {
 		t.Fatalf("info: %+v", r)
-	}
-	s.mu.Lock()
-	via := s.conns["246f28aa6ad5"].Via()
-	s.mu.Unlock()
-	if via != "wifi" {
-		t.Fatalf("the session runs over %q", via)
 	}
 	if r, _ := call(t, c, Request{Cmd: "keys", Text: "esc"}); r.Status != "ok" {
 		t.Fatalf("keys: %+v", r)
@@ -271,13 +265,13 @@ func TestRememberedAddress(t *testing.T) {
 	t.Setenv("ESP32AGENT_NO_PROBE", "1")
 	t.Setenv("ESP32AGENT_HOST", "")
 	dir := t.TempDir()
-	w := &ble.WiFi{Dir: dir}
-	w.Remember("246f28aa6ad5", ble.Found{Name: "ESP32 Agent 6AD5", Addr: "192.0.2.7:7202"})
+	w := &link.WiFi{Dir: dir}
+	w.Remember("246f28aa6ad5", link.Found{Name: "ESP32 Agent 6AD5", Addr: "192.0.2.7:7202"})
 	found, err := w.Scan(context.Background(), 30*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var hit *ble.Found
+	var hit *link.Found
 	for i := range found {
 		if found[i].ID == "246f28aa6ad5" {
 			hit = &found[i]
@@ -286,7 +280,7 @@ func TestRememberedAddress(t *testing.T) {
 	if hit == nil {
 		t.Skipf("a real board answered mDNS here: %+v", found)
 	}
-	if hit.Addr != "192.0.2.7:7202" || hit.Source != "remembered" || hit.Via != "wifi" || hit.Suffix() != "6ad5" {
+	if hit.Addr != "192.0.2.7:7202" || hit.Source != "remembered" || hit.Suffix() != "6ad5" {
 		t.Fatalf("remembered: %+v", *hit)
 	}
 	w.SetHost("10.1.2.3") // by hand wins, with the default port

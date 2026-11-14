@@ -181,7 +181,7 @@ func (s *Server) calibrate(ctx context.Context, c *Conn) Response {
 	return ok(out)
 }
 
-// textChunk keeps one `type` line well inside a single BLE write.
+// textChunk keeps one `type` line well inside one command (the board takes 512 bytes).
 const textChunk = 160
 
 func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {

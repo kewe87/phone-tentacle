@@ -1,4 +1,4 @@
-// esp32agent sees and drives an iPhone through an ESP32 Agent board, over Bluetooth.
+// esp32agent sees and drives an iPhone through an ESP32 Agent board, over Wi-Fi.
 package main
 
 import (

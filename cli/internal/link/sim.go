@@ -1,4 +1,4 @@
-package ble
+package link
 
 import (
 	"bufio"
@@ -28,7 +28,7 @@ func (s *Sim) Scan(ctx context.Context, d time.Duration) ([]Found, error) {
 	if _, err := os.Stat(s.Bin); err != nil {
 		return nil, err
 	}
-	return []Found{{Name: "ESP32 Agent 6AD5", Addr: "sim", Via: "wifi", Paired: -1}}, nil // the sim's pipe stands for TCP 7202
+	return []Found{{Name: "ESP32 Agent 6AD5", Addr: "sim", Paired: -1}}, nil // the sim's pipe stands for TCP 7202
 }
 
 func (s *Sim) Connect(ctx context.Context, f Found) (proto.Link, error) {

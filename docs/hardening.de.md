@@ -4,11 +4,11 @@
 
 Das Board steuert ein echtes Handy und betreibt ein paar Netzwerkdienste. Für den privaten Gebrauch
 und Bastelprojekte ist das in Ordnung; diese Schritte verringern die Angriffsfläche gegenüber allen
-in WLAN- bzw. Bluetooth-Reichweite.
+in WLAN-Reichweite.
 
 ## Bedrohungsmodell
 Wenn das Board seinen eigenen WLAN-Hotspot betreibt, sind der AirPlay/RTSP-Empfänger (TCP 7000) und
-die Video-/Update-Ports für **jedes Gerät erreichbar, das diesem Hotspot beitritt**. Ein feindliches
+der Port der CLI (TCP 7202) für **jedes Gerät erreichbar, das diesem Hotspot beitritt**. Ein feindliches
 Gerät im Hotspot — oder im Heimnetz, wenn das Board dort angemeldet ist — kann diese Dienste ansprechen.
 
 ## In diesem Fork behoben
@@ -26,7 +26,7 @@ Gerät im Hotspot — oder im Heimnetz, wenn das Board dort angemeldet ist — k
   etwas Schwaches ersetzen und nicht weitergeben.
 - **Nur ein Gerät im Hotspot (Standard in diesem Fork).** Nur ein Gerät — dein iPhone — kann
   gleichzeitig verbunden sein (`AP_MAX_CLIENTS=1`). Damit kann auch kein Computer neben dem iPhone in
-  den Hotspot; die CLI bleibt dann bei Bluetooth, oder nutze `esp32agent net join` für dein Heim-WLAN.
+  den Hotspot: Bring das Board stattdessen in dein Heim-WLAN (Einrichtungsseite oder `esp32agent net join`).
   Nur bei Bedarf mit `flash.sh --multi-client` bauen (bis zu 4 Geräte), z. B. für die Entwickler-Testumgebung.
 - **Hotspot statt Heim-WLAN** in fremden Umgebungen: Im Heimnetz sind die Dienste für alles in
   diesem Netz erreichbar.

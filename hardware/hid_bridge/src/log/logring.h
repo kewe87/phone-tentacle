@@ -1,6 +1,6 @@
 #pragma once
-// The board's recent log in RAM: newest lines win, read back in pages over BLE (`logs <offset>`), so a board
-// plugged into the phone can hand its history to the app or the CLI without a serial cable.
+// The board's recent log in RAM: newest lines win, read back in pages (`logs <offset>`), so a board
+// plugged into the phone can hand its history to the CLI without a serial cable.
 #include <stddef.h>
 #include <stdint.h>
 

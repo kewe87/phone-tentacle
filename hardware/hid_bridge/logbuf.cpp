@@ -32,12 +32,11 @@ void board_log(const char *fmt, ...) {
   Serial.println(line);
 #endif
   board_log_keep(line);
-  relayLine(line);
 }
 
 String board_log_page(const String &arg) {
   static char page[PAGE_MAX + 1];
-  unsigned long from = 0, max = 120;  // the default fits an app reply at the iPhone's usual MTU (185)
+  unsigned long from = 0, max = 120;
   sscanf(arg.c_str(), "%lu %lu", &from, &max);
   if (max < 16) max = 16;
   if (max > PAGE_MAX) max = PAGE_MAX;

@@ -1,5 +1,5 @@
 // Host unit tests for the board's pure-C parts: bplist codec, the GOP buffer / video chunker, and the
-// mirroring keystream, the AirPlay audio packets and sound gate, the CLI link crypto, the app/CLI HID arbiter, the RAM log ring, mouse move pacing.
+// mirroring keystream, the AirPlay audio packets and sound gate, the CLI link crypto, the RAM log ring, mouse move pacing.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,10 +8,8 @@
 #include "../hid_bridge/src/video/gop.h"
 #include "../hid_bridge/src/airplay/keystream.h"
 #include "../hid_bridge/src/airplay/audio.h"
-#include "../hid_bridge/src/heard/heard.h"
 #include "mbedtls/aes.h"
 #include "../hid_bridge/src/cli/cli_proto.h"
-#include "../hid_bridge/src/hid/arbiter.h"
 #include "../hid_bridge/src/hid/pace.h"
 #include "../hid_bridge/src/log/logring.h"
 #include "mdns.h"  // stubs/: the host stand-in for ESP-IDF mdns
@@ -328,37 +326,6 @@ static void test_cli_proto(void) {
   CHECK(!memcmp(frame, expect, 25));
 }
 
-static void test_arbiter(void) {
-  // the app wins whenever its link is up; the CLI only alone
-  CHECK(arb_owner(false, false) == ARB_NONE);
-  CHECK(arb_owner(false, true) == ARB_CLI);
-  CHECK(arb_owner(true, true) == ARB_APP);
-  CHECK(!strcmp(arb_owner_name(ARB_APP), "app") && !strcmp(arb_owner_name(ARB_NONE), "none"));
-  CHECK(!arb_allowed(ARB_CLI, true) && arb_allowed(ARB_CLI, false) && arb_allowed(ARB_APP, true));
-  // only the side that left lets go of the button it held
-  arb_state s;
-  arb_init(&s);
-  arb_after(&s, ARB_CLI, "press", true);
-  CHECK(!arb_gone(&s, ARB_APP));
-  CHECK(arb_gone(&s, ARB_CLI));
-  CHECK(!arb_gone(&s, ARB_CLI));  // once
-  arb_after(&s, ARB_APP, "press_for", true);  // a timed hold counts as held until it ends
-  CHECK(!arb_gone(&s, ARB_CLI));
-  arb_after(&s, ARB_APP, "release", true);
-  CHECK(!arb_gone(&s, ARB_APP));
-  arb_after(&s, ARB_APP, "press", true);
-  arb_after(&s, ARB_APP, "click", true);
-  CHECK(!arb_gone(&s, ARB_APP));
-  arb_after(&s, ARB_APP, "press", false);  // failed: nothing held
-  CHECK(!arb_gone(&s, ARB_APP));
-  arb_after(&s, ARB_CLI, "press", true);
-  arb_after(&s, ARB_APP, "reset", false);
-  CHECK(s.pressed == ARB_CLI);
-  arb_after(&s, ARB_APP, "reset", true);
-  arb_after(&s, ARB_APP, "reset", true);
-  CHECK(!arb_gone(&s, ARB_CLI));
-}
-
 static void test_pace(void) {
   // the move -158 -295 of 2026-11-06: every report the same speed, the sum exact, never above the step
   long moves[][2] = {{-158, -295}, {150, 0}, {8, 295}, {12, 0}, {1, 0}, {-3, 7}, {466, 1316}};
@@ -513,29 +480,7 @@ static void test_audio_gate(void) {
   CHECK(ap_audio_gate_packet(&g, 6000, false) == AP_GATE_START && g.segments == 2 && g.frames == 3);
 }
 
-static void test_heard(void) {
-  static heard_ring r;
-  char out[600];
-  heard_clear(&r);
-  CHECK(heard_json(&r, 1000, false, out, sizeof out) && !strcmp(out, "{\"app\":0,\"lines\":[]}"));
-  heard_add(&r, 1000, "[en] code \"5813\"", 17);
-  heard_add(&r, 3000, "[zh] 验证码", strlen("[zh] 验证码"));
-  heard_json(&r, 4000, true, out, sizeof out);
-  CHECK(!strcmp(out, "{\"app\":1,\"lines\":[{\"ago\":1000,\"t\":\"[zh] 验证码\"},{\"ago\":3000,\"t\":\"[en] code \\\"5813\\\"\"}]}"));
-  heard_json(&r, 62000, true, out, sizeof out);  // the first is over 60 s old
-  CHECK(strstr(out, "验证码") && !strstr(out, "5813"));
-  CHECK(heard_json(&r, 4000, true, out, 40) && !strcmp(out, "{\"app\":1,\"lines\":[]}"));  // only what fits
-  for (int i = 0; i < HEARD_LINES + 3; i++) heard_add(&r, 5000 + i, "x", 1);
-  CHECK(r.count == HEARD_LINES);
-  char big[500];
-  memset(big, 'a', sizeof big);
-  memcpy(big + HEARD_TEXT - 1, "中", 3);  // split by the cut
-  heard_add(&r, 6000, big, sizeof big);
-  CHECK(strlen(r.text[(r.next + HEARD_LINES - 1) % HEARD_LINES]) == HEARD_TEXT - 1);
-}
-
 int main(void) {
-  test_heard();
   test_audio_packets();
   test_audio_gate();
   test_mdns();
@@ -546,7 +491,6 @@ int main(void) {
   test_chunker();
   test_keystream_resync();
   test_cli_proto();
-  test_arbiter();
   test_pace();
   fails += test_setup();
   fails += test_pair();

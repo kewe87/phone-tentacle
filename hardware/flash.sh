@@ -6,8 +6,8 @@
 #   --sta         test build: join the Wi-Fi in hid_bridge/secrets.h instead of opening a hotspot
 #   --build-only  compile only (prints flash/RAM usage)
 #   --info        no build: ask a running board for its setup Wi-Fi (name + password) over USB serial
-#   --name NAME   the board's name in Screen Mirroring and Bluetooth (one word; default ESP32 Agent)
-#   --abs         absolute mouse instead of the relative one (needs AssistiveTouch; the app skips calibration)
+#   --name NAME   the board's name in Screen Mirroring and for the CLI (one word; default ESP32 Agent)
+#   --abs         absolute mouse instead of the relative one (needs AssistiveTouch; the CLI skips calibration)
 # Safety is on by default in this fork: BOOT button = stop (suppresses all HID output) + status LED,
 # and only one station (the phone) may join the SoftAP. See docs/hardening.md. To opt out:
 #   --no-safety     build without the stop toggle / status light (BOOT still confirms requests, and held 10 s
@@ -16,11 +16,9 @@
 #   (--safety / --harden are still accepted; they are the default now)
 #   --display     show status on a 128x64 SSD1306 I2C OLED (-DSTATUS_DISPLAY=1); see docs/hardware-addons.md
 #   --battery-pin N  show LiPo % on the display, read through a 2:1 divider on GPIO N (XIAO D0 = 1)
-#   --ap-tune     A/B build: hotspot on a 20 MHz channel with 300 TU beacons (more airtime for BLE)
-#   --app-link    build the iOS app's side back in (-DAPP_LINK=1: BLE service 0000, Wi-Fi video 7201, OTA 7300).
-#                 The default is headless: the board is driven by the esp32agent CLI only. Untested in this fork.
-# BLE host: h2zero NimBLE-Arduino (arduino-cli lib install "NimBLE-Arduino"); its buffer sizes live in
-# hid_bridge/nimble_cfg.h, force-included into every C/C++ file below.
+# The board is driven by the esp32agent CLI over Wi-Fi only (TCP 7202): the firmware has no Bluetooth and needs no
+# library besides the esp32 core (and U8g2 for --display). The build switches live in hid_bridge/build_cfg.h,
+# force-included into every C/C++ file below.
 # A running bridge is a TinyUSB device, so it is first kicked into the ROM
 # bootloader with a 1200-baud touch; a blank board is flashed directly.
 # After flashing, the board is asked for its setup Wi-Fi (name + password; also on the OLED of a --display build):
@@ -41,20 +39,17 @@ for a in "$@"; do
   fi
   case $a in
     --name) NAME_NEXT=1 ;;
-    --debug) DEFS+=" -DTENTACLE_DEBUG=1" ;;  # the one debug switch; DEBUG_SERIAL follows it (nimble_cfg.h)
+    --debug) DEFS+=" -DTENTACLE_DEBUG=1" ;;  # the one debug switch; DEBUG_SERIAL follows it (build_cfg.h)
     --sta) [[ -f hid_bridge/secrets.h ]] || { echo "--sta needs hid_bridge/secrets.h (see secrets.example.h)"; exit 1; }
            DEFS+=" -DSTA_FROM_SECRETS=1" ;;
     --build-only) BUILD_ONLY=1 ;;
     --info) INFO=1 ;;
-    --ap-tune) DEFS+=" -DAP_TUNE=1" ;;
     --abs) DEFS+=" -DABS_POINTER=1" ;;
-    --app-link) DEFS+=" -DAPP_LINK=1" ;;
     --safety|--harden) ;;  # default now
     --no-safety) DEFS+=" -DSAFETY_CONTROLS=0" ;;
     --multi-client) DEFS+=" -DAP_MAX_CLIENTS=4" ;;
     --display) DEFS+=" -DSTATUS_DISPLAY=1" ;;
     --battery-pin) BAT_NEXT=1 ;;
-    --crash-test) DEFS+=" -DOTA_CRASH_TEST=1" ;;  # test build for the OTA rollback path
     --small-gop) DEFS+=" -DGOP_CAP_KB=256" ;;  # test build: the GOP fills (freezes) within minutes
     *) PORT=$a ;;
   esac
@@ -115,7 +110,7 @@ if (( INFO )); then
   exit 0
 fi
 [[ $PWD != *" "* ]] || { echo "the -include path below cannot contain spaces: $PWD"; exit 1; }
-DEFS+=" -include $PWD/hid_bridge/nimble_cfg.h"
+DEFS+=" -include $PWD/hid_bridge/build_cfg.h"
 FLAGS=(--build-property "compiler.cpp.extra_flags=$DEFS" --build-property "compiler.c.extra_flags=$DEFS")
 
 arduino-cli compile -b "$FQBN" "${FLAGS[@]}" --output-dir build hid_bridge

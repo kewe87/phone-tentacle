@@ -12,52 +12,28 @@ import (
 	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
 )
 
-func TestListenReadsTheAppsWords(t *testing.T) {
+func TestListenSettings(t *testing.T) {
 	b := fakeBoard()
-	app := `ok {"app":1,"lines":[{"ago":3000,"t":"[zh] 验证码是4729"}]}`
-	b.Handle = func(cmd string) string {
-		if cmd == "heard" {
-			return app
-		}
-		return "ok"
-	}
 	c, s := start(t, fakeTransport{b})
 	call(t, c, Request{Cmd: "pair"})
-	heard := func(text string) string {
-		t.Helper()
-		r, data := call(t, c, Request{Cmd: "listen", Text: text})
-		if r.Status != "ok" {
-			t.Fatalf("listen %s: %+v", text, r)
-		}
-		h, _ := data["heard"].(string)
-		return h
+	r, data := call(t, c, Request{Cmd: "listen"})
+	if h, _ := data["heard"].(string); r.Status != "ok" || !strings.Contains(h, "listening is off") || data["on"] != false {
+		t.Fatalf("off: %+v", r)
 	}
-	if h := heard(""); !strings.Contains(h, "listening is off") {
-		t.Fatalf("off: %q", h)
+	if r, _ := call(t, c, Request{Cmd: "listen", Text: "mode phone"}); r.Status != "error" {
+		t.Fatal("the old mode switch was accepted")
 	}
-	if h := heard("on"); !strings.HasPrefix(h, "Heard (phone audio, last 30 s; words transcribed on the phone") ||
-		!strings.HasSuffix(h, "\n- 3 s ago: \"[zh] 验证码是4729\"") {
-		t.Fatalf("on: %q", h)
-	}
-	app = `ok {"app":0,"lines":[]}`
-	if h := heard(""); !strings.Contains(h, "not sharing what it hears") {
-		t.Fatalf("app not sharing: %q", h)
-	}
-	app = "err unknown command"
-	if h := heard(""); !strings.Contains(h, "update the board") {
-		t.Fatalf("old firmware: %q", h)
-	}
-	if r, _ := call(t, c, Request{Cmd: "listen", Text: "mode loud"}); r.Status != "error" {
-		t.Fatal("bad mode accepted")
+	if r, _ := call(t, c, Request{Cmd: "listen", Text: "lang"}); r.Status != "error" {
+		t.Fatal("lang without a code accepted")
 	}
 	call(t, c, Request{Cmd: "listen", Text: "lang zh-Hans"})
 	raw, _ := os.ReadFile(s.Dir + "/config.json") // kept for the next daemon
 	cfg, _ := config.Load()
-	if l := cfg.GetListen(); !l.On || l.ListenMode() != "phone" || l.Second != "zh-Hans" || !strings.Contains(string(raw), `"listen"`) {
+	if l := cfg.GetListen(); l.On || l.Second != "zh-Hans" || !strings.Contains(string(raw), `"listen"`) {
 		t.Fatalf("saved: %+v", l)
 	}
-	if got := strings.Join(b.Commands, ","); strings.Contains(got, "listen raw on") {
-		t.Fatalf("raw audio asked for in mode phone: %s", got)
+	if got := strings.Join(b.Commands, ","); strings.Contains(got, "listen raw on") || !strings.Contains(got, "listen raw off") {
+		t.Fatalf("raw audio while listening is off: %s", got)
 	}
 }
 

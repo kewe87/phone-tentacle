@@ -58,7 +58,6 @@ func (a *App) netJoin(dev string) int {
 		last = line
 		var resp struct {
 			Data struct {
-				Via   string `json:"via"`
 				Board struct {
 					Mode string `json:"mode"`
 					IP   string `json:"ip"`
@@ -66,7 +65,7 @@ func (a *App) netJoin(dev string) int {
 			} `json:"data"`
 		}
 		json.Unmarshal(line, &resp)
-		if d := resp.Data; d.Via == "wifi" && d.Board.Mode == "sta" && d.Board.IP != "" && d.Board.IP != "0.0.0.0" {
+		if d := resp.Data; d.Board.Mode == "sta" && d.Board.IP != "" && d.Board.IP != "0.0.0.0" {
 			fmt.Fprintf(a.Err, "Done: the board is on that Wi-Fi (%s).\n", d.Board.IP)
 			a.waitMirroring(dev)
 			a.Out.Write(line)

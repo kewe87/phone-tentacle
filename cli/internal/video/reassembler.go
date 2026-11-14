@@ -3,7 +3,7 @@ package video
 
 import "encoding/binary"
 
-// Chunk flags (docs/ble-protocol.md, "video").
+// Chunk flags (docs/cli-protocol.md, "Video").
 const (
 	Start  = 1
 	End    = 2

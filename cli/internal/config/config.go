@@ -37,16 +37,7 @@ type Board struct {
 // Listen is `esp32agent listen`: hearing what the phone plays while it mirrors (docs/cli-protocol.md, "Phone audio").
 type Listen struct {
 	On     bool   `json:"on"`
-	Mode   string `json:"mode,omitempty"`   // "phone" (the app's words, default) or "local" (whisper.cpp here)
-	Second string `json:"second,omitempty"` // local: the language besides English ("zh"); "" for this computer's
-}
-
-// ListenMode is Mode with its default.
-func (l Listen) ListenMode() string {
-	if l.Mode == "local" {
-		return "local"
-	}
-	return "phone"
+	Second string `json:"second,omitempty"` // the language besides English ("zh"); "" for this computer's
 }
 
 // GetListen and SetListen guard Listen while the daemon uses it.
