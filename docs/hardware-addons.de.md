@@ -30,6 +30,8 @@ Bauen: `hardware/flash.sh --display`. Einmalig die U8g2-Bibliothek installieren:
 ## Akku-Anzeige (LiPo) — `--battery-pin <gpio>`
 Misst die Akkuspannung über einen Spannungsteiler an einem Analog-Pin und zeigt grob die Prozent auf dem OLED.
 
+<p align="center"><img src="images/wiring-battery.de.svg" alt="Verdrahtung der Akku-Anzeige: BAT+ über 100 kΩ an D0, D0 über 100 kΩ an GND, Akku an die BAT-Pads" width="820"></p>
+
 - Verdrahten: `BAT+ → 100 kΩ → D0 (GPIO1) → 100 kΩ → GND` (zwei gleiche Widerstände = Teiler 2:1; hält den
   Pin unter 3,3 V).
 - Bauen: `hardware/flash.sh --display --battery-pin 1`. Bei anderem Teilerverhältnis `BATTERY_DIVIDER` in

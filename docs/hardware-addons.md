@@ -29,6 +29,8 @@ Build: `hardware/flash.sh --display`. Needs the U8g2 library once: `arduino-cli 
 ## Battery gauge (LiPo) — `--battery-pin <gpio>`
 Reads the LiPo voltage through a divider on an ADC pin and shows a rough % on the OLED.
 
+<p align="center"><img src="images/wiring-battery.svg" alt="Wiring the battery gauge: BAT+ through 100 kΩ to D0, D0 through 100 kΩ to GND, the battery on the BAT pads" width="820"></p>
+
 - Wire `BAT+ → 100 kΩ → D0 (GPIO1) → 100 kΩ → GND` (two equal resistors = 2:1 divider; keeps the pin ≤ 3.3 V).
 - Build: `hardware/flash.sh --display --battery-pin 1`. With a different divider ratio, change
   `BATTERY_DIVIDER` in `hardware/hid_bridge/hid_bridge.ino`.
