@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 793 315" width="793" height="315" role="img" aria-label="first commands, against the simulated board">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1724"/><stop offset="1" stop-color="#0d0a12"/></linearGradient>
+  </defs>
+  <rect x="1" y="1" width="791" height="313" rx="14" fill="url(#tile)" stroke="#30263a" stroke-width="2"/>
+  <circle cx="24" cy="23" r="6" fill="#ffb03a"/><circle cx="44" cy="23" r="6" fill="#ff6a4d"/><circle cx="64" cy="23" r="6" fill="#ff3d8b"/>
+  <text x="396" y="28" text-anchor="middle" font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#a59bab">first commands, against the simulated board</text>
+  <line x1="1" y1="40" x2="792" y2="40" stroke="#30263a" stroke-width="1"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" fill="#d9d0dc" xml:space="preserve">
+    <text x="22" y="60"><tspan fill="#ff8a5c">$</tspan><tspan fill="#f6f1f4" font-weight="700">&#160;tentacle&#160;device&#160;info</tspan></text>
+    <text x="22" y="79">{"status":"ok","data":{"age_ms":9,"ap":"streaming","fw":"0.2.1","fz":0,"h":1040,"id":"246f28aa6a</text>
+    <text x="22" y="98">d5","listen":{"on":false},"name":"Tentacle&#160;6AD5","net":"ap","up":1509,"usb":"ok","w":480}}</text>
+    <text x="22" y="136"><tspan fill="#ff8a5c">$</tspan><tspan fill="#f6f1f4" font-weight="700">&#160;tentacle&#160;screenshot</tspan></text>
+    <text x="22" y="155">{"status":"ok","data":{"filePath":"/tmp/tentacle-demo/screenshot-246f28aa6ad5-20261114164445.png</text>
+    <text x="22" y="174">","format":"png","height":1040,"width":480}}</text>
+    <text x="22" y="212"><tspan fill="#ff8a5c">$</tspan><tspan fill="#f6f1f4" font-weight="700">&#160;tentacle&#160;io&#160;button&#160;HOME</tspan></text>
+    <text x="22" y="231">{"status":"ok","data":{"message":"button&#160;done"}}</text>
+    <text x="22" y="269"><tspan fill="#ff8a5c">$</tspan><tspan fill="#f6f1f4" font-weight="700">&#160;tentacle&#160;io&#160;text&#160;hello</tspan></text>
+    <text x="22" y="288">{"status":"ok","data":{"message":"text&#160;done"}}</text>
+  </g>
+</svg>

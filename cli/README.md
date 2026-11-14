@@ -8,6 +8,9 @@ found by mDNS). Commands and JSON output follow [mobilecli](https://github.com/m
 > Not yet tested against a real board. The tests run against a fake board in Go and against a simulated board
 > built from the firmware's own link code (`hardware/tests/sim`).
 
+First use, step by step, with the button, LED and display explained: the [manual](../docs/manual.md). This page
+is the reference for the CLI itself.
+
 ## Build
 
 ```sh
@@ -24,15 +27,10 @@ There are no releases yet. Once there are, [`install/install.sh`](install/instal
 
 ## Pair
 
-The board has to be on your Wi-Fi first (its setup hotspot `Tentacle-XXXX` and the page on it: see the
-[main README](../README.md#setup-step-by-step)).
-
-1. `tentacle devices` lists the boards on this network.
-2. Double-press BOOT on the board: pairing is open for 60 s (`tentacle pair` waits up to 60 s for that).
-3. `tentacle pair` prints a 6-digit code. Compare it with the board's display, then press BOOT once more within
-   30 s.
-4. On the iPhone (same Wi-Fi): Control Center > Screen Mirroring > Tentacle XXXX.
-5. `tentacle screenshot` should now write a PNG of the phone's screen.
+Setting up the board's Wi-Fi, pairing (double press of BOOT, 6-digit code, one more press), preparing the
+iPhone and troubleshooting are in the [manual](../docs/manual.md) ([Deutsch](../docs/manual.de.md)). In short:
+`tentacle devices`, double-press BOOT, `tentacle pair`, compare the code, press BOOT, start Screen Mirroring,
+`tentacle screenshot`.
 
 Pairing is an X25519 key exchange confirmed at the board; sessions are AES-GCM (see
 [`docs/cli-protocol.md`](../docs/cli-protocol.md)). Keys live in the user config dir

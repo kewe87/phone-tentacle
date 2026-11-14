@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 793 372" width="793" height="372" role="img" aria-label="tentacle pair, against the simulated board">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1724"/><stop offset="1" stop-color="#0d0a12"/></linearGradient>
+  </defs>
+  <rect x="1" y="1" width="791" height="370" rx="14" fill="url(#tile)" stroke="#30263a" stroke-width="2"/>
+  <circle cx="24" cy="23" r="6" fill="#ffb03a"/><circle cx="44" cy="23" r="6" fill="#ff6a4d"/><circle cx="64" cy="23" r="6" fill="#ff3d8b"/>
+  <text x="396" y="28" text-anchor="middle" font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#a59bab">tentacle pair, against the simulated board</text>
+  <line x1="1" y1="40" x2="792" y2="40" stroke="#30263a" stroke-width="1"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" fill="#d9d0dc" xml:space="preserve">
+    <text x="22" y="60"><tspan fill="#ff8a5c">$</tspan><tspan fill="#f6f1f4" font-weight="700">&#160;tentacle&#160;devices</tspan></text>
+    <text x="22" y="79">{"status":"ok","data":{"devices":[{"id":"6ad5","name":"Tentacle&#160;6AD5","platform":"ios","type":"t</text>
+    <text x="22" y="98">entacle","state":"online","paired":false,"connected":false,"addr":"sim"}]}}</text>
+    <text x="22" y="136"><tspan fill="#ff8a5c">$</tspan><tspan fill="#f6f1f4" font-weight="700">&#160;tentacle&#160;pair</tspan></text>
+    <text x="22" y="155">The&#160;board&#160;only&#160;pairs&#160;after&#160;a&#160;double&#160;press&#160;of&#160;its&#160;BOOT&#160;button&#160;(two&#160;quick&#160;presses),&#160;for&#160;60&#160;s.</text>
+    <text x="22" y="174">Looking&#160;for&#160;the&#160;board&#160;on&#160;this&#160;network...</text>
+    <text x="22" y="212">Pairing&#160;with&#160;Tentacle&#160;6AD5.</text>
+    <text x="22" y="250" fill="#ffb03a" font-weight="700">&#160;&#160;&#160;&#160;Code:&#160;545188</text>
+    <text x="22" y="288">Press&#160;the&#160;BOOT&#160;button&#160;on&#160;the&#160;board&#160;now&#160;(within&#160;30&#160;s).&#160;Its&#160;LED&#160;blinks&#160;fast&#160;while&#160;it&#160;waits.</text>
+    <text x="22" y="307">If&#160;the&#160;board&#160;has&#160;a&#160;display,&#160;it&#160;must&#160;show&#160;this&#160;computer's&#160;name&#160;and&#160;the&#160;same&#160;code:&#160;if&#160;it&#160;shows</text>
+    <text x="22" y="326">another&#160;code&#160;or&#160;another&#160;name,&#160;do&#160;NOT&#160;press,&#160;someone&#160;else&#160;is&#160;asking.</text>
+    <text x="22" y="345">{"status":"ok","data":{"id":"246f28aa6ad5","message":"paired","name":"Tentacle&#160;6AD5"}}</text>
+  </g>
+</svg>
