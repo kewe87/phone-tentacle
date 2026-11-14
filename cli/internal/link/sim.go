@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
+	"github.com/kewe87/phone-tentacle/cli/internal/proto"
 )
 
 // Sim runs the simulated board (hardware/tests/sim/cli_sim: the firmware's real cli_link.cpp behind a pipe),
@@ -28,7 +28,7 @@ func (s *Sim) Scan(ctx context.Context, d time.Duration) ([]Found, error) {
 	if _, err := os.Stat(s.Bin); err != nil {
 		return nil, err
 	}
-	return []Found{{Name: "ESP32 Agent 6AD5", Addr: "sim", Paired: -1}}, nil // the sim's pipe stands for TCP 7202
+	return []Found{{Name: "Tentacle 6AD5", Addr: "sim", Paired: -1}}, nil // the sim's pipe stands for TCP 7202
 }
 
 func (s *Sim) Connect(ctx context.Context, f Found) (proto.Link, error) {
@@ -39,7 +39,7 @@ func (s *Sim) Connect(ctx context.Context, f Found) (proto.Link, error) {
 	cmd := exec.Command(s.Bin, screen)
 	if os.Getenv("CLI_SIM_NVS") == "" { // pairings survive "reboots"
 		dir, _ := os.UserCacheDir()
-		cmd.Env = append(os.Environ(), "CLI_SIM_NVS="+filepath.Join(dir, "esp32agent-sim-nvs"))
+		cmd.Env = append(os.Environ(), "CLI_SIM_NVS="+filepath.Join(dir, "tentacle-sim-nvs"))
 	}
 	cmd.Stderr = s.Log
 	if cmd.Stderr == nil {

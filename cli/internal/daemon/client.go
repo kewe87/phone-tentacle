@@ -80,7 +80,7 @@ func (c *Client) spawn() error {
 			return nil
 		}
 	}
-	return fmt.Errorf("daemon did not start; see %s (esp32agent logs --save makes a file to send to support@handsy.tech)", LogPath(c.Dir))
+	return fmt.Errorf("daemon did not start; see %s (tentacle logs --save puts the logs into one file)", LogPath(c.Dir))
 }
 
 func (c *Client) roundTrip(req Request) ([]byte, error) {

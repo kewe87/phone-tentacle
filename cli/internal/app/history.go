@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/history"
+	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
+	"github.com/kewe87/phone-tentacle/cli/internal/history"
 )
 
 func (a *App) runs() string { return history.Root(a.Dir) }
@@ -40,7 +40,7 @@ func (a *App) history(args []string) int {
 		}
 		return a.print(daemon.Response{Status: "ok", Data: map[string]string{"id": id, "message": "new run started"}})
 	}
-	return a.fail(errors.New("usage: esp32agent history list | show RUN | new"))
+	return a.fail(errors.New("usage: tentacle history list | show RUN | new"))
 }
 
 // ints parses "1,3,4".

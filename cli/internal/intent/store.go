@@ -37,12 +37,12 @@ type Intent struct {
 	RefRun  string    `json:"refRun,omitempty"`
 	Steps   []Step    `json:"steps,omitempty"`
 	History []RunStat `json:"history,omitempty"`
-	// Script fields (the app's SavedTask.until / maxLoops); kept so the CLI doesn't drop them.
+	// Script fields (the upstream app's SavedTask.until / maxLoops); kept so the CLI doesn't drop them.
 	Until    *string `json:"until,omitempty"`
 	MaxLoops *int    `json:"maxLoops,omitempty"`
 }
 
-// Store is intents.json (newest first, as the app lists them) and the frames next to it.
+// Store is intents.json (newest first, as the upstream app lists them) and the frames next to it.
 type Store struct{ Dir string } // the config dir
 
 func (s Store) path() string { return filepath.Join(s.Dir, "intents.json") }
@@ -103,7 +103,7 @@ func Find(items []Intent, key string) (int, error) {
 		}
 	}
 	if found < 0 {
-		return -1, fmt.Errorf("no intent %q (see esp32agent intent list)", key)
+		return -1, fmt.Errorf("no intent %q (see tentacle intent list)", key)
 	}
 	return found, nil
 }

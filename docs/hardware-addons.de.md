@@ -3,12 +3,15 @@
 [English](hardware-addons.md) · **Deutsch**
 
 Standardmäßig aus; jedes Extra muss angeschlossen sein. Die Firmware-Unterstützung ist eingebaut — einschalten
-per Build-Schalter. Der Test am echten Board läuft noch. (Stopp-Taster und Hotspot-Beschränkung brauchen keine
-Teile und sind standardmäßig an; siehe [hardening.de.md](hardening.de.md).)
+per Build-Schalter. Noch nicht auf Hardware getestet. (Der Stopp-Taster braucht keine Teile und ist
+standardmäßig an; siehe [hardening.de.md](hardening.de.md).)
 
 ## Status-OLED (128×64 SSD1306, I²C) — `--display`
 Ein 0,96″-SSD1306-OLED (wenige Euro) zeigt Board-Name + Firmware, Netzwerkmodus + IP, Anzahl der Verbindungen
-und **RUNNING / STOPPED** (gekoppelt an den BOOT-Stopp-Taster).
+und **RUNNING / STOPPED** (gekoppelt an den BOOT-Stopp-Taster). Außerdem zeigt es, was man am Board braucht: Name
+und Passwort des Setup-WLANs, `PAIRING OPEN` nach einem Doppeldruck auf BOOT und den **Koppel-Code** mit dem
+Namen des Computers, solange eine Anfrage auf die Taste wartet. **Empfohlen:** Ohne OLED lässt sich der Code nicht
+vergleichen.
 
 Anschluss (Standard-I²C-Pins des XIAO ESP32-S3):
 

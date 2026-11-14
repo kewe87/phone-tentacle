@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-// Local transcribes segments on this computer with whisper.cpp: English and the second language, as the app.
+// Local transcribes segments on this computer with whisper.cpp: English and the second language, as the upstream app.
 type Local struct {
 	FFmpeg, Whisper, Model string
 	Second                 string // whisper language code ("zh"), "" for English only
@@ -70,7 +70,7 @@ func (l *Local) Transcribe(ctx context.Context, seg *Segment) (string, error) {
 	if len(seg.Frames) == 0 {
 		return "", nil
 	}
-	dir, err := os.MkdirTemp("", "esp32agent-audio")
+	dir, err := os.MkdirTemp("", "tentacle-audio")
 	if err != nil {
 		return "", err
 	}

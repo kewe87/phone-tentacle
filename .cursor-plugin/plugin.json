@@ -1,13 +1,12 @@
 {
-  "name": "esp32agent",
-  "version": "1.0.0",
-  "description": "See and drive a real iPhone from your agent through an ESP32 Agent board (USB mouse and keyboard plus AirPlay screen mirroring, reached over Bluetooth). Adds the esp32agent MCP server and a skill with the see-act loop.",
+  "name": "tentacle",
+  "version": "0.1.0",
+  "description": "See and drive a real iPhone from your coding agent through a Tentacle board (USB mouse and keyboard plus AirPlay screen mirroring, reached over Wi-Fi). Adds the tentacle MCP server and a skill with the see-act loop. Needs the tentacle binary on PATH.",
   "author": {
-    "name": "onehumanbeing",
-    "email": "support@handsy.tech"
+    "name": "kewe87"
   },
-  "homepage": "https://handsy.tech",
-  "repository": "https://github.com/onehumanbeing/esp32-iphone-agent",
+  "homepage": "https://github.com/kewe87/phone-tentacle",
+  "repository": "https://github.com/kewe87/phone-tentacle",
   "license": "MIT",
   "keywords": [
     "iphone",
@@ -18,15 +17,13 @@
     "computer-use",
     "airplay",
     "hid",
-    "handsy"
+    "tentacle"
   ],
   "skills": "./skills/",
   "mcpServers": {
-    "esp32agent": {
-      "command": "npx",
+    "tentacle": {
+      "command": "tentacle",
       "args": [
-        "-y",
-        "esp32agent",
         "mcp"
       ]
     }

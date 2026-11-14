@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/history"
+	"github.com/kewe87/phone-tentacle/cli/internal/history"
 )
 
 func tinyJPEG(t *testing.T) []byte {
@@ -23,7 +23,7 @@ func tinyJPEG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// sample is a file as the app writes it (JSONEncoder: pretty, sorted keys, " : ").
+// sample is a file as the upstream app writes it (JSONEncoder: pretty, sorted keys, " : ").
 func sample(t *testing.T) []byte {
 	return []byte(`{
   "format" : 1,

@@ -9,17 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
+	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
 )
 
 // logs shows the CLI's log (daemon.log), the board's own log (--board), or saves both with the board's state to
-// one file (--save) for support@handsy.tech. Nothing is sent anywhere.
+// one file (--save), e.g. to attach to an issue. Nothing is sent anywhere.
 func (a *App) logs(args []string) int {
 	dev := new(string)
 	fs := newFS(dev)
-	board := fs.Bool("board", false, "the board's own log (firmware 0.2.3 or later)")
+	board := fs.Bool("board", false, "the board's own log")
 	save := fs.Bool("save", false, "write the CLI log, the board's log and state to one file")
-	output := fs.String("output", "", "file for --save (default: esp32agent-logs-<time>.txt here)")
+	output := fs.String("output", "", "file for --save (default: tentacle-logs-<time>.txt here)")
 	lines := fs.Int("lines", 50, "last lines of the CLI log to show")
 	if _, err := parse(fs, args); err != nil {
 		return a.fail(err)
@@ -59,10 +59,10 @@ func (a *App) boardLog(dev string) (map[string]string, error) {
 
 func (a *App) saveLogs(dev, output string) int {
 	if output == "" {
-		output = "esp32agent-logs-" + time.Now().Format("20060102-150405") + ".txt"
+		output = "tentacle-logs-" + time.Now().Format("20060102-150405") + ".txt"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "esp32agent %s on %s/%s, %s\n\n", Version, runtime.GOOS, runtime.GOARCH, time.Now().Format(time.RFC3339))
+	fmt.Fprintf(&b, "tentacle %s on %s/%s, %s\n\n", Version, runtime.GOOS, runtime.GOARCH, time.Now().Format(time.RFC3339))
 	b.WriteString("== board state ==\n")
 	if line, err := a.Client.Call(daemon.Request{Cmd: "info", Device: dev}); err != nil {
 		fmt.Fprintf(&b, "unavailable: %v\n", err)
@@ -83,7 +83,7 @@ func (a *App) saveLogs(dev, output string) int {
 	}
 	abs, _ := filepath.Abs(output)
 	return a.print(daemon.Response{Status: "ok", Data: map[string]string{
-		"filePath": abs, "message": "send this file to support@handsy.tech",
+		"filePath": abs, "message": "the CLI log, the board log and its state are in this file; it may hold addresses and names: read it before you share it",
 	}})
 }
 

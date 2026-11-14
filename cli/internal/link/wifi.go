@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/discover"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
+	"github.com/kewe87/phone-tentacle/cli/internal/discover"
+	"github.com/kewe87/phone-tentacle/cli/internal/proto"
 )
 
 // WiFi is the transport: boards are found on the local network and reached on TCP 7202.
-// Finding, in this order: the address given by hand (--host, ESP32AGENT_HOST); mDNS; the addresses boards had
+// Finding, in this order: the address given by hand (--host, TENTACLE_HOST); mDNS; the addresses boards had
 // last time (hosts.json in the config dir); and, when all that finds nothing, a try of port 7202 on the local
-// subnets (ESP32AGENT_NO_PROBE=1 turns that off).
+// subnets (TENTACLE_NO_PROBE=1 turns that off).
 type WiFi struct {
 	Dir string // config dir, for hosts.json; "": nothing is remembered
 
@@ -39,7 +39,7 @@ func (w *WiFi) hostSet() string {
 	if w.host != "" {
 		return w.host
 	}
-	return os.Getenv("ESP32AGENT_HOST")
+	return os.Getenv("TENTACLE_HOST")
 }
 
 // hostPort adds the default port to a bare host.
@@ -129,7 +129,7 @@ func (w *WiFi) Scan(ctx context.Context, d time.Duration) ([]Found, error) {
 		logf("discover: mDNS found nothing; %s was last at %s", id, k.Addr)
 		out = append(out, Found{Name: k.Name, Addr: k.Addr, ID: id, Paired: -1, Source: "remembered"})
 	}
-	if len(out) > 0 || os.Getenv("ESP32AGENT_NO_PROBE") == "1" {
+	if len(out) > 0 || os.Getenv("TENTACLE_NO_PROBE") == "1" {
 		return out, nil
 	}
 	for _, addr := range discover.Probe(ctx, logf) {

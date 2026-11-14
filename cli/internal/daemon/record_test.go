@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/history"
+	"github.com/kewe87/phone-tentacle/cli/internal/config"
+	"github.com/kewe87/phone-tentacle/cli/internal/history"
 )
 
 func TestActionsAreRecordedAndKeysPaced(t *testing.T) {

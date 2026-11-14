@@ -1,4 +1,4 @@
-// Package daemon holds the sessions with the boards (over Wi-Fi): the first CLI command starts `esp32agent daemon`,
+// Package daemon holds the sessions with the boards (over Wi-Fi): the first CLI command starts `tentacle daemon`,
 // and every command reaches it over a unix socket in the config dir. It exits after 10 minutes without requests.
 package daemon
 
@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/history"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/video"
+	"github.com/kewe87/phone-tentacle/cli/internal/config"
+	"github.com/kewe87/phone-tentacle/cli/internal/history"
+	"github.com/kewe87/phone-tentacle/cli/internal/link"
+	"github.com/kewe87/phone-tentacle/cli/internal/proto"
+	"github.com/kewe87/phone-tentacle/cli/internal/video"
 )
 
 // Request is one command from the CLI.
@@ -300,7 +300,7 @@ func (s *Server) devices(ctx context.Context) Response {
 	s.mu.Lock()
 	for _, c := range s.conns {
 		if c.connected() {
-			list = append(list, deviceInfo{ID: c.ID, Name: c.Name, Platform: "ios", Type: "esp32agent", State: "online", Paired: true,
+			list = append(list, deviceInfo{ID: c.ID, Name: c.Name, Platform: "ios", Type: "tentacle", State: "online", Paired: true,
 				Connected: true, Addr: c.addr})
 			seen[c.ID[8:]] = true
 			if c.addr != "" {
@@ -318,7 +318,7 @@ func (s *Server) devices(ctx context.Context) Response {
 		if seen[suf] && suf != "" || suf == "" && seenAddr[f.Addr] { // the connected one, found again
 			continue
 		}
-		d := deviceInfo{ID: suf, Name: f.Name, Platform: "ios", Type: "esp32agent", State: "online", Addr: f.Addr, FW: f.FW, Source: f.Source, Pairing: f.Open}
+		d := deviceInfo{ID: suf, Name: f.Name, Platform: "ios", Type: "tentacle", State: "online", Addr: f.Addr, FW: f.FW, Source: f.Source, Pairing: f.Open}
 		if f.ID != "" {
 			d.ID = f.ID
 		}
@@ -378,18 +378,18 @@ func (s *Server) pick(ctx context.Context, sel string, wantPaired bool) (link.Fo
 			names = append(names, f.Addr)
 		}
 	}
-	return link.Found{}, fmt.Errorf("several boards found (%s): pass --device <id> or set ESP32AGENT_DEVICE", strings.Join(names, ", "))
+	return link.Found{}, fmt.Errorf("several boards found (%s): pass --device <id> or set TENTACLE_DEVICE", strings.Join(names, ", "))
 }
 
 // errNotFound: nothing answered. The text says what to check, in the order it usually is.
 var errNotFound = errors.New("not found on the network: is it powered (plugged into the iPhone) and on the same Wi-Fi as this " +
-	"computer? A new board first needs its Wi-Fi set up (join its ESP32Agent-XXXX hotspot). If it is on the Wi-Fi but not " +
-	"found, give its address: --host <ip> (it is on the board's display, and in esp32agent devices --verbose)")
+	"computer? A new board first needs its Wi-Fi set up (join its Tentacle-XXXX hotspot). If it is on the Wi-Fi but not " +
+	"found, give its address: --host <ip> (it is on the board's display, and in tentacle devices --verbose)")
 
 func explain(err error) error {
 	var be proto.BoardError
 	if errors.As(err, &be) && be == "not paired" {
-		return errors.New("not paired with this board: run esp32agent pair, then press the BOOT button on the board when it asks")
+		return errors.New("not paired with this board: run tentacle pair, then press the BOOT button on the board when it asks")
 	}
 	return err
 }
@@ -493,7 +493,7 @@ func (s *Server) boardName(f link.Found, id string) string {
 	if b, ok := s.Config.Boards[id]; ok && b.Name != "" {
 		return b.Name
 	}
-	return "ESP32 Agent " + strings.ToUpper(id[8:])
+	return "Tentacle " + strings.ToUpper(id[8:])
 }
 
 // hostName is this computer's name for the board's display.
@@ -605,13 +605,13 @@ func explainPair(err error) error {
 	switch msg := string(be); {
 	case strings.HasPrefix(msg, "pairing closed"):
 		return errors.New("not paired: pairing was not opened at the board. Double-press its BOOT button (two quick presses), " +
-			"then run esp32agent pair within 60 s. While a paired computer drives the phone a double press opens nothing: end that session first")
+			"then run tentacle pair within 60 s. While a paired computer drives the phone a double press opens nothing: end that session first")
 	case strings.HasPrefix(msg, "pairing not confirmed"):
-		return errors.New("not paired: the BOOT button on the board was not pressed in time. Nothing was stored; run esp32agent pair again")
+		return errors.New("not paired: the BOOT button on the board was not pressed in time. Nothing was stored; run tentacle pair again")
 	case strings.HasPrefix(msg, "busy: pairing locked"):
-		return errors.New("the board refuses pairing for a moment (" + strings.TrimPrefix(msg, "busy: ") + "): wait, then run esp32agent pair again")
+		return errors.New("the board refuses pairing for a moment (" + strings.TrimPrefix(msg, "busy: ") + "): wait, then run tentacle pair again")
 	case strings.HasPrefix(msg, "busy: board in use"):
-		return errors.New("the board is in use by a paired computer: end that session (esp32agent daemon stop there), then pair again")
+		return errors.New("the board is in use by a paired computer: end that session (tentacle daemon stop there), then pair again")
 	}
 	return err
 }
@@ -650,9 +650,9 @@ func (s *Server) unpair(ctx context.Context, sel string, board bool) Response {
 		t.Forget(ids[0])
 	}
 	msg := "forgotten on this computer. The board keeps this computer's key (it holds up to 4, the oldest is replaced); " +
-		"esp32agent unpair --board makes the board forget every paired computer too"
+		"tentacle unpair --board makes the board forget every paired computer too"
 	if board {
-		msg = "forgotten on this computer and on the board (every paired computer): pair again with esp32agent pair"
+		msg = "forgotten on this computer and on the board (every paired computer): pair again with tentacle pair"
 	}
 	return ok(map[string]string{"id": ids[0], "message": msg})
 }

@@ -18,8 +18,8 @@ static void test_parse(void) {
   // with a commitment, without a name
   CHECK(pair_parse(body, 80, &r) && r.commit == body + 48 && !r.name[0]);
   // with a name: not terminated in the frame, terminated here
-  memcpy(body + 80, "Kevins-PC", 9);
-  CHECK(pair_parse(body, 89, &r) && r.commit == body + 48 && !strcmp(r.name, "Kevins-PC"));
+  memcpy(body + 80, "Office-PC", 9);
+  CHECK(pair_parse(body, 89, &r) && r.commit == body + 48 && !strcmp(r.name, "Office-PC"));
   // the longest name
   memset(body + 80, 'x', 32);
   CHECK(pair_parse(body, 112, &r) && strlen(r.name) == 32);
@@ -33,9 +33,9 @@ static void test_parse(void) {
 
 static void test_code(void) {
   char code[7];
-  const uint8_t a[4] = {0x80, 0x20, 0x88, 0x02};  // the vector's HMAC start: 2149615618
+  const uint8_t a[4] = {0xf5, 0x04, 0xdd, 0x4d};  // the vector's HMAC start: 4110736717
   pair_code_text(a, code);
-  CHECK(!strcmp(code, "615618"));
+  CHECK(!strcmp(code, "736717"));
   const uint8_t zero[4] = {0, 0, 0, 0};
   pair_code_text(zero, code);
   CHECK(!strcmp(code, "000000"));  // always six digits
@@ -49,8 +49,8 @@ static void test_code(void) {
 
 static void test_name(void) {
   char out[22];
-  pair_show_name("Kevins-PC", out, sizeof out);
-  CHECK(!strcmp(out, "Kevins-PC"));
+  pair_show_name("Office-PC", out, sizeof out);
+  CHECK(!strcmp(out, "Office-PC"));
   pair_show_name("", out, sizeof out);
   CHECK(!strcmp(out, "computer"));
   pair_show_name(NULL, out, sizeof out);

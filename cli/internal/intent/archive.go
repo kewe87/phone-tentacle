@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// The .esp32intent file (IntentArchive.swift). Fields are in key order: the app writes sorted keys.
+// The .esp32intent file (IntentArchive.swift). Fields are in key order: the upstream app writes sorted keys.
 const (
 	Format    = 1
 	Extension = "esp32intent"
@@ -31,7 +31,7 @@ type Item struct {
 	Name   string     `json:"name"`
 	Prompt string     `json:"prompt"`
 	Steps  []FileStep `json:"steps,omitempty"`
-	// A script's "repeat until" condition and round limit (the app's ScriptRunner).
+	// A script's "repeat until" condition and round limit (the upstream app's ScriptRunner).
 	Until    *string `json:"until,omitempty"`
 	MaxLoops *int    `json:"maxLoops,omitempty"`
 }
@@ -60,7 +60,7 @@ func (s Store) Item(it Intent, screenshots bool) Item {
 	return out
 }
 
-// Encode writes the file as the app does: pretty, sorted keys, slashes unescaped.
+// Encode writes the file as the upstream app does: pretty, sorted keys, slashes unescaped.
 func Encode(items []Item, note string) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -81,10 +81,10 @@ func Decode(data []byte) ([]Item, error) {
 	var f File
 	var keys map[string]json.RawMessage
 	if json.Unmarshal(data, &keys) != nil || keys["format"] == nil || keys["intents"] == nil || json.Unmarshal(data, &f) != nil {
-		return nil, errors.New("this isn't an ESP32 Agent intent file")
+		return nil, errors.New("this isn't a Tentacle intent file")
 	}
 	if f.Format != Format {
-		return nil, errors.New("this intent file needs a newer version of esp32agent")
+		return nil, errors.New("this intent file needs a newer version of tentacle")
 	}
 	out := []Item{}
 	for _, it := range f.Intents {

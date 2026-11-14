@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
+	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
 )
 
 // A small MCP server (JSON-RPC 2.0, one message per line on stdio) with the CLI's commands as tools.
@@ -96,8 +96,8 @@ func (a *App) handleRPC(m rpcMsg) *rpcMsg {
 			p.ProtocolVersion = "2025-06-18"
 		}
 		resp.Result = raw(map[string]any{"protocolVersion": p.ProtocolVersion, "capabilities": map[string]any{"tools": map[string]any{}},
-			"serverInfo":   map[string]string{"name": "esp32agent", "version": Version},
-			"instructions": "Drives a real iPhone through an ESP32 Agent board. Loop: screenshot, decide, one action, screenshot again."})
+			"serverInfo":   map[string]string{"name": "tentacle", "version": Version},
+			"instructions": "Drives a real iPhone through a Tentacle board. Loop: screenshot, decide, one action, screenshot again."})
 	case "ping":
 		resp.Result = raw(map[string]any{})
 	case "tools/list":
@@ -135,7 +135,7 @@ func (a *App) callTool(name string, args map[string]any) map[string]any {
 	s := func(k string) string { v, _ := args[k].(string); return v }
 	dev := s("device")
 	if dev == "" {
-		dev = os.Getenv("ESP32AGENT_DEVICE")
+		dev = os.Getenv("TENTACLE_DEVICE")
 	}
 	req := daemon.Request{Device: dev}
 	switch name {

@@ -6,17 +6,18 @@
 #   --sta         test build: join the Wi-Fi in hid_bridge/secrets.h instead of opening a hotspot
 #   --build-only  compile only (prints flash/RAM usage)
 #   --info        no build: ask a running board for its setup Wi-Fi (name + password) over USB serial
-#   --name NAME   the board's name in Screen Mirroring and for the CLI (one word; default ESP32 Agent)
+#   --name NAME   the board's name in Screen Mirroring and for the CLI (one word; default Tentacle), shown with the
+#                 board's suffix: "Tentacle 1A2B". The setup Wi-Fi is always Tentacle-1A2B
 #   --abs         absolute mouse instead of the relative one (needs AssistiveTouch; the CLI skips calibration)
-# Safety is on by default in this fork: BOOT button = stop (suppresses all HID output) + status LED,
-# and only one station (the phone) may join the SoftAP. See docs/hardening.md. To opt out:
+# Safety is on by default: BOOT button = stop (suppresses all HID output) + status LED,
+# and only one station may join the setup Wi-Fi. See docs/hardening.md. To opt out:
 #   --no-safety     build without the stop toggle / status light (BOOT still confirms requests, and held 10 s
 #                   forgets the Wi-Fi; the LED only blinks while a confirmation waits)
-#   --multi-client  let up to 4 stations join the SoftAP (e.g. a computer next to the phone, debug harness)
+#   --multi-client  let up to 4 stations join the setup Wi-Fi
 #   (--safety / --harden are still accepted; they are the default now)
 #   --display     show status on a 128x64 SSD1306 I2C OLED (-DSTATUS_DISPLAY=1); see docs/hardware-addons.md
 #   --battery-pin N  show LiPo % on the display, read through a 2:1 divider on GPIO N (XIAO D0 = 1)
-# The board is driven by the esp32agent CLI over Wi-Fi only (TCP 7202): the firmware has no Bluetooth and needs no
+# The board is driven by the tentacle CLI over Wi-Fi only (TCP 7202): the firmware has no Bluetooth and needs no
 # library besides the esp32 core (and U8g2 for --display). The build switches live in hid_bridge/build_cfg.h,
 # force-included into every C/C++ file below.
 # A running bridge is a TinyUSB device, so it is first kicked into the ROM

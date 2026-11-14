@@ -76,7 +76,7 @@ class Client:
         f = b.recv()
         if not f or f[0] != 0x83: return f
         b_pub = f[1:33]
-        k = hkdf(self.priv.exchange(X25519PublicKey.from_public_bytes(b_pub)), b"esp32agent-pair-v1", self.pub + b_pub)
+        k = hkdf(self.priv.exchange(X25519PublicKey.from_public_bytes(b_pub)), b"tentacle-pair-v1", self.pub + b_pub)
         b.send(b"\x03" + (nonce if nonce is not None else nc))
         f = b.recv()
         if not f or f[0] != 0x84: return f
@@ -93,7 +93,7 @@ class Client:
         if not f or f[0] != 0x82: return f
         bn = f[1:17]
         self.proved = mac(self.k, b"hello" + cn + bn) == f[23:39]
-        okm = hkdf(self.k, cn + bn, b"esp32agent-session-v1")
+        okm = hkdf(self.k, cn + bn, b"tentacle-session-v1")
         self.c2b, self.b2c, self.kb2c = AESGCM(okm[:16]), AESGCM(okm[16:]), okm[16:]
         self.tx, self.rx = 0, {"B": 0, "V": 0}
         return f
@@ -174,7 +174,7 @@ b.send(b"\x01" + s2.pub + s2.id + hashlib.sha256(os.urandom(16)).digest() + b"St
 f2 = b.recv()
 check(f1 and f1[0] == 0x83 and f2 and f2[0] == 0xE0 and b"another pairing request is open" in f2,
       "a second PAIR while one is open gets 'busy'")
-k1 = hkdf(c.priv.exchange(X25519PublicKey.from_public_bytes(f1[1:33])), b"esp32agent-pair-v1", c.pub + f1[1:33])
+k1 = hkdf(c.priv.exchange(X25519PublicKey.from_public_bytes(f1[1:33])), b"tentacle-pair-v1", c.pub + f1[1:33])
 b.send(b"\x03" + nc)
 f = b.recv()
 b.send(b"\x01" + s2.pub + s2.id + hashlib.sha256(os.urandom(16)).digest() + b"Stranger")

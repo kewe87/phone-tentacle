@@ -25,7 +25,7 @@ func TestTheAppsFileRoundTripsUnchanged(t *testing.T) {
 	}
 }
 
-// Same queries and order as the app's testRecallMatchesTheCLI.
+// Same queries and order as the upstream app's testRecallMatchesTheCLI.
 func TestRecallMatchesTheApp(t *testing.T) {
 	es := Parse(shared(t))
 	if r := Recall(es, "open bilibili favorites", 5); len(r) == 0 || r[0].ID != "a1b2c3d4" {

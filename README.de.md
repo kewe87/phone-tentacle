@@ -1,154 +1,244 @@
-# ESP32 iPhone Agent — gehärteter Fork
+[English](README.md) | **Deutsch**
 
-[English](README.md) · **Deutsch**
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-wordmark-dark.png">
+    <img src="docs/brand/logo-wordmark.png" alt="Tentacle" width="460">
+  </picture>
+</p>
 
-> **Basiert auf [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) von Henry Yuan** (MIT,
-> Copyright © 2026 Henry Yuan). Die Idee, die Firmware, die iOS-App und die CLI sind sein Werk. Dieser Fork ergänzt
-> nur Sicherheits-Fixes, sichere Voreinstellungen, Tests und optionale Hardware. Wie das Projekt funktioniert, die
-> App und die vollständige Dokumentation: siehe die **[Original-README](https://github.com/onehumanbeing/esp32-iphone-agent#readme)**
-> und [handsy.tech](https://handsy.tech) (jeweils auf Englisch).
+<p align="center">
+  <b>Der Fangarm deines PCs ins echte Handy.</b><br>
+  Ein daumennagelgroßes ESP32-S3-Board, das am iPhone steckt: USB-Maus und -Tastatur als Hände, ein AirPlay-Empfänger als Augen.<br>
+  Gesteuert vom Computer über WLAN, von dir oder von einem KI-Assistenten. Keine App auf dem Handy, kein Jailbreak, kein Bluetooth, keine Cloud.
+</p>
 
-[![fork-ci](https://github.com/kewe87/esp32-iphone-agent/actions/workflows/fork-ci.yml/badge.svg?branch=main)](https://github.com/kewe87/esp32-iphone-agent/actions/workflows/fork-ci.yml)
-[![Lizenz: MIT](https://img.shields.io/badge/license-MIT-111111?style=flat-square)](LICENSE)
-[![Upstream](https://img.shields.io/badge/upstream-onehumanbeing%2Fesp32--iphone--agent-111111?style=flat-square&logo=github)](https://github.com/onehumanbeing/esp32-iphone-agent)
+<p align="center">
+  <a href="https://github.com/kewe87/phone-tentacle/actions/workflows/ci.yml"><img src="https://github.com/kewe87/phone-tentacle/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Lizenz-MIT%20%2B%20GPL--3.0%20(AirPlay--Teil)-c7361f" alt="Lizenz: MIT, AirPlay-Teil GPL-3.0"></a>
+  <img src="https://img.shields.io/badge/Status-noch%20nicht%20auf%20Hardware%20getestet-c7361f" alt="Status: noch nicht auf Hardware getestet">
+</p>
 
-**In einem Satz:** Ein ESP32-S3-Board, eingesteckt ins iPhone, ist AirPlay-Empfänger (Augen) und USB-Maus/-Tastatur
-(Hände) — so kann eine KI das Handy bedienen, ohne Jailbreak und ohne Computer im Betrieb.
+> **Basiert auf [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) von Henry Yuan (MIT).**
+> Die Idee, die AirPlay-Portierung, die USB-Seite und die Kommandozeile stammen aus seinem Projekt. Tentacle ist
+> ein eigenes, davon abgeleitetes Projekt und weder mit ihm verbunden noch von ihm unterstützt. Einzelheiten:
+> [Herkunft und Lizenz](#herkunft-und-lizenz).
 
-## So funktioniert's
+> [!WARNING]
+> **Status: noch nicht auf Hardware getestet.** Alles hier kompiliert und besteht seine Tests am Computer
+> (Host-Tests, ein simuliertes Board, die Tests der CLI), aber noch kein Tentacle-Build ist auf einem echten
+> Board gelaufen. Der erste Hardware-Test ist für den 17. November 2026 geplant. Solange dieser Hinweis hier
+> steht, kann einiges nicht funktionieren.
+
+---
+
+## Was ist Tentacle?
+
+Ein kleines Board steckt am USB-C-Anschluss des Handys. Für das Handy ist es eine gewöhnliche Maus und Tastatur
+und ein Bildschirm, auf den es spiegeln kann. Für deinen Computer ist es ein Gerät im WLAN, das den Bildschirm
+des Handys zeigt und Tippen, Wischen und Text entgegennimmt.
+
+- **Hände:** Das Board ist USB-Maus und -Tastatur (mit AssistiveTouch wird der Zeiger zum Finger)
+- **Augen:** Das Board empfängt die Bildschirmsynchronisierung (AirPlay) des Handys und reicht das Bild weiter
+- **Vom Computer aus:** die Kommandozeile `tentacle`, die zugleich MCP-Server für KI-Assistenten ist
+- **Nur WLAN:** Der Computer findet das Board von selbst (mDNS) und spricht über einen verschlüsselten Port mit ihm
+- **Jemand muss am Board stehen:** WLAN-Einrichtung und Koppeln eines Computers brauchen einen Druck auf seine Taste
+- **Ein Stopp-Taster:** einmal BOOT drücken, und das Board schickt keine Eingaben mehr
 
 ```
-iPhone ──Bildschirmsynchronisierung (WLAN)──▶ Board: AirPlay-Empfänger ──WLAN──▶ App auf demselben iPhone
-   ▲                                          eigener Hotspot                    Bild → KI-Modell → Aktion
-   └──────── USB-Maus + Tastatur ◀──────────── Befehle per Bluetooth ◀────────────────────┘
+iPhone ── Bildschirmsynchronisierung (AirPlay, WLAN) ──▶ Board ── TCP 7202, verschlüsselt ──▶ Computer: tentacle
+   ▲                                                      │                                    Screenshot → du oder eine KI
+   └────────────── USB-Maus + -Tastatur ◀─────────────────┘ ◀──────── tippen, wischen, schreiben ──────────┘
 ```
 
-1. **Augen:** Das Board öffnet einen eigenen WLAN-Hotspot. Das iPhone spiegelt seinen Bildschirm per AirPlay
-   dorthin; das Board reicht das Video an die App weiter.
-2. **Gehirn:** Die App schickt Screenshots an ein KI-Bildmodell (Cloud-API oder eigener Server) und bekommt zurück,
-   was als Nächstes zu tun ist: tippen, wischen, schreiben …
-3. **Hände:** Die App sagt dem Board per Bluetooth, was es tun soll. Das Board ist für das iPhone eine ganz normale
-   USB-Maus und -Tastatur; mit AssistiveTouch wird der Mauszeiger zum Finger.
+## Was du brauchst
 
-**Bedienoberfläche:** Eine Web-Oberfläche gibt es nicht. Bedient wird über
-- die **iPhone-App „ESP32 Agent“** ([TestFlight](https://testflight.apple.com/join/1xQHgJcA)) — Aufgabe eintippen,
-  Start drücken, zuschauen (die App ist vom Original-Autor, Sprachen: Englisch und Chinesisch),
-- **oder vom Computer aus** mit der Kommandozeile `esp32agent`, die auch als MCP-Server für KI-Assistenten wie
-  Claude Code dient ([cli/README.md](cli/README.md)),
-- und am Board selbst: **BOOT-Taster = Stopp**, LED als Statusanzeige, optional ein kleines OLED-Display.
-
-Mehr Details: [How it works (Original, Englisch)](https://github.com/onehumanbeing/esp32-iphone-agent#how-it-works).
-
-Dieser Fork ist weder mit dem Original-Projekt noch mit handsy.tech verbunden oder von ihnen unterstützt. Die
-TestFlight-App und der Browser-Flasher stammen vom Original-Autor; der Browser-Flasher spielt die **Original**-Firmware
-auf. Für die Änderungen unten die Firmware aus diesem Repository bauen.
-
-## Was dieser Fork ändert
-
-Basis: Original-Version [`v1.0.6`](https://github.com/onehumanbeing/esp32-iphone-agent/tree/v1.0.6)
-(Board-Firmware `0.2.5`, CLI `0.1.5`). Jede Änderung ist in der Git-Historie nachvollziehbar.
-
-| Bereich | Original v1.0.6 | Dieser Fork |
-|---|---|---|
-| 🔒 AirPlay-Sicherheit | Ein manipuliertes Paket von einem beliebigen Gerät im Hotspot kann die Größenprüfung austricksen → Lesen außerhalb des Speichers → Board stürzt ab (ohne Anmeldung) | Überlaufsichere Größenprüfung; zu große Eingaben werden abgewiesen |
-| 🛑 Stopp-Taster | Stopp nur aus der App / Dynamic Island | **Standardmäßig an:** Der BOOT-Taster des Boards stoppt sofort alle Maus-/Tastatureingaben; die LED zeigt den Zustand |
-| 🔐 Hotspot | Bis zu 4 Geräte können in den Hotspot | **Standardmäßig an:** nur ein Gerät (das iPhone) |
-| 🪟 Windows-CLI | `esp32agent` findet unter Windows oft kein Board (Issue #114) | Board wird unter Windows auch am Namen erkannt |
-| 📡 Bluetooth-Suche | Name nur in der Scan-Antwort | Kurzname direkt in der Ankündigung + schnelleres Intervall → wird schneller gefunden |
-| 🛡️ CLI-Dienst | Eine fehlerhafte Anfrage kann den ganzen Dienst abstürzen lassen; Datenrennen im Video-Decoder | Eingaben geprüft, Abstürze abgefangen, Rennen behoben |
-| 📟 Display | Status nur in der App | Optionales 0,96″-OLED: Name, IP, Verbindungen, RUNNING/STOPPED, Akku-% |
-| 🧪 Tests | Original-CI | Zusätzlich Fuzz-Tests (libFuzzer/ASan) für den Parser und eine [Fork-CI](.github/workflows/fork-ci.yml), die alle Firmware-Varianten baut |
-
-Noch offene Punkte (geringere Schwere) und geplante Funktionen: [ROADMAP-FORK.de.md](ROADMAP-FORK.de.md).
-
-> [!NOTE]
-> Stopp-Taster, Hotspot-Beschränkung und Display kompilieren fehlerfrei; der Test am echten Board läuft.
-
-## Hardware
-
-Ein Board für alle: der einfache **Seeed Studio XIAO ESP32S3** (8 MB PSRAM — *nicht* Sense, *nicht* Plus).
-Klassische ESP32-Boards (z. B. ESP32-WROOM-32 mit CH340-Chip) **funktionieren nicht**: Ihnen fehlt natives USB,
-sie können keine Maus/Tastatur sein.
-
-**Basis** — mehr braucht man nicht:
-
-| Teil | ca. Preis |
+| Teil | Hinweise |
 |---|---|
-| Seeed Studio XIAO ESP32S3 (einfache Version) | 7–12 € |
-| Kurzes USB-C ↔ USB-C-**Daten**kabel (Lightning-iPhones: Lightning-auf-USB-Kamera-Adapter) | 5–10 € |
-| Gehäuse, optional (XIAO-ESP32S3-Gehäuse mit offener USB-C-Seite, z. B. Etsy/Printables) | 5–10 € |
+| **Seeed Studio XIAO ESP32S3** (die einfache Version, 8 MB PSRAM) | Nicht Sense, nicht Plus. Klassische ESP32-Boards (ESP32-WROOM mit CH340-Chip) funktionieren nicht: kein natives USB, also keine Maus oder Tastatur. |
+| **USB-C-auf-USB-C-Datenkabel**, kurz | Ein reines Ladekabel funktioniert nicht. |
+| **iPhone mit USB-C**, iOS 18 oder neuer | Lightning-iPhones über einen Lightning-auf-USB-Kamera-Adapter: vom Originalprojekt übernommen, hier nicht ausprobiert. |
+| **0,96″-OLED, 128×64, SSD1306, I²C** (4 Pins) — empfohlen | Zeigt das Setup-WLAN mit Passwort, die Adresse des Boards und den **Koppel-Code**. Ohne OLED lässt sich der Code am Board nicht vergleichen (siehe [Sicherheit](#sicherheit)). |
+| Ein Computer im selben WLAN | Windows, macOS oder Linux, mit [Go](https://go.dev/dl/) zum Bauen der CLI und `ffmpeg` für Screenshots. |
+| Optional: LiPo 3,7 V, zwei 100-kΩ-Widerstände, Gehäuse | Für den Betrieb ohne Kabel und eine Akku-Anzeige: [docs/hardware-addons.de.md](docs/hardware-addons.de.md). |
 
-Stopp-Taster und Hotspot-Beschränkung brauchen keine Zusatzteile — sie sind immer dabei.
+OLED-Anschluss: VCC→3V3, GND→GND, SDA→D4 (GPIO5), SCL→D5 (GPIO6).
 
-**Erweitert** — optional Display und Akku, an eigenen Pins (die Basis-Version bleibt unberührt):
+## Einrichtung, Schritt für Schritt
 
-| Extra | Teil | Anschluss (XIAO) |
-|---|---|---|
-| 📟 Display | 0,96″-OLED 128×64, **SSD1306, I²C** (4 Pins, nicht die SPI-Version), 3–6 € | VCC→3V3, GND→GND, SDA→D4 (GPIO5), SCL→D5 (GPIO6) |
-| 🔋 Akku | 3,7-V-LiPo (1S), ca. 500 mAh (z. B. 503035), 5–8 € | BAT+/BAT−-Lötpads auf der Rückseite; der XIAO lädt ihn über USB-C |
-| 🔋 Akku-% | 2 × 100-kΩ-Widerstände | BAT+ → 100 kΩ → D0 (GPIO1) → 100 kΩ → GND |
+### 1. Firmware flashen
 
-- Der Akku ist im Normalbetrieb **nicht nötig**: Das iPhone versorgt das Board mit Strom. Er ist nur für den Betrieb ohne Kabel.
-- Vor dem Löten die Polung prüfen (rot = BAT+); verpolt kann der Akku das Board zerstören.
-- Mit Display oder Akku ein Gehäuse mit OLED-Fenster bzw. Akkufach wählen oder drucken lassen.
-- Details und Kalibrierung: [docs/hardware-addons.de.md](docs/hardware-addons.de.md).
-
-## Bauen und flashen
-
-Benötigt [arduino-cli](https://arduino.github.io/arduino-cli/) mit dem ESP32-Core 3.3.x:
+Benötigt [arduino-cli](https://arduino.github.io/arduino-cli/) mit dem ESP32-Core 3.3.x (und die Bibliothek U8g2
+für das OLED):
 
 ```bash
-git clone https://github.com/kewe87/esp32-iphone-agent.git
-cd esp32-iphone-agent
-arduino-cli lib install "NimBLE-Arduino@2.5.1"
-arduino-cli lib install "U8g2"                       # nur für --display
+git clone https://github.com/kewe87/phone-tentacle.git
+cd phone-tentacle
+arduino-cli core install esp32:esp32@3.3.12
+arduino-cli lib install U8g2                 # nur für --display
 
-hardware/flash.sh                                    # Basis
-hardware/flash.sh --display --battery-pin 1          # mit OLED (+ Akku-%; ohne Widerstände --battery-pin weglassen)
+hardware/flash.sh --display                  # mit OLED
+hardware/flash.sh                            # ohne
 ```
 
-Abschalten, nur falls nötig: `--multi-client` lässt zusätzlich zum iPhone einen Computer in den Hotspot (sonst
-nutzt die CLI Bluetooth oder nach `esp32agent net join` dein Heim-WLAN); `--no-safety` entfernt den Stopp-Taster.
-Weitere Optionen (`--name`, `--debug`, …): siehe Kopf von [`hardware/flash.sh`](hardware/flash.sh).
+Vorher das Board an den Computer stecken. Schlägt das Hochladen fehl, das Board in den Download-Modus bringen
+(BOOT halten und dabei einstecken) und das Skript noch einmal starten. `hardware/flash.sh` ist ein Bash-Skript
+(Linux, macOS, WSL, Git Bash); alle Optionen stehen in seinem Kopf (`--name`, `--abs`, `--battery-pin`,
+`--no-safety` …).
 
-## Benutzen
+Nach dem Flashen fragt das Skript das Board nach seinem **Setup-WLAN** und zeigt Name und Passwort an, zum
+Beispiel `Tentacle-1A2B`. Beides steht auch auf dem OLED.
 
-Unverändert gegenüber dem Original — dessen Anleitungen folgen:
+### 2. Das Board ins eigene WLAN bringen
 
-1. App über [TestFlight](https://testflight.apple.com/join/1xQHgJcA) installieren und die vier Einrichtungsschritte
-   durchgehen ([Anleitung mit Bildern](https://handsy.tech/esp32-iphone-agent-setup), Englisch): Board per
-   Bluetooth koppeln → Hotspot beitreten und Bildschirmsynchronisierung auf „ESP32 Agent“ → AssistiveTouch
-   einschalten → KI-Modell (Adresse + Schlüssel) eintragen.
-2. Oder das Handy von einem KI-Assistenten auf dem Computer steuern lassen, über die `esp32agent`-CLI / den MCP-Server
-   ([Original-Anleitung](https://github.com/onehumanbeing/esp32-iphone-agent#use-from-a-coding-agent),
-   [cli/README.md](cli/README.md)).
+1. Mit Handy oder Laptop ins WLAN `Tentacle-XXXX` gehen, mit dem Passwort aus Schritt 1.
+2. Die Einrichtungsseite öffnet sich von selbst (sonst: `http://192.168.4.1/`). Sie ist deutsch oder englisch,
+   je nach Browser.
+3. Das Heim-WLAN auswählen und sein Passwort eingeben.
+4. **Innerhalb von 30 Sekunden die BOOT-Taste am Board drücken.** Erst dann wird das Netz gespeichert.
 
-**Stopp-Taster:** BOOT einmal drücken → alle Eingaben stoppen (LED leuchtet dauerhaft); nochmal drücken → es geht
-weiter (LED blinkt langsam).
+Das Setup-WLAN verschwindet danach, das Board geht in dein Netz. Das OLED zeigt seine Adresse.
+Neu anfangen geht jederzeit: BOOT 10 Sekunden halten.
+
+### 3. Die CLI bauen
+
+```bash
+cd cli
+go build -o tentacle ./cmd/tentacle          # Windows: -o tentacle.exe
+```
+
+Die Datei in einen Ordner legen, der im `PATH` steht. Screenshots brauchen `ffmpeg`
+(`winget install Gyan.FFmpeg`, `brew install ffmpeg`, `apt install ffmpeg`).
+
+### 4. Den Computer koppeln
+
+```bash
+tentacle devices        # das Board sollte in der Liste stehen
+tentacle pair
+```
+
+1. Am Board **BOOT doppelt drücken** (zweimal kurz hintereinander). Das Koppeln ist jetzt 60 Sekunden offen; die
+   LED blitzt zweimal pro Sekunde, das OLED zeigt `PAIRING OPEN`.
+2. `tentacle pair` zeigt einen **6-stelligen Code**. Das OLED zeigt denselben Code und den Namen deines Computers.
+3. Vergleichen. Stimmen sie überein, innerhalb von 30 Sekunden **BOOT noch einmal drücken**.
+
+Danach braucht dieser Computer keinen Tastendruck mehr. Ein Board merkt sich bis zu vier Computer.
+
+### 5. Ans iPhone stecken und den Bildschirm spiegeln
+
+1. Das Board vom Computer abziehen und ans iPhone stecken.
+2. Am iPhone: *Einstellungen › Bedienungshilfen › Tippen › AssistiveTouch* einschalten. Damit kann der Mauszeiger
+   tippen.
+3. Das iPhone muss im selben WLAN sein wie das Board. Kontrollzentrum › **Bildschirmsynchronisierung** ›
+   **Tentacle XXXX** wählen.
+
+iOS startet die Bildschirmsynchronisierung nur von Hand; das Board kann das nicht übernehmen.
+
+### 6. Erster Screenshot, erster Tipp
+
+```bash
+tentacle screenshot             # schreibt ein PNG und zeigt den Pfad
+tentacle io button HOME         # zum Home-Bildschirm
+tentacle io tap 240,520         # Koordinaten sind Pixel des Screenshots
+tentacle io text 'hello'
+```
+
+Beim ersten Tipp vermisst die CLI den Zeiger von selbst (`tentacle calibrate`). Alle Befehle:
+[cli/README.md](cli/README.md) (englisch).
+
+## Nutzung mit einem KI-Assistenten (MCP)
+
+`tentacle mcp` ist ein MCP-Server über stdio. Jeder MCP-Client kann ihn nutzen, zum Beispiel Claude Code oder
+Codex:
+
+```bash
+claude mcp add tentacle -- tentacle mcp
+codex mcp add tentacle -- tentacle mcp
+tentacle skill install          # optional: ein Skill mit Arbeitsschleife und Tippregeln, für Claude Code
+```
+
+Andere Clients: `{ "mcpServers": { "tentacle": { "command": "tentacle", "args": ["mcp"] } } }`.
+
+Werkzeuge: `screenshot`, `tap`, `longpress`, `swipe`, `type_text`, `press_key`, `press_button`, `device_info`,
+dazu `history`, `intent_list`, `intent_show`, `intent_save`, `memory_recall`, `memory_add`. Die Schleife ist immer:
+Screenshot, entscheiden, eine Aktion, wieder Screenshot.
+
+Die Screenshots deines Handys gehen an das Modell, das dein Assistent benutzt. Daran denken, bevor du die
+Banking-App öffnest.
 
 ## Sicherheit
 
-- Was gefunden und behoben wurde, und empfohlene Einstellungen: [docs/hardening.de.md](docs/hardening.de.md).
-- Screenshots deines Handys gehen an das KI-Modell, das du einträgst — am besten ein lokales oder vertrauenswürdiges.
-- Nur Geräte und Konten automatisieren, die dir gehören oder für die du die Erlaubnis hast.
+Tentacle bewegt den Zeiger auf einem echten Handy mit deinen Konten. Das Konzept in Kürze:
 
-Android: vom Original nicht unterstützt; Möglichkeiten siehe [docs/android.de.md](docs/android.de.md).
+- **Ein Weg vom Computer hinein:** TCP 7202, authentifiziert und verschlüsselt (X25519, AES-GCM). Kein Bluetooth.
+- **Koppeln braucht jemanden am Board:** Ein Doppeldruck auf BOOT öffnet es für 60 Sekunden, ein 6-stelliger
+  Code wird verglichen, ein weiterer Druck bestätigt. Nichts im Netz kann das Board dazu bringen, nach seiner
+  Taste zu fragen.
+- **Auch die WLAN-Einrichtung braucht die Taste**, und das Setup-WLAN hat ein zufälliges Passwort pro Board.
+- **Stopp-Taster:** Ein kurzer Druck auf BOOT stoppt alle Maus- und Tastaturausgaben (LED an = gestoppt). Das
+  Board in Reichweite behalten, solange ein Assistent das Handy bedient.
+- **Offen im eigenen Netz:** der AirPlay-Empfänger (TCP 7000 und seine Datenports), der CLI-Port 7202 und mDNS.
+  Jeder im selben WLAN kann eine Spiegelung zum Board starten oder versuchen, es zum Absturz zu bringen; den
+  Bildschirm sehen oder Eingaben schicken kann nur ein gekoppelter Computer.
+- **Ohne OLED** lässt sich der Koppel-Code nicht vergleichen. Die Tastendrücke sagen dann nur „jetzt darf ein
+  Computer koppeln“.
 
-## Lizenz und Credits
+Alles dazu, mit den offenen Punkten: **[docs/hardening.de.md](docs/hardening.de.md)**. Ein Problem melden:
+[SECURITY.md](SECURITY.md).
 
-Dies ist eine veränderte Version von **[ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) von
-Henry Yuan**. Der ursprüngliche Copyright- und Lizenzhinweis in [LICENSE](LICENSE) und [NOTICE](NOTICE) bleibt
-unverändert erhalten.
+Nur Geräte und Konten automatisieren, die dir gehören oder die du benutzen darfst.
 
-- [MIT](LICENSE) — außer `hardware/hid_bridge/src/airplay/` (portiert aus [UxPlay](https://github.com/FDH2/UxPlay)),
-  das unter [GPL-3.0](hardware/hid_bridge/src/airplay/LICENSE-GPL.md) steht; die Firmware-Datei, die es enthält,
-  wird daher unter GPL-3.0 verbreitet. Dateien unter [`skills/`](skills/) stehen unter [MIT-0](skills/LICENSE).
-- Die Änderungen dieses Forks (von [kewe87](https://github.com/kewe87), 2026) stehen unter denselben Bedingungen:
-  MIT für MIT-lizenzierte Dateien, GPL-3.0 für geänderte Dateien unter `hardware/hid_bridge/src/airplay/` (z. B. `rtsp.c`).
-- Danksagungen des Originals: [UxPlay](https://github.com/FDH2/UxPlay) ·
-  [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) ·
-  [Arduino ESP32 Core](https://github.com/espressif/arduino-esp32) · [TinyUSB](https://github.com/hathach/tinyusb).
-  Dieser Fork nutzt zusätzlich [U8g2](https://github.com/olikraus/u8g2) für das Display.
+## Status
 
-Du baust auf diesem Fork auf? LICENSE behalten und **ESP32 iPhone Agent von Henry Yuan** nennen (siehe [NOTICE](NOTICE)) —
-in deiner README und in öffentlichen Demos oder Posts.
+| | |
+|---|---|
+| Firmware baut (Standard, `--display`, `--no-safety`, `--debug`) | ja |
+| Host-Tests, simuliertes Board, CLI-Tests | bestanden |
+| Lauf auf einem echten Board | **noch nicht** |
+| Setup-WLAN, Koppeln, Spiegelung, Tippen an einem echten iPhone | **noch nicht getestet** |
+| Releases, Installer, npm-Paket | noch keine; aus dem Quellcode bauen |
+
+## Roadmap
+
+- Erster Lauf auf Hardware, danach Korrekturen
+- **Web-Fernbedienung auf dem Board:** Live-Bild, Maus und Tastatur im Browser, nichts am Computer zu installieren
+- **Android:** dasselbe Board als Hände, Screenshots über ADB ([docs/android.de.md](docs/android.de.md))
+
+Mehr: [ROADMAP.de.md](ROADMAP.de.md). Änderungen: [CHANGELOG.md](CHANGELOG.md) (englisch).
+
+## Dokumentation
+
+- [cli/README.md](cli/README.md) — die Kommandozeile `tentacle` und der MCP-Server (englisch)
+- [docs/hardening.de.md](docs/hardening.de.md) — Sicherheitsmodell und Einstellungen
+- [docs/hardware-addons.de.md](docs/hardware-addons.de.md) — OLED, Akku, Gehäuse
+- [docs/cli-protocol.md](docs/cli-protocol.md) — was über die Leitung geht (englisch)
+- [docs/android.de.md](docs/android.de.md) — Android, geplant
+
+## Herkunft und Lizenz
+
+**Basiert auf [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) von Henry Yuan**
+(MIT, Copyright © 2026 Henry Yuan) — *Based on ESP32 iPhone Agent by Henry Yuan*. Sein Urheberrechts- und
+Erlaubnisvermerk steht unverändert in [LICENSE](LICENSE) und [NOTICE](NOTICE). Tentacle hat aus diesem Code die
+iPhone-App, Bluetooth und Updates über Funk entfernt und die reine WLAN-Verbindung, das Setup-WLAN, das Koppeln
+per Taste, den Stopp-Taster und das Display ergänzt.
+
+- **MIT** ([LICENSE](LICENSE)) für alles außer dem Verzeichnis unten. Tentacles eigene Änderungen: Copyright ©
+  2026 kewe87, zu denselben Bedingungen (siehe [NOTICE](NOTICE)).
+- **GPL-3.0** für `hardware/hid_bridge/src/airplay/`, den aus [UxPlay](https://github.com/FDH2/UxPlay) portierten
+  AirPlay-Empfänger ([LICENSE-GPL.md](hardware/hid_bridge/src/airplay/LICENSE-GPL.md)). Jede Firmware-Datei
+  enthält dieses Verzeichnis, deshalb steht **eine Firmware-Binärdatei als Ganzes unter GPL-3.0**: Wer eine
+  weitergibt (als Download oder auf einem fertig geflashten Board), muss den vollständigen passenden Quellcode
+  unter GPL-3.0 anbieten und die Lizenzhinweise mitgeben. Die CLI `tentacle` enthält diesen Code nicht und
+  bleibt MIT.
+- Dateien unter [`skills/`](skills/) stehen unter [MIT-0](skills/LICENSE).
+- Baut auf: [UxPlay](https://github.com/FDH2/UxPlay) ·
+  [Arduino ESP32 core](https://github.com/espressif/arduino-esp32) · [TinyUSB](https://github.com/hathach/tinyusb) ·
+  [U8g2](https://github.com/olikraus/u8g2).
+
+**Wer auf Tentacle aufbaut:** `LICENSE` und `NOTICE` behalten und das Original sichtbar nennen, im README und in
+öffentlichen Demos, Videos und Beiträgen:
+
+> Based on ESP32 iPhone Agent by Henry Yuan — https://github.com/onehumanbeing/esp32-iphone-agent
+
+Apple, iPhone und AirPlay sind Marken von Apple Inc. Tentacle ist kein Apple-Produkt und steht in keiner
+Verbindung zu Apple. Der Name hat nichts mit dem gleichnamigen Deployment-Agenten von Octopus Deploy zu tun.

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/history"
+	"github.com/kewe87/phone-tentacle/cli/internal/history"
 )
 
 // MaxHints is the optimizer's limit (ReviewModel.optimizerPrompt).

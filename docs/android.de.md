@@ -1,44 +1,38 @@
-# Android (und iPhone) mit einem Board
+# Android
 
 [English](android.md) · **Deutsch**
 
-**Kurz gesagt:** Das Original-Projekt ist nur für das iPhone — hier gibt es keinen `android/`-Code.
-Dasselbe Board funktioniert aber über ein Schwesterprojekt auch mit Android; nur die „Augen“ sind anders.
+**Kurz:** Tentacle bedient heute iPhones. Android ist geplant, mit demselben Board; Android-Code gibt es in
+diesem Repository noch nicht.
 
 ## Was gleich ist, was anders
 
-Das Board ist immer nur die **Hände** (USB- bzw. Bluetooth-Tastatur + Maus). Je nach Plattform ändert sich,
-wie der Agent seine **Augen** (den Bildschirm) bekommt und wie die Eingaben übertragen werden:
+Das Board ist bei beiden die **Hände**: eine USB-Maus und -Tastatur. Der Unterschied liegt darin, wie der
+Computer zu seinen **Augen** (dem Bildschirm) kommt:
 
-| | iPhone (dieses Repo / Handsy) | Android ([esp32-android-agent]) |
+| | iPhone (Tentacle heute) | Android (geplant) |
 |---|---|---|
-| Augen (Bildschirm) | AirPlay-Spiegelung, dekodiert in der iOS-App | **ADB-Screenshots** — keine App, kein Root |
-| Hände (Eingabe) | USB-HID (ESP32-S3) | **USB-HID** (ESP32-S3) oder **Bluetooth-HID** (klassischer ESP32) |
-| Zeiger | relativ + AssistiveTouch + Kalibrierung | nativer absoluter Zeiger (einfacher) |
-| Begleit-App | nötig (TestFlight) | im ADB-Modus nicht nötig |
+| Augen (Bildschirm) | AirPlay-Bildschirmsynchronisierung zum Board, von dort zum Computer | **ADB-Screenshots** über WLAN (Kabelloses Debugging, ab Android 11); keine App, kein Root |
+| Hände (Eingabe) | USB-HID vom Board | USB-HID vom selben Board |
+| Zeiger | relative Maus + AssistiveTouch + Kalibrierung | absoluter Zeiger (die Firmware hat ihn als `flash.sh --abs`) |
 
-Ein **XIAO ESP32-S3 kann also beides** (USB-HID am iPhone *und* an Android), und ein einfacher
-**klassischer ESP32-WROOM kann bei Android die „Hände“ über Bluetooth** übernehmen, obwohl er den
-USB-Weg zum iPhone nicht kann.
+Der USB-Anschluss des Handys ist vom Board belegt, deshalb muss ADB über WLAN laufen.
 
-## Weg für Android
+## Plan
 
-**[shenlan-ai/esp32-android-agent]** nutzen (MIT, baut auf dem Bild- + HID-Ansatz dieses Projekts auf):
+- Ein zweites „Augen“-Backend in der CLI `tentacle`, das Screenshots per ADB holt, neben AirPlay.
+- Eine Firmware für beide: Zeigermodus zur Laufzeit wählbar, oder ein zusammengesetztes HID-Gerät mit relativem
+  und absolutem Zeiger.
+- Nach dem ersten Hardware-Test mit einem iPhone. Siehe [ROADMAP.de.md](../ROADMAP.de.md).
 
-- Board-Profile: `esp32dev` (klassischer ESP32 → Bluetooth-HID) sowie `esp32_s3_devkitc` / `xiao_esp32s3`
-  / `esp32_s3_zero` (→ natives USB-HID über OTG).
-- Bildschirm über normale **ADB-Screenshots** (`adb` per USB/WLAN); keine Begleit-App, kein Root.
-- Frühes Stadium (zum Zeitpunkt des Schreibens auf einem Android-15-Gerät getestet) — als experimentell betrachten.
+## Bis dahin
 
-## Könnte eine Firmware beides?
-
-Das Protokoll für die *Hände* ist fast identisch, eine gemeinsame Firmware ist also denkbar. Heute sind es
-getrennte Builds (verschiedene Repos). Eine gemeinsame „Hände“-Firmware für beide ist ein guter Punkt für die
-Roadmap — siehe [ROADMAP-FORK.de.md](../ROADMAP-FORK.de.md).
+**[shenlan-ai/esp32-android-agent]** (MIT) ist ein eigenes Projekt für Android, das auf demselben Originalprojekt
+aufbaut wie Tentacle: USB-HID auf ESP32-S3-Boards oder Bluetooth-HID auf einem klassischen ESP32, Bildschirm über
+ADB-Screenshots. Es gehört nicht zu Tentacle und wurde hier nicht ausprobiert.
 
 ---
 
 Basiert auf [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) von Henry Yuan (MIT).
 
-[esp32-android-agent]: https://github.com/shenlan-ai/esp32-android-agent
 [shenlan-ai/esp32-android-agent]: https://github.com/shenlan-ai/esp32-android-agent

@@ -14,7 +14,7 @@
 #include "src/setup/setup_text.h"
 
 #ifndef AP_MAX_CLIENTS
-#define AP_MAX_CLIENTS 1  // fork default: one station on the setup hotspot (flash --multi-client sets 4)
+#define AP_MAX_CLIENTS 1  // default: one station on the setup hotspot (flash --multi-client sets 4)
 #endif
 
 #if STA_FROM_SECRETS
@@ -138,7 +138,7 @@ static void startWifi() {
   leaveSetup();
   WiFi.disconnect(true);
   WiFi.softAPdisconnect(true);
-  WiFi.setHostname("iphone-agent");
+  WiFi.setHostname("tentacle");
   if (mode == "sta") {
     WiFi.mode(WIFI_STA);  // modem sleep stays on (the core's default): the phone powers the board
     WiFi.setAutoReconnect(false);
@@ -297,7 +297,7 @@ void net_begin() {
   if (apSsid.isEmpty() || apPass.length() < 8) {
     WiFi.mode(WIFI_STA);  // radio on for randomPass()
     delay(50);
-    apSsid = "ESP32Agent-" + board_suffix();
+    apSsid = "Tentacle-" + board_suffix();
     apPass = randomPass();
     prefs.putString("ap_ssid", apSsid);
     prefs.putString("ap_pass", apPass);

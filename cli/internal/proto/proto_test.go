@@ -86,7 +86,7 @@ func TestVectors(t *testing.T) {
 	eq(t, "K", k, v.K)
 	eq(t, "pair_mac", PairMAC(k, h(v.ClientID)), v.PairMac)
 	eq(t, "pair_commit", PairCommit(h(v.PairNonce)), v.PairCommit)
-	if got := PairCode(k, h(v.PairNonce)); got != v.PairCode || got != "615618" {
+	if got := PairCode(k, h(v.PairNonce)); got != v.PairCode || got != "736717" {
 		t.Fatalf("pair_code: got %s want %s", got, v.PairCode)
 	}
 	eq(t, "hello_mac", HelloMAC(k, h(v.CNonce), h(v.BNonce)), v.HelloMac)
@@ -196,8 +196,8 @@ func TestPairFrame(t *testing.T) {
 	if len(f) != 1+32+16+32 || f[0] != TPair || !bytes.Equal(f[1:33], cPub) || !bytes.Equal(f[33:49], clientID) || !bytes.Equal(f[49:81], commit) {
 		t.Fatalf("frame without a name: %x", f)
 	}
-	f = PairFrame(cPub, clientID, commit, "Kevins-PC")
-	if len(f) != 81+9 || string(f[81:]) != "Kevins-PC" {
+	f = PairFrame(cPub, clientID, commit, "Office-PC")
+	if len(f) != 81+9 || string(f[81:]) != "Office-PC" {
 		t.Fatalf("frame with a name: %x", f)
 	}
 	for _, name := range []string{strings.Repeat("x", 40), strings.Repeat("ü", 20), strings.Repeat("x", 31) + "ü", strings.Repeat("x", 30) + "日本", "PC-" + strings.Repeat("😀", 9)} {
@@ -214,7 +214,7 @@ func TestPairShowsTheBoardsCode(t *testing.T) {
 	var boardName, boardCode, cliCode string
 	b.Boot = func(name, code string) bool { boardName, boardCode = name, code; return true }
 	l := b.Connect()
-	k, id, err := Pair(ctx(t), l, clientID, "Kevins-PC", func(code string, wait time.Duration) {
+	k, id, err := Pair(ctx(t), l, clientID, "Office-PC", func(code string, wait time.Duration) {
 		cliCode = code
 		if wait != 30*time.Second {
 			t.Errorf("wait %v", wait)
@@ -223,7 +223,7 @@ func TestPairShowsTheBoardsCode(t *testing.T) {
 	if err != nil || !bytes.Equal(id, boardID) || len(k) != 32 {
 		t.Fatalf("pair: %v", err)
 	}
-	if boardName != "Kevins-PC" || len(cliCode) != 6 || cliCode != boardCode {
+	if boardName != "Office-PC" || len(cliCode) != 6 || cliCode != boardCode {
 		t.Fatalf("board shows %q %q, the CLI %q", boardName, boardCode, cliCode)
 	}
 	if _, err := Hello(ctx(t), l, clientID, func([]byte) []byte { return k }); err != nil {

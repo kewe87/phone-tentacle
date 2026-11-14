@@ -12,16 +12,16 @@ import (
 	"sync"
 )
 
-// Dir is os.UserConfigDir()/esp32agent, or $ESP32AGENT_HOME.
+// Dir is os.UserConfigDir()/tentacle, or $TENTACLE_HOME.
 func Dir() (string, error) {
-	if d := os.Getenv("ESP32AGENT_HOME"); d != "" {
+	if d := os.Getenv("TENTACLE_HOME"); d != "" {
 		return d, os.MkdirAll(d, 0o700)
 	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	d := filepath.Join(base, "esp32agent")
+	d := filepath.Join(base, "tentacle")
 	if err := os.MkdirAll(d, 0o700); err != nil {
 		return "", err
 	}
@@ -34,7 +34,7 @@ type Board struct {
 	Name string `json:"name,omitempty"`
 }
 
-// Listen is `esp32agent listen`: hearing what the phone plays while it mirrors (docs/cli-protocol.md, "Phone audio").
+// Listen is `tentacle listen`: hearing what the phone plays while it mirrors (docs/cli-protocol.md, "Phone audio").
 type Listen struct {
 	On     bool   `json:"on"`
 	Second string `json:"second,omitempty"` // the language besides English ("zh"); "" for this computer's
@@ -139,7 +139,7 @@ func (c *Config) Forget(id string) error {
 	return c.Save()
 }
 
-// Match finds paired board ids for a selector: a full id, or the 4-hex name suffix ("ESP32 Agent 6AD5").
+// Match finds paired board ids for a selector: a full id, or the 4-hex name suffix ("Tentacle 6AD5").
 func (c *Config) Match(sel string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()

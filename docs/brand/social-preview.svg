@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <!-- Social preview for GitHub (1280x640); the mark is logo-mark.svg, inlined. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0d0a12"/><stop offset="1" stop-color="#21152a"/></linearGradient>
+    <radialGradient id="spot" cx=".85" cy=".1" r=".7"><stop offset="0" stop-color="#ff6a4d" stop-opacity=".2"/><stop offset="1" stop-color="#ff6a4d" stop-opacity="0"/></radialGradient>
+    <linearGradient id="wire" gradientUnits="userSpaceOnUse" x1="400" y1="0" x2="970" y2="0"><stop offset="0" stop-color="#ffb03a"/><stop offset=".5" stop-color="#ff6a4d"/><stop offset="1" stop-color="#ff3d8b"/></linearGradient>
+    <linearGradient id="arm" gradientUnits="userSpaceOnUse" x1="60" y1="470" x2="440" y2="70"><stop offset="0" stop-color="#ffb03a"/><stop offset=".5" stop-color="#ff6a4d"/><stop offset="1" stop-color="#ff3d8b"/></linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1724"/><stop offset="1" stop-color="#0d0a12"/></linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a1c31"/><stop offset="1" stop-color="#130d19"/></linearGradient>
+    <clipPath id="clip"><rect x="16" y="16" width="480" height="480" rx="112"/></clipPath>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="12"/></filter>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#spot)"/>
+
+  <g transform="translate(96 84) scale(.4375)">
+    <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#tile)" stroke="#30263a" stroke-width="6"/>
+
+    <!-- phone: light frame, dark screen, touch ripple -->
+    <rect x="262" y="84" width="176" height="344" rx="40" fill="url(#screen)" stroke="#f6f1f4" stroke-width="16"/>
+    <rect x="326" y="112" width="48" height="10" rx="5" fill="#f6f1f4" opacity=".35"/>
+    <circle cx="326" cy="336" r="58" fill="none" stroke="#f6f1f4" stroke-width="7" opacity=".28"/>
+    <circle cx="326" cy="336" r="36" fill="none" stroke="#f6f1f4" stroke-width="7" opacity=".5"/>
+
+    <!-- the arm: glow, then the tapered arm with a dark outline that keeps it apart from the phone -->
+    <g clip-path="url(#clip)">
+      <path d="M12.3 541.4C12.2 537 11.8 523.8 11.9 515C12 506.1 12.3 497.3 12.8 488.5C13.3 479.6 14 470.8 15 462C15.9 453.2 17.1 444.4 18.5 435.6C19.9 426.8 21.5 418 23.4 409.3C25.4 400.6 27.5 391.9 30 383.3C32.4 374.6 35.1 366 38.1 357.5C41.1 349 44.4 340.6 48.1 332.3C51.7 323.9 55.6 315.7 59.9 307.6C64.1 299.6 68.7 291.6 73.7 283.9C78.6 276.2 83.9 268.6 89.5 261.4C95.2 254.1 101.1 247 107.4 240.3C113.7 233.5 120.2 227.1 127.3 221C134.5 214.8 142.4 208.6 150.4 203.3C158.4 198 166.8 193.3 175.6 189.2C184.3 185.1 193.4 181.5 202.8 178.8C212.2 176.1 222 173.8 232.1 172.9C242.2 172 252.8 171.8 263.2 173.2C273.5 174.7 284.5 177.5 294.3 181.9C304 186.3 313.7 192.6 321.5 199.6C329.4 206.5 336.1 214.9 341.5 223.7C346.8 232.6 351.2 242.4 353.7 252.5C356.2 262.5 357.4 273.6 356.3 284.1C355.2 294.6 348.4 310 346.9 315.2A21 21 0 0 1 309.1 296.8C309.5 294.3 311.5 287 311.3 282C311 277 309.7 271.5 307.7 266.6C305.7 261.8 302.6 256.8 299.2 252.7C295.7 248.5 291.4 244.5 287.2 241.6C282.9 238.8 278.3 236.7 273.4 235.4C268.6 234 263.5 233.5 258.2 233.5C252.9 233.6 247.3 234.4 241.8 235.8C236.2 237.1 230.5 239.2 224.9 241.6C219.4 244.1 213.9 247.2 208.7 250.6C203.5 254 198.3 257.8 193.6 261.9C188.9 266 184.7 270.4 180.4 275.2C176.2 280 171.9 285.5 168.1 290.9C164.2 296.4 160.6 302 157.2 307.8C153.8 313.6 150.7 319.6 147.9 325.7C145 331.8 142.4 338.1 140.1 344.4C137.7 350.8 135.6 357.3 133.7 363.9C131.8 370.5 130.2 377.1 128.8 383.9C127.3 390.6 126.1 397.5 125.2 404.3C124.2 411.2 123.4 418.1 122.8 425.1C122.2 432 121.8 439.1 121.6 446.1C121.4 453.1 121.4 460.1 121.6 467.2C121.7 474.2 122.1 481.3 122.6 488.4C123.1 495.4 123.8 502.5 124.7 509.5C125.5 516.5 127.2 527.1 127.7 530.6A58 58 0 0 1 12.3 541.4Z" fill="url(#arm)" filter="url(#glow)" opacity=".5"/>
+      <path d="M12.3 541.4C12.2 537 11.8 523.8 11.9 515C12 506.1 12.3 497.3 12.8 488.5C13.3 479.6 14 470.8 15 462C15.9 453.2 17.1 444.4 18.5 435.6C19.9 426.8 21.5 418 23.4 409.3C25.4 400.6 27.5 391.9 30 383.3C32.4 374.6 35.1 366 38.1 357.5C41.1 349 44.4 340.6 48.1 332.3C51.7 323.9 55.6 315.7 59.9 307.6C64.1 299.6 68.7 291.6 73.7 283.9C78.6 276.2 83.9 268.6 89.5 261.4C95.2 254.1 101.1 247 107.4 240.3C113.7 233.5 120.2 227.1 127.3 221C134.5 214.8 142.4 208.6 150.4 203.3C158.4 198 166.8 193.3 175.6 189.2C184.3 185.1 193.4 181.5 202.8 178.8C212.2 176.1 222 173.8 232.1 172.9C242.2 172 252.8 171.8 263.2 173.2C273.5 174.7 284.5 177.5 294.3 181.9C304 186.3 313.7 192.6 321.5 199.6C329.4 206.5 336.1 214.9 341.5 223.7C346.8 232.6 351.2 242.4 353.7 252.5C356.2 262.5 357.4 273.6 356.3 284.1C355.2 294.6 348.4 310 346.9 315.2A21 21 0 0 1 309.1 296.8C309.5 294.3 311.5 287 311.3 282C311 277 309.7 271.5 307.7 266.6C305.7 261.8 302.6 256.8 299.2 252.7C295.7 248.5 291.4 244.5 287.2 241.6C282.9 238.8 278.3 236.7 273.4 235.4C268.6 234 263.5 233.5 258.2 233.5C252.9 233.6 247.3 234.4 241.8 235.8C236.2 237.1 230.5 239.2 224.9 241.6C219.4 244.1 213.9 247.2 208.7 250.6C203.5 254 198.3 257.8 193.6 261.9C188.9 266 184.7 270.4 180.4 275.2C176.2 280 171.9 285.5 168.1 290.9C164.2 296.4 160.6 302 157.2 307.8C153.8 313.6 150.7 319.6 147.9 325.7C145 331.8 142.4 338.1 140.1 344.4C137.7 350.8 135.6 357.3 133.7 363.9C131.8 370.5 130.2 377.1 128.8 383.9C127.3 390.6 126.1 397.5 125.2 404.3C124.2 411.2 123.4 418.1 122.8 425.1C122.2 432 121.8 439.1 121.6 446.1C121.4 453.1 121.4 460.1 121.6 467.2C121.7 474.2 122.1 481.3 122.6 488.4C123.1 495.4 123.8 502.5 124.7 509.5C125.5 516.5 127.2 527.1 127.7 530.6A58 58 0 0 1 12.3 541.4Z" fill="url(#arm)" stroke="#0d0a12" stroke-width="14" stroke-linejoin="round"/>
+      <g fill="#fff" opacity=".42"><circle cx="93.4" cy="425" r="13.2"/><circle cx="108.3" cy="356.4" r="11.9"/><circle cx="135.2" cy="298.1" r="10.8"/><circle cx="171.8" cy="252.8" r="9.7"/><circle cx="215.3" cy="224.7" r="8.7"/><circle cx="259.7" cy="216.1" r="7.9"/></g>
+    </g>
+
+    <!-- touch point -->
+    <circle cx="326" cy="336" r="17" fill="#f6f1f4"/>
+  </g>
+
+  <text x="356" y="196" font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="124" font-weight="800" letter-spacing="-2" fill="#f6f1f4">Tentacle</text>
+  <text x="362" y="252" font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="36" fill="#a59bab">Your PC's arm into a real phone</text>
+  <text x="362" y="298" font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="26" font-weight="600" fill="#ff8a5c">USB hands · AirPlay eyes · iPhone &amp; Android</text>
+
+  <!-- how it fits together: PC, the board, the phone -->
+  <g font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" text-anchor="middle">
+    <!-- PC -->
+    <g transform="translate(250 456)">
+      <rect x="-124" y="-74" width="248" height="128" rx="14" fill="#130d19" stroke="#ddd3da" stroke-width="8"/>
+      <path d="M-154 70H154" stroke="#ddd3da" stroke-width="10" stroke-linecap="round"/>
+      <text x="-96" y="-20" font-family="Cascadia Mono, Consolas, Menlo, monospace" font-size="22" font-weight="700" fill="#ff8a5c" text-anchor="start">&gt; tap 120 340</text>
+      <text x="-96" y="16" font-family="Cascadia Mono, Consolas, Menlo, monospace" font-size="22" fill="#a59bab" text-anchor="start">ok</text>
+      <text y="118" font-size="24" font-weight="600" fill="#f6f1f4">PC · CLI / MCP</text>
+    </g>
+    <!-- board -->
+    <g transform="translate(640 456)">
+      <rect x="-62" y="-50" width="124" height="100" rx="14" fill="#130d19" stroke="#ddd3da" stroke-width="8"/>
+      <rect x="62" y="-20" width="26" height="40" rx="8" fill="#ddd3da"/>
+      <rect x="-28" y="-22" width="56" height="44" rx="6" fill="#ff6a4d"/>
+      <g fill="#ddd3da"><circle cx="-44" cy="-32" r="4"/><circle cx="-44" cy="0" r="4"/><circle cx="-44" cy="32" r="4"/><circle cx="44" cy="-32" r="4"/><circle cx="44" cy="32" r="4"/></g>
+      <text y="118" font-size="24" font-weight="600" fill="#f6f1f4">ESP32-S3 · USB-C</text>
+    </g>
+    <!-- phone -->
+    <g transform="translate(1030 456)">
+      <rect x="-52" y="-92" width="104" height="176" rx="22" fill="#130d19" stroke="#ddd3da" stroke-width="8"/>
+      <circle cy="-8" r="30" fill="none" stroke="#f6f1f4" stroke-width="5" opacity=".4"/>
+      <circle cy="-8" r="12" fill="#f6f1f4"/>
+      <text y="118" font-size="24" font-weight="600" fill="#f6f1f4">iPhone · Android</text>
+    </g>
+    <!-- links -->
+    <g fill="none" stroke="url(#wire)" stroke-width="6" stroke-linecap="round">
+      <path d="M424 456H556" stroke-dasharray="2 16"/>
+      <path d="M736 456H966"/>
+    </g>
+    <text x="490" y="434" font-size="20" fill="#a59bab">Wi-Fi · BLE</text>
+    <text x="851" y="434" font-size="20" fill="#a59bab">mouse · keyboard</text>
+    <text x="851" y="492" font-size="20" fill="#a59bab">screen via AirPlay</text>
+  </g>
+</svg>

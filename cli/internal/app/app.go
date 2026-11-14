@@ -1,4 +1,4 @@
-// Package app is the esp32agent command line: mobilecli-style commands, each a request to the daemon.
+// Package app is the tentacle command line: mobilecli-style commands, each a request to the daemon.
 package app
 
 import (
@@ -14,15 +14,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
+	"github.com/kewe87/phone-tentacle/cli/internal/config"
+	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
+	"github.com/kewe87/phone-tentacle/cli/internal/link"
 )
 
 // Version is set at build time (-ldflags "-X .../internal/app.Version=1.2.3").
 var Version = "dev"
 
-const usage = `esp32agent: see and drive an iPhone through an ESP32 Agent board, over Wi-Fi.
+const usage = `tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
 
   devices                          boards on this network (found by mDNS)
   pair                             pair this computer. First double-press BOOT on the board (pairing opens for
@@ -49,34 +49,32 @@ const usage = `esp32agent: see and drive an iPhone through an ESP32 Agent board,
                                    by whisper.cpp on this computer (install whisper-cpp, plus a model)
   listen lang CODE|none            the language besides English (e.g. zh); default this computer's
   history list | show RUN | new    what was done on the phone (runs; a new one after 10 min idle)
-  intent list | show NAME          saved intents (the app's format)
+  intent list | show NAME          saved intents (tasks that worked, with their steps)
   intent save --name N --prompt P [--hint H ...] [--from-run RUN [--steps 1,3,4]]
   intent delete NAME
-  intent export NAME... [--screenshots] [--output FILE]   .esp32intent file for the iOS app
+  intent export NAME... [--screenshots] [--output FILE]   one .esp32intent file, to move intents to another computer
   intent import FILE
-  memory list | search TEXT        what the agent remembers (the app's MEMORY.md, same format)
+  memory list | search TEXT        what the agent remembers (MEMORY.md in the config directory)
   memory add TEXT [--kind preference|fact|app] [--topic APP]
   memory rm ID
-  memory export [--output FILE]    MEMORY.md for the app (Settings › Memory › Import)
-  memory import FILE               fold in the app's export: same id or words keep the newer
-  report --intent NAME [--screenshots]   prepare a mail to the developer with one intent; you send it
-  upgrade [--check] [--force]      install the latest release
+  memory export [--output FILE]    a copy of MEMORY.md, e.g. for another computer
+  memory import FILE               fold in an exported copy: same id or words keep the newer
   mcp                              MCP server on stdio
   skill install                    agent skill for Claude Code / Codex
-  logs [--board] [--save]          the CLI's log; --board the board's; --save one file for support
+  logs [--board] [--save]          the CLI's log; --board the board's; --save both in one file (e.g. for an issue)
   daemon [stop]                    the background process (started automatically)
   version
 
-  --device ID or ESP32AGENT_DEVICE when several boards are around.
-  --host IP[:PORT] or ESP32AGENT_HOST: the board's address, when it is not found by itself (--host auto: find again).
-  --verbose or ESP32AGENT_VERBOSE=1: show how the board is found, the handshake and timings (also in the daemon's log).
+  --device ID or TENTACLE_DEVICE when several boards are around.
+  --host IP[:PORT] or TENTACLE_HOST: the board's address, when it is not found by itself (--host auto: find again).
+  --verbose or TENTACLE_VERBOSE=1: show how the board is found, the handshake and timings (also in the daemon's log).
 `
 
-var errUnsupported = errors.New("not supported on ESP32 Agent")
+var errUnsupported = errors.New("not supported on Tentacle")
 
 // App runs commands; Out gets the JSON (or raw bytes), Client reaches the daemon.
 type App struct {
-	In     io.Reader // report's confirmation; os.Stdin when nil
+	In     io.Reader // net join's prompts; os.Stdin when nil
 	Out    io.Writer
 	Err    io.Writer
 	Client *daemon.Client
@@ -159,15 +157,11 @@ func (a *App) Run(args []string) int {
 		return a.intent(rest)
 	case "memory":
 		return a.memory(rest)
-	case "report":
-		return a.report(rest)
 	case "logs":
 		return a.logs(rest)
-	case "upgrade":
-		return a.upgrade(rest)
 	case "skill":
 		if len(rest) == 0 || rest[0] != "install" {
-			return a.fail(errors.New("usage: esp32agent skill install"))
+			return a.fail(errors.New("usage: tentacle skill install"))
 		}
 		return a.skillInstall()
 	case "pair":
@@ -247,7 +241,7 @@ func (a *App) Run(args []string) int {
 // global takes --host and --verbose out of the arguments (they may stand anywhere) and hands them to the client,
 // which sends them with every request. The environment gives the defaults.
 func (a *App) global(args []string) []string {
-	host, verbose := os.Getenv("ESP32AGENT_HOST"), os.Getenv("ESP32AGENT_VERBOSE") == "1"
+	host, verbose := os.Getenv("TENTACLE_HOST"), os.Getenv("TENTACLE_VERBOSE") == "1"
 	var out []string
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {
@@ -311,8 +305,8 @@ func (a *App) pair(dev string) int {
 }
 
 func newFS(dev *string) *flag.FlagSet {
-	fs := flag.NewFlagSet("esp32agent", flag.ContinueOnError)
-	fs.StringVar(dev, "device", os.Getenv("ESP32AGENT_DEVICE"), "board id")
+	fs := flag.NewFlagSet("tentacle", flag.ContinueOnError)
+	fs.StringVar(dev, "device", os.Getenv("TENTACLE_DEVICE"), "board id")
 	return fs
 }
 
@@ -325,7 +319,7 @@ func (a *App) io(fs *flag.FlagSet, dev *string, args []string) int {
 		return a.fail(err)
 	}
 	if len(pos) == 0 {
-		return a.fail(errors.New("usage: esp32agent io tap|longpress|swipe|text|keys|button ..."))
+		return a.fail(errors.New("usage: tentacle io tap|longpress|swipe|text|keys|button ..."))
 	}
 	sub, arg := pos[0], strings.Join(pos[1:], " ")
 	req := daemon.Request{Cmd: sub, Device: *dev, Aim: *aim, Ms: *ms, Count: *count, Text: arg}
@@ -340,7 +334,7 @@ func (a *App) io(fs *flag.FlagSet, dev *string, args []string) int {
 		}
 	case "text", "keys", "button":
 		if len(pos) < 2 {
-			return a.fail(fmt.Errorf("usage: esp32agent io %s VALUE", sub))
+			return a.fail(fmt.Errorf("usage: tentacle io %s VALUE", sub))
 		}
 	default:
 		return a.fail(errUnsupported)
@@ -429,7 +423,7 @@ func (a *App) daemon(idle time.Duration) int {
 		return a.fail(err)
 	}
 	log.SetFlags(log.LstdFlags)
-	log.Printf("esp32agent %s daemon on %s", Version, daemon.SocketPath(a.Dir))
+	log.Printf("tentacle %s daemon on %s", Version, daemon.SocketPath(a.Dir))
 	s := &daemon.Server{Transport: link.Default(a.Dir), Config: cfg, Dir: a.Dir, Version: Version, Idle: idle}
 	if err := s.Serve(l); err != nil {
 		log.Print(err)

@@ -51,9 +51,9 @@ func (m *msg) rr(sec int, typ uint16, owner []string, fill func()) {
 }
 
 var (
-	svc  = []string{"_esp32agent", "_tcp", "local"}
-	inst = []string{"ESP32 Agent 6AD5", "_esp32agent", "_tcp", "local"}
-	host = []string{"iphone-agent", "local"}
+	svc  = []string{"_tentacle", "_tcp", "local"}
+	inst = []string{"Tentacle 6AD5", "_tentacle", "_tcp", "local"}
+	host = []string{"tentacle", "local"}
 )
 
 // answer is what the board sends: PTR in the answers; SRV, TXT and A in the additionals.
@@ -78,7 +78,7 @@ func answer(txt ...string) *msg {
 func TestQuery(t *testing.T) {
 	q := Query(0x1234)
 	want := []byte{0x12, 0x34, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-		11, '_', 'e', 's', 'p', '3', '2', 'a', 'g', 'e', 'n', 't', 4, '_', 't', 'c', 'p', 5, 'l', 'o', 'c', 'a', 'l', 0,
+		9, '_', 't', 'e', 'n', 't', 'a', 'c', 'l', 'e', 4, '_', 't', 'c', 'p', 5, 'l', 'o', 'c', 'a', 'l', 0,
 		0, 12, 0x80, 0x01} // PTR, IN + unicast response
 	if !bytes.Equal(q, want) {
 		t.Fatalf("query\n got %x\nwant %x", q, want)
@@ -89,14 +89,14 @@ func TestQuery(t *testing.T) {
 }
 
 func TestParseAnswer(t *testing.T) {
-	m := answer("id=246F28AA6AD5", "name=ESP32 Agent 6AD5", "fw=0.2.5", "paired=1", "open=1", "v=1")
+	m := answer("id=246F28AA6AD5", "name=Tentacle 6AD5", "fw=0.2.5", "paired=1", "open=1", "v=1")
 	from := net.IPv4(192, 168, 178, 61).To4()
 	bs := Parse(m.b, from)
 	if len(bs) != 1 {
 		t.Fatalf("boards: %+v", bs)
 	}
 	b := bs[0]
-	if b.Instance != "ESP32 Agent 6AD5" || b.ID != "246f28aa6ad5" || b.Name != "ESP32 Agent 6AD5" || b.FW != "0.2.5" ||
+	if b.Instance != "Tentacle 6AD5" || b.ID != "246f28aa6ad5" || b.Name != "Tentacle 6AD5" || b.FW != "0.2.5" ||
 		b.Paired != 1 || b.Open != 1 || b.Port != 7202 || !b.IP.Equal(from) || b.Addr() != "192.168.178.61:7202" {
 		t.Fatalf("board: %+v", b)
 	}
@@ -115,7 +115,7 @@ func TestParseWithoutTXTOrWithAnotherPort(t *testing.T) {
 		m.name(host...)
 	})
 	bs := Parse(m.b, net.IPv4(10, 0, 0, 7))
-	if len(bs) != 1 || bs[0].Port != 7999 || bs[0].ID != "" || bs[0].Paired != -1 || bs[0].Open != -1 || bs[0].Name != "ESP32 Agent 6AD5" {
+	if len(bs) != 1 || bs[0].Port != 7999 || bs[0].ID != "" || bs[0].Paired != -1 || bs[0].Open != -1 || bs[0].Name != "Tentacle 6AD5" {
 		t.Fatalf("boards: %+v", bs)
 	}
 }
@@ -123,8 +123,8 @@ func TestParseWithoutTXTOrWithAnotherPort(t *testing.T) {
 func TestParseIgnoresOtherServicesAndGarbage(t *testing.T) {
 	// AirPlay's records from the same board are not ours.
 	m := newMsg(0x8400)
-	m.rr(6, typePTR, []string{"_airplay", "_tcp", "local"}, func() { m.name("ESP32 Agent", "_airplay", "_tcp", "local") })
-	m.rr(10, typeTXT, []string{"ESP32 Agent", "_airplay", "_tcp", "local"}, func() { m.b = append(m.b, 4, 'i', 'd', '=', 'x') })
+	m.rr(6, typePTR, []string{"_airplay", "_tcp", "local"}, func() { m.name("Tentacle", "_airplay", "_tcp", "local") })
+	m.rr(10, typeTXT, []string{"Tentacle", "_airplay", "_tcp", "local"}, func() { m.b = append(m.b, 4, 'i', 'd', '=', 'x') })
 	if bs := Parse(m.b, net.IPv4(10, 0, 0, 7)); len(bs) != 0 {
 		t.Fatalf("an AirPlay answer gave %+v", bs)
 	}
@@ -153,7 +153,7 @@ func TestParseIgnoresOtherServicesAndGarbage(t *testing.T) {
 
 func TestTwoBoardsInOneAnswer(t *testing.T) {
 	m := newMsg(0x8400)
-	other := []string{"ESP32 Agent 1A2B", "_esp32agent", "_tcp", "local"}
+	other := []string{"Tentacle 1A2B", "_tentacle", "_tcp", "local"}
 	m.rr(6, typePTR, svc, func() { m.name(inst...) })
 	m.rr(6, typePTR, svc, func() { m.name(other...) })
 	m.rr(10, typeTXT, inst, func() {
@@ -163,7 +163,7 @@ func TestTwoBoardsInOneAnswer(t *testing.T) {
 		m.b = append(m.b, 15, 'i', 'd', '=', '2', '4', '6', 'f', '2', '8', 'a', 'a', '1', 'a', '2', 'b')
 	})
 	bs := Parse(m.b, net.IPv4(10, 0, 0, 7))
-	if len(bs) != 2 || bs[0].ID != "246f28aa6ad5" || bs[1].ID != "246f28aa1a2b" || bs[1].Instance != "ESP32 Agent 1A2B" {
+	if len(bs) != 2 || bs[0].ID != "246f28aa6ad5" || bs[1].ID != "246f28aa1a2b" || bs[1].Instance != "Tentacle 1A2B" {
 		t.Fatalf("boards: %+v", bs)
 	}
 }

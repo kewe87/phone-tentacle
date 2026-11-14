@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/intent"
+	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
+	"github.com/kewe87/phone-tentacle/cli/internal/intent"
 )
 
 type multi []string
@@ -108,7 +108,7 @@ func (a *App) intent(args []string) int {
 		return a.export(rest, *shots, *output)
 	case "import":
 		if len(rest) != 1 {
-			return a.fail(errors.New("usage: esp32agent intent import FILE"))
+			return a.fail(errors.New("usage: tentacle intent import FILE"))
 		}
 		data, err := os.ReadFile(rest[0])
 		if err != nil {
@@ -128,13 +128,13 @@ func (a *App) intent(args []string) int {
 		}
 		return a.print(daemon.Response{Status: "ok", Data: map[string]any{"added": names, "skipped": skipped}})
 	}
-	return a.fail(errors.New("usage: esp32agent intent list | show | save | delete | export | import"))
+	return a.fail(errors.New("usage: tentacle intent list | show | save | delete | export | import"))
 }
 
 // export writes the intents named (each argument a name or id) as one .esp32intent file.
 func (a *App) export(keys []string, screenshots bool, output string) int {
 	if len(keys) == 0 {
-		return a.fail(errors.New("usage: esp32agent intent export NAME|ID... [--screenshots] [--output FILE]"))
+		return a.fail(errors.New("usage: tentacle intent export NAME|ID... [--screenshots] [--output FILE]"))
 	}
 	var items []intent.Item
 	for _, k := range keys {
@@ -154,7 +154,7 @@ func (a *App) export(keys []string, screenshots bool, output string) int {
 	return a.print(daemon.Response{Status: "ok", Data: map[string]any{"filePath": path, "intents": len(items), "screenshots": screenshots}})
 }
 
-// fileName is the app's: the intent's name (or "Intents" for several), unsafe characters dropped.
+// fileName is the upstream app's: the intent's name (or "Intents" for several), unsafe characters dropped.
 func fileName(items []intent.Item) string {
 	base := "Intents"
 	if len(items) == 1 {
@@ -178,7 +178,7 @@ func writeArchive(path string, items []intent.Item, note string) (string, error)
 		return "", err
 	}
 	if len(data) > intent.MaxBytes {
-		return "", fmt.Errorf("the file would be %d MB, over the %d MB the app takes", len(data)>>20, intent.MaxBytes/1_000_000)
+		return "", fmt.Errorf("the file would be %d MB, over the %d MB limit of this file format", len(data)>>20, intent.MaxBytes/1_000_000)
 	}
 	if path, err = filepath.Abs(path); err != nil {
 		return "", err

@@ -1,6 +1,6 @@
 // Package history records what the CLI did on the phone, in the iOS app's trace format (TraceStore.swift):
 // runs/<yyyyMMdd-HHmmss>/steps.jsonl, one JSON object per line {n, t, kind, frame?, ...}, frames %03d.jpg.
-// Actions use the app's 0-1000 screen units, so a run can become a saved intent.
+// Actions use the upstream app's 0-1000 screen units, so a run can become a saved intent.
 package history
 
 import (
@@ -137,7 +137,7 @@ func (r *Recorder) append(id string, n int, kind string, rec map[string]any, fra
 	return err
 }
 
-// marshal writes like the app's PyJSON.dumps: n, t, kind first, then the rest sorted, ", " and ": ", no escaping.
+// marshal writes like the upstream app's PyJSON.dumps: n, t, kind first, then the rest sorted, ", " and ": ", no escaping.
 func marshal(m map[string]any) ([]byte, error) {
 	var keys []string
 	for k := range m {
@@ -205,7 +205,7 @@ func Read(root, id string) ([]Record, error) {
 	f, err := os.Open(filepath.Join(root, id, Steps))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("no run %s (see esp32agent history list)", id)
+			return nil, fmt.Errorf("no run %s (see tentacle history list)", id)
 		}
 		return nil, err
 	}

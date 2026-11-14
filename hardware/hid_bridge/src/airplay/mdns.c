@@ -77,7 +77,7 @@ bool ap_mdns_start(void) {
   char raop_name[96];
   init_strings();
   if (mdns_init() != ESP_OK) return false;
-  mdns_hostname_set("iphone-agent");
+  mdns_hostname_set("tentacle");
   mdns_instance_name_set(ap_cfg.name);
   const uint8_t *m = ap_cfg.hwaddr;
   snprintf(raop_name, sizeof raop_name, "%02X%02X%02X%02X%02X%02X@%s", m[0], m[1], m[2], m[3], m[4], m[5], ap_cfg.name);

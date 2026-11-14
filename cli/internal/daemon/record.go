@@ -6,7 +6,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/history"
+	"github.com/kewe87/phone-tentacle/cli/internal/history"
 )
 
 func (s *Server) recorder() *history.Recorder {
@@ -18,14 +18,14 @@ func (s *Server) recorder() *history.Recorder {
 	return s.hist
 }
 
-// recordShot keeps the screen an agent looked at, as the app keeps what its model saw ("llm" records).
+// recordShot keeps the screen an agent looked at, as the upstream app keeps what its model saw ("llm" records).
 func (s *Server) recordShot(img image.Image, w, h int) {
 	if err := s.recorder().Write("llm", map[string]any{"role": "screenshot", "width": w, "height": h}, history.Thumb(img, 0)); err != nil {
 		log.Printf("history: %v", err)
 	}
 }
 
-// recordAction writes one io command as the app's action, in 0-1000 screen units.
+// recordAction writes one io command as the upstream app's action, in 0-1000 screen units.
 func (s *Server) recordAction(c *Conn, req Request, err error) {
 	rec := map[string]any{}
 	unit := func(v, size float64) int { return int(math.Round(v / size * 1000)) }

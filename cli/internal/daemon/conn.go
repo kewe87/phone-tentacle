@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/pointer"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/video"
+	"github.com/kewe87/phone-tentacle/cli/internal/pointer"
+	"github.com/kewe87/phone-tentacle/cli/internal/proto"
+	"github.com/kewe87/phone-tentacle/cli/internal/video"
 )
 
 // Conn is one board: its current session (reconnected on demand), status, latest frame and pointer.

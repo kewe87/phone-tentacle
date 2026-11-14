@@ -15,15 +15,15 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/pointer"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/video"
+	"github.com/kewe87/phone-tentacle/cli/internal/config"
+	"github.com/kewe87/phone-tentacle/cli/internal/pointer"
+	"github.com/kewe87/phone-tentacle/cli/internal/video"
 	"golang.org/x/image/draw"
 )
 
 var (
-	errMirroring = errors.New("screen mirroring is off: on the iPhone open Control Center > Screen Mirroring > ESP32 Agent")
-	errFrozen    = errors.New("video frozen: restart Screen Mirroring on the iPhone (Control Center > Screen Mirroring > Stop Mirroring, then ESP32 Agent)")
+	errMirroring = errors.New("screen mirroring is off: on the iPhone open Control Center > Screen Mirroring > Tentacle")
+	errFrozen    = errors.New("video frozen: restart Screen Mirroring on the iPhone (Control Center > Screen Mirroring > Stop Mirroring, then Tentacle)")
 )
 
 func num(v any) float64 { f, _ := v.(float64); return f }
@@ -58,7 +58,7 @@ func (s *Server) videoState(ctx context.Context, c *Conn) error {
 	return nil
 }
 
-// frame returns the screen as it is after the last action (like the app's VideoFeed.afterAction).
+// frame returns the screen as it is after the last action (like the upstream app's VideoFeed.afterAction).
 func (s *Server) frame(ctx context.Context, c *Conn) (image.Image, error) {
 	if err := s.videoState(ctx, c); err != nil {
 		return nil, err
@@ -206,7 +206,7 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 			return p.Key(ctx, strings.ToLower(req.Text))
 		case "button":
 			if !strings.EqualFold(req.Text, "HOME") {
-				return fmt.Errorf("button %s not supported on ESP32 Agent (only HOME)", req.Text)
+				return fmt.Errorf("button %s not supported on Tentacle (only HOME)", req.Text)
 			}
 			return p.GoHome(ctx)
 		}
@@ -216,7 +216,7 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 		}
 		if !p.Calibrated() {
 			if s.videoState(ctx, c) != nil {
-				return errors.New("pointer not calibrated, and the screen is not visible: turn on Screen Mirroring, then run esp32agent calibrate")
+				return errors.New("pointer not calibrated, and the screen is not visible: turn on Screen Mirroring, then run tentacle calibrate")
 			}
 			if err := p.Calibrate(ctx); err != nil {
 				return err

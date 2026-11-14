@@ -158,10 +158,10 @@ func Hello(ctx context.Context, l Link, clientID []byte, keyFor func(boardID []b
 	bNonce, boardID := body[:nonceLen], bytes.Clone(body[nonceLen:nonceLen+boardLen])
 	k := keyFor(boardID)
 	if k == nil {
-		return nil, fmt.Errorf("not paired with board %s: run esp32agent pair", hex.EncodeToString(boardID))
+		return nil, fmt.Errorf("not paired with board %s: run tentacle pair", hex.EncodeToString(boardID))
 	}
 	if !hmac.Equal(HelloMAC(k, cNonce, bNonce), body[nonceLen+boardLen:]) {
-		return nil, errors.New("board proof does not match (paired with another key? run esp32agent pair)")
+		return nil, errors.New("board proof does not match (paired with another key? run tentacle pair)")
 	}
 	c2b, b2c := SessionKeys(k, cNonce, bNonce)
 	s := &Session{l: l, BoardID: boardID}

@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
+	"github.com/kewe87/phone-tentacle/cli/internal/config"
+	"github.com/kewe87/phone-tentacle/cli/internal/link"
+	"github.com/kewe87/phone-tentacle/cli/internal/proto"
 )
 
 type fakeTransport struct{ b *proto.FakeBoard }
 
 func (f fakeTransport) Scan(context.Context, time.Duration) ([]link.Found, error) {
-	return []link.Found{{Name: "ESP32 Agent 6AD5", Addr: "fake"}}, nil
+	return []link.Found{{Name: "Tentacle 6AD5", Addr: "fake"}}, nil
 }
 
 func (f fakeTransport) Connect(context.Context, link.Found) (proto.Link, error) {
@@ -40,7 +40,7 @@ func start(t *testing.T, tr link.Transport) (*Client, *Server) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	t.Setenv("ESP32AGENT_HOME", dir)
+	t.Setenv("TENTACLE_HOME", dir)
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)

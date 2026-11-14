@@ -1,4 +1,4 @@
-// The computer's link (esp32agent CLI, docs/cli-protocol.md): pairing, session keys and sealed frames, over the one
+// The computer's link (tentacle CLI, docs/cli-protocol.md): pairing, session keys and sealed frames, over the one
 // connection cli_tcp.h holds (Wi-Fi, TCP 7202). One computer at a time.
 #pragma once
 #include <Arduino.h>

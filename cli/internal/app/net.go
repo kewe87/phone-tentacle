@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
+	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
 )
 
 // netJoin is `net join` without arguments: ask for the Wi-Fi's name and password (not echoed, not in the shell
@@ -101,12 +101,12 @@ func (a *App) waitMirroring(dev string) {
 		return
 	}
 	if name == "" {
-		name = "ESP32 Agent"
+		name = "Tentacle"
 	}
 	fmt.Fprintf(a.Err, "Next, on the iPhone (on the same Wi-Fi): Control Center → Screen Mirroring → %q.\nWaiting for it (Ctrl+C to skip)...\n", name)
 	for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
 		if ap, _ = state(); ap == "streaming" {
-			fmt.Fprintln(a.Err, "Screen Mirroring is on. Ready: try esp32agent screenshot.")
+			fmt.Fprintln(a.Err, "Screen Mirroring is on. Ready: try tentacle screenshot.")
 			return
 		}
 	}

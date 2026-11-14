@@ -3,12 +3,14 @@
 **English** · [Deutsch](hardware-addons.de.md)
 
 Off by default; each needs the part physically wired. The firmware support is built in — enable it with a
-build flag. Still being validated on hardware. (The stop button and single-client hotspot need no parts and are
-on by default; see [hardening.md](hardening.md).)
+build flag. Not yet tested on hardware. (The stop button needs no parts and is on by default; see
+[hardening.md](hardening.md).)
 
 ## Status OLED (128×64 SSD1306, I²C) — `--display`
 A 0.96″ SSD1306 OLED (a few euros) shows board name + firmware, network mode + IP, connection count, and
-**RUNNING / STOPPED** (tied to the BOOT stop button).
+**RUNNING / STOPPED** (tied to the BOOT stop button). It also shows what you need at the board: the setup
+Wi-Fi's name and password, `PAIRING OPEN` after a double press of BOOT, and the **pairing code** with the
+computer's name while a request waits for the button. **Recommended:** without it the code cannot be compared.
 
 Wiring (XIAO ESP32-S3 default I²C pins):
 

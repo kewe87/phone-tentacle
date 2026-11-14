@@ -1,4 +1,4 @@
-module github.com/onehumanbeing/esp32-iphone-agent/cli
+module github.com/kewe87/phone-tentacle/cli
 
 go 1.26.0
 

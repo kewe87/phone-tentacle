@@ -4,8 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
-	cli "github.com/onehumanbeing/esp32-iphone-agent/cli"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
+	cli "github.com/kewe87/phone-tentacle/cli"
+	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
 )
 
 // skillInstall writes the skill for Claude Code and says how to set up Codex.
@@ -14,7 +14,7 @@ func (a *App) skillInstall() int {
 	if err != nil {
 		return a.fail(err)
 	}
-	dir := filepath.Join(home, ".claude", "skills", "esp32agent")
+	dir := filepath.Join(home, ".claude", "skills", "tentacle")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return a.fail(err)
 	}
@@ -23,8 +23,8 @@ func (a *App) skillInstall() int {
 		return a.fail(err)
 	}
 	return a.print(daemon.Response{Status: "ok", Data: map[string]any{
-		"claude": map[string]string{"skill": path, "mcp": "claude mcp add esp32agent -- esp32agent mcp"},
-		"codex": map[string]string{"mcp": "codex mcp add esp32agent -- esp32agent mcp",
-			"skill": "copy " + path + " to ~/.codex/skills/esp32agent/SKILL.md, or paste it into AGENTS.md"},
+		"claude": map[string]string{"skill": path, "mcp": "claude mcp add tentacle -- tentacle mcp"},
+		"codex": map[string]string{"mcp": "codex mcp add tentacle -- tentacle mcp",
+			"skill": "copy " + path + " to ~/.codex/skills/tentacle/SKILL.md, or paste it into AGENTS.md"},
 	}})
 }

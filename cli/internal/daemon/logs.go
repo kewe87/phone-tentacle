@@ -9,16 +9,16 @@ import (
 	"sync/atomic"
 )
 
-// Debug (ESP32AGENT_DEBUG=1) logs every request's command and outcome to daemon.log.
-var Debug = os.Getenv("ESP32AGENT_DEBUG") == "1"
+// Debug (TENTACLE_DAEMON_DEBUG=1) logs every request's command and outcome to daemon.log.
+var Debug = os.Getenv("TENTACLE_DAEMON_DEBUG") == "1"
 
-// verbose (ESP32AGENT_VERBOSE=1, or any request with --verbose): discovery, connects, the handshake's frames and
+// verbose (TENTACLE_VERBOSE=1, or any request with --verbose): discovery, connects, the handshake's frames and
 // every command's name and timing go to daemon.log, and to the client that asked with --verbose.
 var verbose atomic.Bool
 
-func init() { verbose.Store(os.Getenv("ESP32AGENT_VERBOSE") == "1") }
+func init() { verbose.Store(os.Getenv("TENTACLE_VERBOSE") == "1") }
 
-// boardLog reads the board's RAM log a page at a time (firmware 0.2.3+: "logs <offset> <max>") and its last
+// boardLog reads the board's RAM log a page at a time ("logs <offset> <max>") and its last
 // reset and crash. Older firmware answers neither; that is reported, not an error.
 func (s *Server) boardLog(ctx context.Context, c *Conn) Response {
 	crash, _ := c.Send(ctx, "crash")
@@ -28,7 +28,7 @@ func (s *Server) boardLog(ctx context.Context, c *Conn) Response {
 		reply, err := c.Send(ctx, fmt.Sprintf("logs %d 200", from))
 		if err != nil {
 			if page == 0 {
-				return ok(map[string]string{"crash": crash, "log": "", "note": "this firmware keeps no log (needs 0.2.3 or later)"})
+				return ok(map[string]string{"crash": crash, "log": "", "note": "this firmware keeps no log"})
 			}
 			return fail(err)
 		}

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
+	"github.com/kewe87/phone-tentacle/cli/internal/link"
+	"github.com/kewe87/phone-tentacle/cli/internal/proto"
 )
 
 // progressLines collects what the daemon sends ahead of a response.
@@ -243,7 +243,7 @@ func serveTCP(t *testing.T, b *proto.FakeBoard) (addr string, drop func()) {
 // The whole way: the Wi-Fi transport with the board's address given by hand, pairing with the
 // code, a session, a dropped link and the reconnect, all over a real TCP connection.
 func TestWiFiOnlyOverTCP(t *testing.T) {
-	t.Setenv("ESP32AGENT_NO_PROBE", "1")
+	t.Setenv("TENTACLE_NO_PROBE", "1")
 	b := fakeBoard()
 	var boardCode string
 	b.Boot = func(_, code string) bool { boardCode = code; return true }
@@ -264,7 +264,7 @@ func TestWiFiOnlyOverTCP(t *testing.T) {
 	b.Status(`{"fw":"0.2.5","net":"sta","ip":"127.0.0.1","ap":"idle","link":{"kbps":0}}`)
 	time.Sleep(50 * time.Millisecond)
 	r, data = call(t, c, Request{Cmd: "info"})
-	if r.Status != "ok" || data["fw"] != "0.2.5" || data["name"] != "ESP32 Agent 6AD5" {
+	if r.Status != "ok" || data["fw"] != "0.2.5" || data["name"] != "Tentacle 6AD5" {
 		t.Fatalf("info: %+v", r)
 	}
 	if r, _ := call(t, c, Request{Cmd: "keys", Text: "esc"}); r.Status != "ok" {
@@ -296,11 +296,11 @@ func TestWiFiOnlyOverTCP(t *testing.T) {
 
 // The remembered address is the fallback when mDNS finds nothing.
 func TestRememberedAddress(t *testing.T) {
-	t.Setenv("ESP32AGENT_NO_PROBE", "1")
-	t.Setenv("ESP32AGENT_HOST", "")
+	t.Setenv("TENTACLE_NO_PROBE", "1")
+	t.Setenv("TENTACLE_HOST", "")
 	dir := t.TempDir()
 	w := &link.WiFi{Dir: dir}
-	w.Remember("246f28aa6ad5", link.Found{Name: "ESP32 Agent 6AD5", Addr: "192.0.2.7:7202"})
+	w.Remember("246f28aa6ad5", link.Found{Name: "Tentacle 6AD5", Addr: "192.0.2.7:7202"})
 	found, err := w.Scan(context.Background(), 30*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)

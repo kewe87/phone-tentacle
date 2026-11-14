@@ -6,35 +6,35 @@
  "shared": "c9ea6a3f79a000b60b076d4afc990b272f3f0b5aaa3f0b8713c209273e363863",
  "client_id": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
  "board_id": "246f28aa6ad5",
- "K": "efcbf0a5e51d114b9d6c9570183c9e44cb623c0581ee3ae762c00d6acc18fbf9",
- "pair_mac": "53ce351ad116adba4688e0c848c1fc64",
+ "K": "c07dccb75b1bc3461ff97978252c817f17838929f5ee8e46853bf60960ac1b4b",
+ "pair_mac": "7798e5494589af0a3a0693c8f69845c0",
  "pair_nonce": "303132333435363738393a3b3c3d3e3f",
  "pair_commit": "816b9e7c25d559c5766755b3bbb36654ad451e080ffa93694a793d6eed41f40a",
- "pair_code": "615618",
+ "pair_code": "736717",
  "c_nonce": "101112131415161718191a1b1c1d1e1f",
  "b_nonce": "202122232425262728292a2b2c2d2e2f",
- "k_c2b": "776bc8c110fb6e0440169cfef36ba161",
- "k_b2c": "93478dfeacc3cf696f2764d316a5dff7",
- "hello_mac": "c204a4e56de057834bf60fba723d5ffa",
+ "k_c2b": "f7aa391511dd90a81e1c1a428156d7c8",
+ "k_b2c": "fcd94939cf057d1e0211098b17d96f7a",
+ "hello_mac": "f56acc021dbffef560a8711bb7bb34bd",
  "frame_c": {
   "stream": "C",
   "type": 16,
   "ctr": 1,
   "plain": "63372070696e67",
-  "frame": "100100000068afc0f78c919458f5b70b4012515053649a24"
+  "frame": "1001000000f408fb72dbfb180661172c15ebf19d92f98017"
  },
  "frame_b": {
   "stream": "B",
   "type": 16,
   "ctr": 2,
   "plain": "7237206f6b",
-  "frame": "1002000000caf6fbb8977c45ee4dff70db24f7ebd04d"
+  "frame": "10020000000b79c3cb3399dad58409d400ed0ce6dbf8"
  },
  "frame_v": {
   "stream": "V",
   "type": 17,
   "ctr": 1,
   "plain": "0100050000000001",
-  "frame": "110100000038443201752074c91e78396e0bca7521a4e30a63"
+  "frame": "110100000091c4931fb64b82f0eed8ab2aac6d31f5faf1c93d"
  }
 }

@@ -1,65 +1,51 @@
 ---
-name: handsy
-description: See and drive a real iPhone through an ESP32 Agent (Handsy) board with the esp32agent CLI or MCP server. Use when asked to look at, tap, swipe, type on, or operate an iPhone, or to test an iOS app on a real device.
+name: tentacle
+description: See and drive a real iPhone through a Tentacle board with the tentacle CLI or MCP server. Use when asked to look at, tap, swipe, type on, or operate an iPhone, or to test an iOS app on a real device.
 license: MIT-0
-metadata:
-  openclaw:
-    requires:
-      bins: [npx, ffmpeg]
-    envOptional: [ESP32AGENT_DEVICE]
-    homepage: https://handsy.tech
 ---
 
-# Handsy: drive a real iPhone with esp32agent
+# Tentacle: drive a real iPhone with tentacle
 
-An ESP32 Agent board (Handsy) plugs into the iPhone (USB-C models directly, Lightning models through a Lightning to
-USB Camera Adapter) and acts as the phone's USB mouse and keyboard. It also receives the iPhone's AirPlay screen mirroring. Your computer reaches
-the board over Bluetooth with the `esp32agent` command line tool, which is also an MCP server. No jailbreak is
-needed.
+A Tentacle board plugs into the iPhone and acts as the phone's USB mouse and keyboard. It also receives the
+iPhone's AirPlay screen mirroring. Your computer reaches the board over Wi-Fi with the `tentacle` command line
+tool, which is also an MCP server. No jailbreak and no app on the phone are needed.
 
-iPhone only for now. iPad support is coming soon.
+iPhone only for now.
 
 ## Prerequisites
 
-- A Seeed Studio XIAO ESP32S3 board (8 MB flash, 8 MB PSRAM), or a similar ESP32-S3 board with native USB.
-- Board firmware v0.2.2 or later. Install it in Chrome or Edge at https://handsy.tech/install
-  (one USB data cable, nothing else to install).
+- A Seeed Studio XIAO ESP32S3 board (8 MB flash, 8 MB PSRAM) with the Tentacle firmware, set up on the same
+  Wi-Fi as the computer (the user does this once, on the board's setup hotspot `Tentacle-XXXX`).
 - On the iPhone:
   - AssistiveTouch on (Settings > Accessibility > Touch > AssistiveTouch), so the mouse pointer shows and taps.
-  - Screen Mirroring to the board: join the board's Wi-Fi, then Control Center > Screen Mirroring > ESP32 Agent.
+  - Screen Mirroring to the board: Control Center > Screen Mirroring > Tentacle XXXX. Only the user can start it.
   - The phone unlocked while the agent works.
-- On the computer: Bluetooth, Node.js 18 or later (for `npx`), and `ffmpeg` (needed for screenshots).
-
-## Install
-
-Nothing to install up front; `npx` fetches the CLI:
-
-```sh
-npx -y esp32agent version
-```
-
-Or install it globally with `npm install -g esp32agent` and call `esp32agent` directly. The examples below use
-`npx -y esp32agent`; with a global install, drop the `npx -y`.
+- On the computer: the `tentacle` binary on `PATH` (built from the repository: `cd cli && go build -o tentacle
+  ./cmd/tentacle`) and `ffmpeg` (needed for screenshots).
 
 MCP server (stdio), if your agent does not already have it from this plugin:
 
 ```sh
-claude mcp add esp32agent -- npx -y esp32agent mcp
+claude mcp add tentacle -- tentacle mcp
 ```
 
 Other MCP clients:
 
 ```json
-{ "mcpServers": { "esp32agent": { "command": "npx", "args": ["-y", "esp32agent", "mcp"] } } }
+{ "mcpServers": { "tentacle": { "command": "tentacle", "args": ["mcp"] } } }
 ```
 
-## Pair (once per computer)
+## Pair (once per computer; needs the user at the board)
 
-1. Plug the board into the iPhone. Within 3 minutes run `npx -y esp32agent pair`.
-2. Start Screen Mirroring on the iPhone to ESP32 Agent.
-3. `npx -y esp32agent screenshot` should now save a PNG of the phone's screen.
-4. `npx -y esp32agent calibrate` measures the pointer. It also runs by itself before the earliest tap. It needs
-   the pointer visible on screen.
+1. Ask the user to double-press the BOOT button on the board (two quick presses). Pairing is then open for 60 s.
+2. Run `tentacle pair`. It prints a 6-digit code and waits.
+3. Ask the user to compare the code with the board's display and to press BOOT once more within 30 s.
+4. Ask the user to start Screen Mirroring on the iPhone to Tentacle XXXX.
+5. `tentacle screenshot` should now save a PNG of the phone's screen.
+6. `tentacle calibrate` measures the pointer. It also runs by itself before the earliest tap. It needs the
+   pointer visible on screen.
+
+Never retry `pair` in a loop: the board locks pairing for a while after a request that was not confirmed.
 
 ## MCP tools
 
@@ -72,11 +58,12 @@ Other MCP clients:
 | `type_text` | Type into the focused field (ASCII; Chinese is typed as pinyin) |
 | `press_key` | `enter`, `esc`, `tab`, `backspace`, `space`, arrows, `cmd+a`, `shift+tab` ... |
 | `press_button` | `HOME` only (go to the Home Screen) |
-| `device_info` | Board status: mirroring (`ap`), video frozen (`fz`), app busy (`busy`), `usb`, `ble` |
+| `device_info` | Board status: mirroring (`ap`), video frozen (`fz`), `usb`, `net` |
 | `history` | `action: list` (recent runs) or `show` (one run's steps with their screenshots) |
 | `intent_list`, `intent_show`, `intent_save` | Saved tasks: list, show one, save what worked |
+| `memory_recall`, `memory_add` | What the user asked to remember: search it, add a line |
 
-Every tool takes an optional `device` (board id) when more than one board is nearby.
+Every tool takes an optional `device` (board id) when more than one board is on the network.
 
 ## CLI commands
 
@@ -84,7 +71,7 @@ Every command prints JSON: `{"status":"ok","data":...}` or `{"status":"error","e
 
 | Command | What it does |
 |---|---|
-| `devices` | Boards nearby (`id`, `paired`, `connected`) |
+| `devices` | Boards on this network (`id`, `name`, `paired`) |
 | `pair`, `unpair` | Pair this computer with the board; forget it here |
 | `screenshot [--format png\|jpeg] [--quality N] [--scale F] [--max-size N] [--output PATH\|DIR/\|-]` | Save the screen; prints `filePath` |
 | `io tap X,Y [--aim] [--count N]` | Tap; `--aim` finds the pointer and corrects before tapping |
@@ -95,19 +82,20 @@ Every command prints JSON: `{"status":"ok","data":...}` or `{"status":"error","e
 | `io button HOME` | Home Screen |
 | `device info` | Board status |
 | `calibrate` | Measure the pointer |
+| `listen` | What the phone played in the last 30 s, as words (after `listen on`) |
 | `history list`, `history show RUN\|latest`, `history new` | What was done on the phone; start a new run |
 | `intent list`, `intent show NAME`, `intent save ...`, `intent delete NAME` | Saved tasks |
-| `intent export NAME [--screenshots] [--output FILE]`, `intent import FILE` | Move saved tasks to and from the iOS app |
-| `upgrade [--check]`, `version` | Update the CLI; print its version |
+| `memory search TEXT`, `memory add TEXT` | What the user asked to remember |
 | `mcp` | Run the MCP server on stdio |
 
-With several boards nearby pass `--device <id>` or set `ESP32AGENT_DEVICE`.
+With several boards pass `--device <id>` or set `TENTACLE_DEVICE`. A board that is not found by itself:
+`--host IP` (the address is on the board's display).
 
 ## The see-act loop
 
-1. Take a screenshot (`screenshot` tool, or `esp32agent screenshot` and read the PNG at `filePath`).
+1. Take a screenshot (`screenshot` tool, or `tentacle screenshot` and read the PNG at `filePath`).
    It waits until the screen has settled after your last action.
-2. Decide one action from what you see.
+2. Decide on one action.
 3. Do that one action, with coordinates in pixels of that full-size screenshot. If you used `--scale` or
    `--max-size`, convert the coordinates back to full size.
 4. Take another screenshot and check the result before the next step. Never chain several taps blind.
@@ -141,22 +129,22 @@ You are using a real phone with the owner's accounts, money and contacts.
 - Do not read or copy private content (messages, photos, codes, passwords) beyond what the task needs.
 - If a screen asks for a password, passcode, Face ID or a one-time code, stop and hand it to the user.
 - Stop and ask when the screen is not what you expected.
+- `stopped (safety button)` means the user pressed the stop button on the board. Stop, and ask before going on.
 
 ## Troubleshooting
 
 | Error or symptom | What to do |
 |---|---|
-| `not paired` | Replug the board into the iPhone and run `pair` within 3 minutes |
-| `screen mirroring is off` | Ask the user to start Screen Mirroring to ESP32 Agent |
+| `not paired` | Ask the user to double-press BOOT, run `pair`, and ask them to press BOOT once more when the code shows |
+| `pairing closed` | The board was not double-pressed in the last 60 s; ask the user to do it, then `pair` |
+| `not found on the network` | The board is off, on another Wi-Fi, or not set up yet; ask the user (its address can be given with `--host IP`) |
+| `screen mirroring is off` | Ask the user to start Screen Mirroring to Tentacle XXXX |
 | `video frozen` | Ask the user to stop and restart Screen Mirroring |
 | `phone usb asleep` | The phone is locked; ask the user to unlock it |
-| `busy: the app is using the phone` | The ESP32 Agent iOS app is driving the phone. Wait and retry later |
-| `no cli service (firmware too old?)` | Update the board firmware to v0.2.2 or later at https://handsy.tech/install |
-| `not supported on ESP32 Agent` | There is no app list, UI tree or file access; work from screenshots |
+| `stopped (safety button)` | The user stopped all input at the board. Ask before going on |
+| `not supported on Tentacle` | There is no app list, UI tree or file access; work from screenshots |
 | Taps land off target | Make sure AssistiveTouch is on and the pointer is visible, run `calibrate`, or use `io tap --aim` |
 | Screenshot fails | Check that `ffmpeg` is installed and Screen Mirroring is on |
 
-Limits: screenshots can be up to about a second behind and animations look choppy. Typing is ASCII only, one key
-per character. HOME is the only button: no volume or power buttons, and no installing or launching apps directly.
-
-Help: support@handsy.tech · https://handsy.tech
+Limits: screenshots can be a moment behind and animations look choppy. Typing is ASCII only, one key per
+character. HOME is the only button: no volume or power buttons, and no installing or launching apps directly.

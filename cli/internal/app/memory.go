@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/memory"
+	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
+	"github.com/kewe87/phone-tentacle/cli/internal/memory"
 )
 
 func (a *App) memories() memory.Store { return memory.Store{Dir: filepath.Join(a.Dir, "memory")} }
 
-// memory: the app's MEMORY.md on this computer (Settings › Memory exports and imports the same file).
+// memory: MEMORY.md on this computer, in the format of the upstream app's export.
 func (a *App) memory(args []string) int {
 	fs := newFS(new(string))
 	kind := fs.String("kind", "fact", "preference | fact | app")
@@ -69,7 +69,7 @@ func (a *App) memory(args []string) int {
 		return ok(map[string]any{"filePath": path, "memories": len(es)})
 	case "import":
 		if len(pos) != 2 {
-			return a.fail(errors.New("usage: esp32agent memory import FILE"))
+			return a.fail(errors.New("usage: tentacle memory import FILE"))
 		}
 		data, err := os.ReadFile(pos[1])
 		if err != nil {
@@ -81,5 +81,5 @@ func (a *App) memory(args []string) int {
 		}
 		return ok(map[string]int{"added": added, "updated": updated})
 	}
-	return a.fail(errors.New("usage: esp32agent memory list | add TEXT | rm ID | search TEXT | export | import FILE"))
+	return a.fail(errors.New("usage: tentacle memory list | add TEXT | rm ID | search TEXT | export | import FILE"))
 }

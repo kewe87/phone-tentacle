@@ -1,39 +1,51 @@
-# esp32agent
+# tentacle
 
-English · [简体中文](README.zh-CN.md)
+Command line and MCP server that let a computer (and the AI assistant on it, such as Claude Code or Codex) see
+and drive an iPhone through a [Tentacle](../README.md) board. The board is plugged into the iPhone as its USB
+mouse and keyboard and receives its AirPlay screen mirroring; the computer reaches it over Wi-Fi (TCP 7202,
+found by mDNS). Commands and JSON output follow [mobilecli](https://github.com/mobile-next/mobilecli).
 
-Command line and MCP server that let a computer (and the coding agent on it: Claude Code, Codex) see and drive an
-iPhone through an ESP32 Agent board. The board is plugged into the iPhone as its USB mouse and keyboard and receives
-its AirPlay screen mirroring; the computer reaches it over Bluetooth, or over Wi-Fi when both are on the same network, next to the iOS app. Commands and JSON output
-follow [mobilecli](https://github.com/mobile-next/mobilecli).
+> Not yet tested against a real board. The tests run against a fake board in Go and against a simulated board
+> built from the firmware's own link code (`hardware/tests/sim`).
 
-## Install
+## Build
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/onehumanbeing/esp32-iphone-agent/main/cli/install/install.sh | sh
+cd cli
+go build -o tentacle ./cmd/tentacle        # Windows: -o tentacle.exe
 ```
 
-Windows (PowerShell): `irm https://raw.githubusercontent.com/onehumanbeing/esp32-iphone-agent/main/cli/install/install.ps1 | iex`.
-npm: `npm install -g esp32agent`. The scripts read the release list at `https://handsy.tech/cli/versions.json`
-(falling back to GitHub Releases) and check the archive's SHA-256. Screenshots need `ffmpeg` (the installers offer
-brew / apt / dnf / winget). Later: `esp32agent upgrade`.
+Put the binary on your `PATH`. Screenshots need `ffmpeg` (`winget install Gyan.FFmpeg`, `brew install ffmpeg`,
+`apt install ffmpeg`).
+
+There are no releases yet. Once there are, [`install/install.sh`](install/install.sh) and
+[`install/install.ps1`](install/install.ps1) download a release from GitHub and check its SHA-256, and
+[`npm/`](npm/) wraps the same download; none of them has anything to fetch today.
 
 ## Pair
 
-1. Plug the board into the iPhone. Within 3 minutes: `esp32agent pair`.
-2. On the iPhone: Control Center > Screen Mirroring > ESP32 Agent.
-3. `esp32agent screenshot` should now write a PNG of the phone's screen.
+The board has to be on your Wi-Fi first (its setup hotspot `Tentacle-XXXX` and the page on it: see the
+[main README](../README.md#setup-step-by-step)).
 
-Pairing is done by the CLI itself (X25519 key exchange, then AES-GCM sessions; see `docs/cli-protocol.md`),
-never by the OS, so stale Bluetooth bonds don't matter. Keys live in the user config dir
-(`~/Library/Application Support/esp32agent`, `~/.config/esp32agent`, `%AppData%\esp32agent`), mode 0600.
+1. `tentacle devices` lists the boards on this network.
+2. Double-press BOOT on the board: pairing is open for 60 s (`tentacle pair` waits up to 60 s for that).
+3. `tentacle pair` prints a 6-digit code. Compare it with the board's display, then press BOOT once more within
+   30 s.
+4. On the iPhone (same Wi-Fi): Control Center > Screen Mirroring > Tentacle XXXX.
+5. `tentacle screenshot` should now write a PNG of the phone's screen.
+
+Pairing is an X25519 key exchange confirmed at the board; sessions are AES-GCM (see
+[`docs/cli-protocol.md`](../docs/cli-protocol.md)). Keys live in the user config dir
+(`%AppData%\tentacle`, `~/Library/Application Support/tentacle`, `~/.config/tentacle`; `TENTACLE_HOME`
+overrides it), mode 0600.
 
 ## Commands
 
 | Command | |
 |---|---|
-| `devices` | boards nearby (`id`, `paired`, `connected`) |
-| `pair`, `unpair` | pair this computer; forget the board here |
+| `devices` | boards on this network (`id`, `name`, `paired`, address, firmware, whether pairing is open) |
+| `pair` | pair this computer (double-press BOOT first, then confirm the code with BOOT) |
+| `unpair [--board]` | forget the board here; `--board`: the board forgets every paired computer too |
 | `screenshot [--format png\|jpeg] [--quality N] [--scale F] [--max-size N] [--output PATH\|DIR/\|-]` | the screen after the last action settled; default a file in the current directory |
 | `io tap X,Y [--aim] [--count N]` | coordinates are pixels of a full-size screenshot; `--count 2` double-taps |
 | `io longpress X,Y [--duration MS]` | |
@@ -42,102 +54,97 @@ never by the OS, so stale Bluetooth bonds don't matter. Keys live in the user co
 | `io keys COMBO` | `enter`, `esc`, `tab`, `backspace`, `space`, arrows, `cmd+a`, `shift+tab` ... |
 | `io button HOME` | the only button |
 | `screencapture --format h264\|mjpeg` | live video to stdout, e.g. `\| ffplay -` |
-| `device info` | board status: `ap` (mirroring), `fz` (video frozen), `busy` (the app holds the phone), `usb`, `ble` |
+| `device info` | board status: `ap` (mirroring), `fz` (video frozen), `usb`, `net`, `ip`, `fw` |
 | `calibrate` | measure the pointer (runs by itself on the first tap; needs the pointer visible) |
-| `net` | the CLI's link (`via`: `ble` or `wifi`) and the board's Wi-Fi. With this computer on the board's network (same Wi-Fi, or its hotspot) commands and video go over Wi-Fi; BLE stays as the way back |
-| `net join` | asks for your Wi-Fi's name and password (not echoed), sends them to the board over the Bluetooth session, and waits until the link moves to Wi-Fi. `net join SSID [PASSWORD]` does it without asking. The iPhone mirrors over that Wi-Fi too |
-| `net hotspot` | the board opens its own hotspot again |
-| `net via auto\|ble` | `ble` keeps the session on BLE (also `ESP32AGENT_TRANSPORT=ble`) |
+| `net` | the board's Wi-Fi |
+| `net join [SSID [PASSWORD]]` | the board moves to another Wi-Fi; without arguments it asks for name and password (not echoed). Sent over the encrypted session. The iPhone has to mirror over that Wi-Fi too |
+| `net hotspot` | the board forgets its Wi-Fi and opens its setup hotspot again |
 | `listen` | what the iPhone played in the last 30 s (a video, a call, an app's voice) as words, or why it can't be heard |
-| `listen on\|off` | hear the phone's sound while it mirrors (off by default; kept in the config) |
-| `listen mode phone\|local` | `phone` (default): the words the ESP32 Agent app transcribed on the iPhone (turn on Settings › Listen to phone audio and Share with the computer there). `local`: the raw audio over Wi-Fi, transcribed here by whisper.cpp |
-| `listen lang CODE\|none` | `local`: the language besides English, e.g. `zh` (default: this computer's language) |
-| `history list`, `history show RUN\|latest`, `history new` | what was done on the phone: runs (newest first, 30), one run's steps; start a new run |
+| `listen on\|off` | hear the phone's sound while it mirrors (off by default; kept in the config). The words are made on this computer by whisper.cpp |
+| `listen lang CODE\|none` | the language besides English, e.g. `de` (default: this computer's language) |
+| `history list`, `history show RUN\|latest`, `history new` | what was done on the phone: runs (newest first), one run's steps; start a new run |
 | `intent list`, `intent show NAME\|ID` | saved intents |
 | `intent save --name N --prompt P [--hint H ...] [--from-run RUN [--steps 1,3,4]]` | save an intent; steps are the run's replayable moves (all, or the numbers from `history show`) |
 | `intent delete NAME\|ID` | |
-| `intent export NAME\|ID... [--screenshots] [--output FILE]` | `.esp32intent` file the iOS app imports; reference screens only with `--screenshots` |
-| `intent import FILE` | an `.esp32intent` file (from the app or `export`); ones already saved under the same name and prompt are skipped |
+| `intent export NAME\|ID... [--screenshots] [--output FILE]`, `intent import FILE` | one `.esp32intent` file, to move intents to another computer; reference screens only with `--screenshots` |
 | `memory list`, `memory search TEXT [--limit N]` | what the agent remembers, the most related first |
 | `memory add TEXT [--kind preference\|fact\|app] [--topic APP]` | remember one line; passwords, codes and card or ID numbers are refused |
 | `memory rm ID` | |
-| `memory export [--output FILE]`, `memory import FILE` | the app's `MEMORY.md`; on import an entry with the same id or words keeps the newer one |
-| `report --intent NAME [--screenshots]` | prepare a mail with one intent for the developer (see below); interactive |
-| `upgrade [--check] [--force]` | install the latest release (`--check`: `current`, `latest`, `update_available`) |
+| `memory export [--output FILE]`, `memory import FILE` | a copy of `MEMORY.md`; on import an entry with the same id or words keeps the newer one |
+| `logs [--board] [--save]` | the CLI's log; `--board`: the board's own log; `--save`: both in one file. Nothing is sent anywhere |
 | `mcp` | MCP server on stdio |
-| `skill install` | writes the agent skill to `~/.claude/skills/esp32agent/` |
+| `skill install` | writes the agent skill to `~/.claude/skills/tentacle/` |
 | `daemon [stop]`, `version` | |
 
-With several boards around pass `--device <id>` (the 12-hex id or the 4 hex digits of its name) or set
-`ESP32AGENT_DEVICE`. Output is `{"status":"ok","data":...}` or `{"status":"error","error":"..."}` (exit code 1).
-mobilecli commands that need an on-device agent (`apps`, `dump ui`, `fs`, `webview`, ...) answer
-`not supported on ESP32 Agent`.
+Options and environment:
 
-The first command starts a background `esp32agent daemon` that holds the Bluetooth session and decodes the video;
-commands reach it over a unix socket in the config dir (log: `daemon.log` there). It exits after 10 minutes idle.
+- `--device ID` or `TENTACLE_DEVICE`: which board, when several are around (the 12-hex id or the 4 hex digits of
+  its name).
+- `--host IP[:PORT]` or `TENTACLE_HOST`: the board's address, when it is not found by itself (`--host auto`: find
+  again). The address is on the board's display.
+- `--verbose` or `TENTACLE_VERBOSE=1`: how the board is found, the handshake and timings (also in the daemon's
+  log). `TENTACLE_DAEMON_DEBUG=1` logs every request's command and outcome.
+
+Output is `{"status":"ok","data":...}` or `{"status":"error","error":"..."}` (exit code 1). mobilecli commands
+that need an agent on the device (`apps`, `dump ui`, `fs`, `webview`, ...) answer `not supported on Tentacle`.
+
+The first command starts a background `tentacle daemon` that holds the session with the board and decodes the
+video; commands reach it over a local socket in the config dir (log: `daemon.log` there). It exits after 10
+minutes idle.
 
 ## Agents
 
 ```sh
-claude mcp add esp32agent -- esp32agent mcp      # Claude Code
-codex mcp add esp32agent -- esp32agent mcp       # Codex
-esp32agent skill install                         # Claude Code skill (the loop, typing rules)
+claude mcp add tentacle -- tentacle mcp      # Claude Code
+codex mcp add tentacle -- tentacle mcp       # Codex
+tentacle skill install                       # Claude Code skill (the loop, typing rules)
 ```
 
-MCP tools: `screenshot` (returns the image), `tap`, `longpress`, `swipe`, `type_text`, `press_key`, `press_button`,
-`device_info`, and `history`, `intent_list`, `intent_show`, `intent_save`, `memory_recall`, `memory_add`. The loop is screenshot, decide, one action,
-screenshot: see [SKILL.md](SKILL.md).
+MCP tools: `screenshot` (returns the image), `tap`, `longpress`, `swipe`, `type_text`, `press_key`,
+`press_button`, `device_info`, and `history`, `intent_list`, `intent_show`, `intent_save`, `memory_recall`,
+`memory_add`. The loop is screenshot, decide, one action, screenshot: see [SKILL.md](SKILL.md).
 
 ## History and intents
 
-The daemon records every action and screenshot as the iOS app records its runs: `runs/<yyyyMMdd-HHmmss>/steps.jsonl`
-in the config dir (actions in 0-1000 screen units, screens as 480-wide JPEGs). A new run starts after 10 minutes
-idle or with `history new`; the newest 100 are kept. Nothing leaves the computer.
+The daemon records every action and screenshot: `runs/<yyyyMMdd-HHmmss>/steps.jsonl` in the config dir (actions
+in 0-1000 screen units, screens as 480-wide JPEGs). A new run starts after 10 minutes idle or with `history new`;
+the newest 100 are kept. Nothing leaves the computer.
 
 An intent is a saved task: name, prompt, up to 6 hints and recorded steps with their screens (`intents.json` and
-`intent-frames/<id>/` in the config dir, the app's fields). `intent save --from-run RUN` takes the run's replayable
-moves (tap, swipe, type, key, home). `intent export` and `intent import` use the app's `.esp32intent` format, so
-intents move between the CLI and the iPhone app (AirDrop or Files).
+`intent-frames/<id>/` in the config dir). `intent save --from-run RUN` takes the run's replayable moves (tap,
+swipe, type, key, home).
 
 ## Memory
 
-The iOS app keeps what the user told it (preferences, facts, how an app works) in `MEMORY.md`, one entry per
-line under a dated header. The CLI keeps the same file in `memory/MEMORY.md` in the config dir. To move it: in the
-app, Settings › Memory › ⋯ › Export MEMORY.md (AirDrop or Files), then `esp32agent memory import FILE`; the other
-way, `esp32agent memory export` and Settings › Memory › ⋯ › Import. Nothing is synced through a server.
+What the user told the agent (preferences, facts, how an app works) is kept in `memory/MEMORY.md` in the config
+dir, one entry per line under a dated header. Nothing is synced anywhere.
 
-## Share an intent with the developer (optional)
-
-`esp32agent report --intent NAME [--screenshots]` helps improve intents for everyone. It only runs in a terminal
-you type in (agents can't call it, and there is no MCP tool for it). It writes a redacted `.esp32intent` to a temp
-folder: typed text becomes `•••`, IP addresses are removed, and with `--screenshots` each screen gets the top 7%
-(status bar, notifications) blacked out and is shrunk to 480 px wide; other text on the screens stays readable.
-It prints exactly what the file holds (name, prompt, hints, step count, screenshots, path) and continues only when
-you type `y`: then it opens a mail to `intents@handsy.tech` in your mail app and shows the file. Attach it and send
-it yourself; esp32agent never sends anything.
+The file formats of runs, intents (`.esp32intent`) and `MEMORY.md` are those of the original project's iPhone
+app, which Tentacle does not have; they are kept as they were.
 
 ## Limits
 
-- The iOS app has priority: while it drives the phone (and 20 s after), pointer and keyboard commands fail with
-  `busy: the app is using the phone`. Wait and retry.
-- Over Bluetooth, screenshots can lag up to about a second and animations are choppy; over Wi-Fi they are close to live.
+- Video comes at a few frames a second: a screenshot can be a moment behind, animations look choppy.
 - Taps are relative mouse moves, dead-reckoned from the top-left corner and re-homed every 10 gestures; accuracy
   depends on calibration (`calibrate`, `io tap --aim`).
 - Typing is ASCII only (one key per character); no clipboard, no volume/power buttons, no app install or launch.
-- Phone audio: words only, and they can be misheard. `listen mode local` needs Wi-Fi (not Bluetooth),
-  `brew install whisper-cpp` (or a build of whisper.cpp's `whisper-cli` on PATH) and the model
-  `ggml-base.bin` in the config dir's `whisper/` folder; `listen mode local` says what is missing.
+- Phone audio: words only, and they can be misheard. It needs whisper.cpp's `whisper-cli` on `PATH` (e.g.
+  `brew install whisper-cpp`) and the model `ggml-base.bin` in the config dir's `whisper/` folder; `listen` says
+  what is missing.
+- While the stop button on the board is on, input commands fail with `stopped (safety button)`.
 
 ## Development
 
 ```sh
 cd cli && go vet ./... && go test ./...
 make -C hardware/tests/sim      # simulated board (the firmware's cli_link.cpp): enables the integration test
-ESP32AGENT_SIM=$PWD/hardware/tests/sim/cli_sim esp32agent screenshot   # the CLI against the simulator
+TENTACLE_SIM=$PWD/hardware/tests/sim/cli_sim tentacle screenshot   # the CLI against the simulator
 ```
 
-Release: push a tag `cli-vX.Y.Z`; `.github/workflows/cli.yml` builds darwin (cgo, CoreBluetooth), linux and
-windows (pure Go) for amd64/arm64 and uploads the archives with `checksums.txt`. It also leaves a `versions.json`
-artifact ([format](install/versions.example.json)); merging it into `https://handsy.tech/cli/versions.json` is
-manual. `ESP32AGENT_VERSIONS_URL` points `upgrade` and the installers at another list (tests). Installer testing:
-`ESP32AGENT_ARCHIVE=/path/esp32agent_darwin_arm64.tar.gz sh cli/install/install.sh` (checksums.txt next to it).
+Release: push a tag `cli-vX.Y.Z`; `.github/workflows/cli.yml` builds darwin, linux and windows for amd64/arm64
+and uploads the archives with `checksums.txt` to a GitHub release. Installer testing:
+`TENTACLE_ARCHIVE=/path/tentacle_darwin_arm64.tar.gz sh cli/install/install.sh` (checksums.txt next to it).
+
+---
+
+Based on [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan (MIT).

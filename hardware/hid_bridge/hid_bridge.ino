@@ -1,6 +1,6 @@
 // HID bridge: an ESP32-S3 (XIAO, 8 MB PSRAM) plugged into the iPhone. It is the phone's
 // USB mouse + keyboard and an AirPlay screen-mirroring receiver. It holds no logic: the computer's CLI decides
-// (docs/cli-protocol.md). The CLI finds the board on the Wi-Fi by mDNS (_esp32agent._tcp), pairs and talks on
+// (docs/cli-protocol.md). The CLI finds the board on the Wi-Fi by mDNS (_tentacle._tcp), pairs and talks on
 // TCP 7202 (cli_tcp.h). There is no Bluetooth and no phone app.
 //
 // HID commands (the board answers "ok" or "err <why>"):
@@ -54,7 +54,7 @@ USBHIDMouse mouse;
 USBHIDKeyboard keyboard;
 USBHIDConsumerControl consumer;
 const uint16_t AC_HOME = 0x0223;  // HID consumer page: AC Home
-static String receiverName = BOARD_NAME_TEXT;
+static String receiverName = BOARD_NAME_TEXT;  // startAirplay() adds the board's suffix: "Tentacle 1A2B"
 
 void movePaced(long dx, long dy, int step = STEP) {
   pace_t p;
@@ -162,7 +162,7 @@ static void display_poll() {  // ~2 Hz from loop()
   } else if (pair_window_open(&left)) {  // BOOT was double-pressed: a computer may ask to pair now
     snprintf(l1, sizeof l1, "PAIRING OPEN");
     snprintf(l2, sizeof l2, "On the computer run:");
-    snprintf(l3, sizeof l3, "esp32agent pair");
+    snprintf(l3, sizeof l3, "tentacle pair");
     snprintf(l4, sizeof l4, "%lu s left", (unsigned long)((left + 999) / 1000));
   } else if (net_setup_active()) {  // no Wi-Fi stored: how to reach the setup page
     snprintf(l1, sizeof l1, "Wi-Fi setup: join");
@@ -467,6 +467,8 @@ void logLine(const char *msg) {
 
 void startAirplay() {
   static airplay_cfg cfg;
+  // What the iPhone lists under Screen Mirroring: the same name the CLI sees ("Tentacle 1A2B"), so two boards differ.
+  receiverName = String(BOARD_NAME_TEXT) + " " + board_suffix();
   cfg.name = receiverName.c_str();
   esp_read_mac(cfg.hwaddr, ESP_MAC_WIFI_STA);
   cfg_ed25519_seed(cfg.ed25519_seed);
@@ -485,7 +487,7 @@ void startAirplay() {
 // responder the AirPlay receiver started (src/airplay/mdns.c; same host name, no second responder). The TXT record
 // holds nothing secret: the board id, its name, the firmware version, how many computers are paired, and whether
 // the pairing window is open (so the CLI can say "double-press BOOT first" before it connects).
-static const char *const CLI_SERVICE = "_esp32agent";
+static const char *const CLI_SERVICE = "_tentacle";
 static int advertisedPaired = -1, advertisedOpen = 0;
 
 static void advertiseCli() {
@@ -531,7 +533,7 @@ void setup() {
   mouse.begin();
   keyboard.begin();
   consumer.begin();
-  USB.productName("HID Bridge");
+  USB.productName("Tentacle");
   USB.begin();
   esp_task_wdt_config_t wdt = {.timeout_ms = WATCHDOG_MS, .idle_core_mask = 0, .trigger_panic = true};
   esp_task_wdt_reconfigure(&wdt);

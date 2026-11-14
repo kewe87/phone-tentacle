@@ -1,6 +1,6 @@
 // Package memory is the iOS app's long-term memory (MEMORY.md) on the computer: the same file format, recall and
 // sensitive-line filter as ios/IPhoneAgent/Services/MemoryStore.swift, so a file moves between them with
-// `esp32agent memory export` / `import` and the app's Settings › Memory.
+// `tentacle memory export` / `import` and the upstream app's Settings › Memory.
 //
 //	<!-- 2026-11-02 10:12:03 [a1b2c3d4] -->
 //	#preference [[bilibili]] Favorites are under Me › Favorites.
@@ -19,10 +19,10 @@ import (
 	"unicode"
 )
 
-// Kinds, as the app writes them.
+// Kinds, as the upstream app writes them.
 var Kinds = []string{"preference", "fact", "app"}
 
-// MaxChars is the longest line the app keeps.
+// MaxChars is the longest line the upstream app keeps.
 const MaxChars = 300
 
 const stamp = "2006-01-02 15:04:05"
@@ -81,7 +81,7 @@ func Parse(text string) []Entry {
 	return out
 }
 
-// Render writes MEMORY.md exactly as the app does.
+// Render writes MEMORY.md exactly as the upstream app does.
 func Render(entries []Entry) string {
 	parts := make([]string, len(entries))
 	for i, e := range entries {
@@ -127,7 +127,7 @@ func Merged(mine, theirs []Entry) (out []Entry, added, updated int) {
 	return out, added, updated
 }
 
-// Recall: the entries most like the query, best first (character bigrams, the app's scoring).
+// Recall: the entries most like the query, best first (character bigrams, the upstream app's scoring).
 func Recall(entries []Entry, query string, limit int) []Entry {
 	type scored struct {
 		e Entry

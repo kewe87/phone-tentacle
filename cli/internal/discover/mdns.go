@@ -1,4 +1,4 @@
-// Package discover finds boards on the local network: by mDNS / DNS-SD (the board announces _esp32agent._tcp on
+// Package discover finds boards on the local network: by mDNS / DNS-SD (the board announces _tentacle._tcp on
 // port 7202, docs/cli-protocol.md, "Discovery"), and as a last resort by trying that port on the local subnets.
 // A small implementation of its own, so the CLI needs no mDNS library and no service on the computer.
 package discover
@@ -16,7 +16,7 @@ import (
 )
 
 // Service is the DNS-SD service the board registers.
-const Service = "_esp32agent._tcp.local."
+const Service = "_tentacle._tcp.local."
 
 // Port is the board's CLI link (TCP).
 const Port = 7202
@@ -25,7 +25,7 @@ var mdnsGroup = &net.UDPAddr{IP: net.IPv4(224, 0, 0, 251), Port: 5353}
 
 // Board is one answer.
 type Board struct {
-	Instance string // "ESP32 Agent 6AD5"
+	Instance string // "Tentacle 6AD5"
 	ID       string // board id, 12 hex (TXT id)
 	Name     string // TXT name
 	FW       string // TXT fw

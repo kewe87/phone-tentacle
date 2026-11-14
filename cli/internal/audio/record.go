@@ -1,4 +1,4 @@
-// Package audio is what the phone plays while it mirrors (AirPlay audio), for `esp32agent listen`: the board's
+// Package audio is what the phone plays while it mirrors (AirPlay audio), for `tentacle listen`: the board's
 // audio records cut into segments of sound, their transcription on this computer, and the Heard text
 // the agent reads (docs/cli-protocol.md, "Phone audio").
 package audio

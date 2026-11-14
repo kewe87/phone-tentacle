@@ -1,4 +1,4 @@
-# Simulated board for the esp32agent CLI: make -C hardware/tests/sim (see cli_sim.cpp).
+# Simulated board for the tentacle CLI: make -C hardware/tests/sim (see cli_sim.cpp).
 HB = ../../hid_bridge
 # mbedtls 3.x (4.x dropped the ECP API): Homebrew's mbedtls@3, an older Homebrew mbedtls, or the system one (apt libmbedtls-dev)
 BREW := $(shell brew --prefix 2>/dev/null)

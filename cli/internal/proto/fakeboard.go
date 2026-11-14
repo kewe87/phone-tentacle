@@ -101,7 +101,7 @@ func (c *fakeConn) Write(f []byte) error {
 			return nil
 		}
 		if len(f) == 1+keySize+idSize {
-			c.send(append([]byte{TError}, "this CLI is too old to pair: update esp32agent"...))
+			c.send(append([]byte{TError}, "this CLI is too old to pair: update tentacle"...))
 			return nil
 		}
 		if len(f) < 1+keySize+idSize+sha256Len || len(f) > 1+keySize+idSize+sha256Len+PairNameMax {

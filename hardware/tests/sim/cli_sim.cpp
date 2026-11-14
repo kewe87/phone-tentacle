@@ -1,4 +1,4 @@
-// A simulated board for the esp32agent CLI: the real cli_link.cpp (pairing with the BOOT button, sessions, sealed
+// A simulated board for the tentacle CLI: the real cli_link.cpp (pairing with the BOOT button, sessions, sealed
 // frames) behind a pipe that stands for the Wi-Fi link (TCP 7202), with an H.264 file as the mirrored screen.
 // Usage (the CLI's sim transport runs it):
 //   cli_sim [screen.h264]      stdin/stdout: records [u16 LE length][frame]; length 0 = the link dropped

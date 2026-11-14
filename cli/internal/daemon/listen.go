@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/audio"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/video"
+	"github.com/kewe87/phone-tentacle/cli/internal/audio"
+	"github.com/kewe87/phone-tentacle/cli/internal/config"
+	"github.com/kewe87/phone-tentacle/cli/internal/video"
 )
 
-// What the phone plays while it mirrors, for `esp32agent listen` (docs/cli-protocol.md, "Phone audio"): the board
+// What the phone plays while it mirrors, for `tentacle listen` (docs/cli-protocol.md, "Phone audio"): the board
 // sends the raw audio, whisper.cpp transcribes it here.
 
 // hearing is a Conn's audio state.
@@ -161,7 +161,7 @@ func (s *Server) heard(c *Conn, l config.Listen) map[string]any {
 	out := map[string]any{"on": l.On, "second": l.Second}
 	text := ""
 	if !l.On {
-		text = "Phone audio: listening is off (esp32agent listen on), so the phone's sound is not heard."
+		text = "Phone audio: listening is off (tentacle listen on), so the phone's sound is not heard."
 	} else {
 		local := s.local()
 		how := "words transcribed on this computer by whisper.cpp"

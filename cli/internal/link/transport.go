@@ -1,5 +1,5 @@
 // Package link finds boards and opens links to them: over Wi-Fi (wifi.go: mDNS and TCP 7202), or to the simulated
-// board (hardware/tests/sim) when ESP32AGENT_SIM is set.
+// board (hardware/tests/sim) when TENTACLE_SIM is set.
 package link
 
 import (
@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
+	"github.com/kewe87/phone-tentacle/cli/internal/proto"
 )
 
 // Found is one board that was found.
@@ -24,7 +24,7 @@ type Found struct {
 	Source string // how it was found: "mdns", "remembered", "host", "probe"; "" for the simulator
 }
 
-// Suffix is the board id's last 4 hex digits: from the id, else from the name ("ESP32 Agent 6AD5" → "6ad5").
+// Suffix is the board id's last 4 hex digits: from the id, else from the name ("Tentacle 6AD5" → "6ad5").
 func (f Found) Suffix() string {
 	if len(f.ID) == 12 {
 		return strings.ToLower(f.ID[8:])
@@ -42,11 +42,11 @@ type Transport interface {
 	Connect(ctx context.Context, f Found) (proto.Link, error)
 }
 
-// Default is the simulated board when ESP32AGENT_SIM names its binary, otherwise Wi-Fi. dir is the config dir
+// Default is the simulated board when TENTACLE_SIM names its binary, otherwise Wi-Fi. dir is the config dir
 // (remembered addresses).
 func Default(dir string) Transport {
-	if sim := os.Getenv("ESP32AGENT_SIM"); sim != "" {
-		return &Sim{Bin: sim, Screen: os.Getenv("ESP32AGENT_SIM_SCREEN")}
+	if sim := os.Getenv("TENTACLE_SIM"); sim != "" {
+		return &Sim{Bin: sim, Screen: os.Getenv("TENTACLE_SIM_SCREEN")}
 	}
 	return &WiFi{Dir: dir}
 }

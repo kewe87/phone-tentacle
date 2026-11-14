@@ -530,7 +530,7 @@ func (p *Pointer) Type(ctx context.Context, text string) (string, error) {
 
 func (p *Pointer) Key(ctx context.Context, combo string) error { return p.send(ctx, "key %s", combo) }
 
-// GoHome goes to the Home Screen like the app's leaveApp: the consumer-control Home key, then Cmd+H, then the flick
+// GoHome goes to the Home Screen like the upstream app's leaveApp: the consumer-control Home key, then Cmd+H, then the flick
 // up from the home bar, each until the screen really changes. The board acknowledges a key iOS ignores (seen on
 // an iPhone in a video app, 2026-10-21), so an "ok" alone proves nothing; without video the key's "ok" is all there is.
 func (p *Pointer) GoHome(ctx context.Context) error {

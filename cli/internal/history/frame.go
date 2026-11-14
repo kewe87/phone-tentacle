@@ -9,7 +9,7 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// Width and Quality of saved screens (the app's IntentShare: 480 wide, JPEG 0.6).
+// Width and Quality of saved screens (the upstream app's IntentShare: 480 wide, JPEG 0.6).
 const (
 	Width   = 480
 	Quality = 60

@@ -1,6 +1,6 @@
 # CLI protocol (ESP32 ⇄ computer, over Wi-Fi)
 
-The `esp32agent` CLI finds the board on the local network (mDNS), pairs with it and talks to it on **TCP port
+The `tentacle` CLI finds the board on the local network (mDNS), pairs with it and talks to it on **TCP port
 7202**. That is the board's only link to a computer: the firmware has no Bluetooth and there is no phone app. The
 link is authenticated and encrypted here, in the application layer; pairing is confirmed by a person at the board,
 with its BOOT button.
@@ -10,12 +10,12 @@ the setup hotspot is up. Firmware updates go over USB.
 
 ## Discovery
 The board announces itself by **mDNS / DNS-SD** on whatever network it is on (its Wi-Fi, or its own setup
-hotspot), through the same responder as its AirPlay receiver (host `iphone-agent.local`):
+hotspot), through the same responder as its AirPlay receiver (host `tentacle.local`):
 
 | | |
 |---|---|
-| Service | `_esp32agent._tcp.local`, port 7202 |
-| Instance | the board's name and id suffix, e.g. `ESP32 Agent 6AD5` |
+| Service | `_tentacle._tcp.local`, port 7202 |
+| Instance | the board's name and id suffix, e.g. `Tentacle 6AD5` |
 | TXT `id` | board id, 12 hex digits |
 | TXT `name` | as the instance |
 | TXT `fw` | firmware version |
@@ -30,14 +30,14 @@ switches): one PTR question for the service with the unicast-response bit, sent 
 224.0.0.251:5353 at 0, 0.25, 1 and 2.5 s. The board answers straight to that port (PTR, and SRV, TXT, A in the
 additional section). The CLI takes the answer's source address as the board's, stops 0.6 s after the first answer
 (4 s without one), and also listens on the mDNS group where it can. In this order it uses:
-1. an address given by hand: `--host IP[:PORT]` or `ESP32AGENT_HOST` (`--host auto` goes back to finding);
+1. an address given by hand: `--host IP[:PORT]` or `TENTACLE_HOST` (`--host auto` goes back to finding);
 2. mDNS;
 3. the address each board had last time (`hosts.json` in the CLI's config dir);
 4. if all that finds nothing: a try of TCP 7202 on every address of the computer's private /24 networks
-   (`ESP32AGENT_NO_PROBE=1` turns it off). It finds a board behind a router that keeps multicast from crossing
+   (`TENTACLE_NO_PROBE=1` turns it off). It finds a board behind a router that keeps multicast from crossing
    between Wi-Fi and cable.
 
-`esp32agent devices` lists what was found; `--verbose` shows every step.
+`tentacle devices` lists what was found; `--verbose` shows every step.
 
 ## Identity
 - `board_id`: 6 bytes derived from the chip's factory MAC address (`esp_read_mac(…, ESP_MAC_BT)`: only the name of
@@ -81,7 +81,7 @@ B → C  PAIR_WAIT   30                                                code on t
 B → C  PAIRED      b_pub, board_id, mac                              only now is K stored (NVS)
 
 shared = X25519(b_priv, c_pub)
-K      = HKDF-SHA256(ikm=shared, salt="esp32agent-pair-v1", info=c_pub || b_pub, L=32)
+K      = HKDF-SHA256(ikm=shared, salt="tentacle-pair-v1", info=c_pub || b_pub, L=32)
 code   = first 4 bytes of HMAC-SHA256(K, "code" || n_c), big-endian, mod 1 000 000, as 6 digits
 mac    = HMAC-SHA256(K, "paired" || client_id)[0:16]
 ```
@@ -99,7 +99,7 @@ mac    = HMAC-SHA256(K, "paired" || client_id)[0:16]
   meanwhile.
 - While it waits the board sends a keepalive record every 2 s, and the computer its own: the link stays up.
 - The board's answers to PAIR instead of PAIR_KEY (`0xE0`), checked in this order:
-  - `this CLI is too old to pair: update esp32agent`: a PAIR without `commit` (the 48-byte form of older CLIs).
+  - `this CLI is too old to pair: update tentacle`: a PAIR without `commit` (the 48-byte form without it).
   - `busy: board in use …`: a paired computer has a session, or had one in the last 10 s. No request opens then,
     so the BOOT button stays the stop button while something drives the phone. (The CLI asks again for 20 s: its
     own session, closed for the pairing, counts too.)
@@ -130,7 +130,7 @@ The double press and the stop button (BOOT, short press: the stop toggle):
 
 ### Session (every connection)
 ```
-okm   = HKDF-SHA256(ikm=K, salt=c_nonce || b_nonce, info="esp32agent-session-v1", L=32)
+okm   = HKDF-SHA256(ikm=K, salt=c_nonce || b_nonce, info="tentacle-session-v1", L=32)
 k_c2b = okm[0:16]   k_b2c = okm[16:32]               # AES-128-GCM keys
 mac   = HMAC-SHA256(K, "hello" || c_nonce || b_nonce)[0:16]   # the board proves it holds K
 ```
@@ -194,7 +194,7 @@ Board:
 | `crash` | `ok rst <reset reason>, last dump: <task, pc, backtrace of the last crash \| none>`. |
 | `vdbg` | The video stream's state in short form, for a frozen screen. |
 | `txpower 8-84` | The Wi-Fi's TX power in 0.25 dBm steps; an A/B knob, not stored. |
-| `unpair` | The board answers `<id> ok` on the session that asked, then forgets **every** paired computer (all keys in NVS) and closes the connection. A computer's stored key is now useless (`0xE0 "not paired"`): it has to `pair` again, with the BOOT button. `esp32agent unpair --board` sends it and forgets the board on the computer too; plain `esp32agent unpair` only forgets it on the computer. |
+| `unpair` | The board answers `<id> ok` on the session that asked, then forgets **every** paired computer (all keys in NVS) and closes the connection. A computer's stored key is now useless (`0xE0 "not paired"`): it has to `pair` again, with the BOOT button. `tentacle unpair --board` sends it and forgets the board on the computer too; plain `tentacle unpair` only forgets it on the computer. |
 
 Anything else: `err unknown command`. A line without a numeric id: `err missing request id`.
 
@@ -210,7 +210,7 @@ paired computer; replies come back on the port. `stream`, `snap`, `bench`, `list
 ## Status
 Once a second on stream `B`, one JSON object:
 ```json
-{"fw":"0.2.5","up":123456,"rst":"power-on","heap":81234,"psram":6200000,"usb":"ok",
+{"fw":"0.1.0","up":123456,"rst":"power-on","heap":81234,"psram":6200000,"usb":"ok",
  "net":"sta","ip":"192.168.1.50","sta":1,
  "ap":"streaming","w":480,"h":1040,"kbps":180,"fps":4.8,"idr":2000,"gop":42000,"vage":120,"ovf":0,"fz":0,
  "link":{"kbps":350},"aud":{"pk":0,"seg":0,"snd":0,"vol":0,"drop":0,"raw":0},"lost":0}
@@ -246,7 +246,7 @@ it: a stream that is in step goes on from the ring, anyone else needs the next I
 
 ## Phone audio
 What the iPhone plays while it mirrors (AirPlay audio). After `listen raw on` the board sends the audio records on
-stream `A` (frame `0x12`), and the CLI transcribes them (`esp32agent listen`, whisper.cpp on the computer).
+stream `A` (frame `0x12`), and the CLI transcribes them (`tentacle listen`, whisper.cpp on the computer).
 - A record is `[seq u16 LE][flags u8][payload]` with flag `0x80` set and its own seq; payload
   `[u32 LE board ms][u32 LE RTP ts][AAC-ELD frame]`.
 - The board decrypts the mirroring audio (AAC-ELD, 44.1 kHz stereo, 480 samples per frame, AudioSpecificConfig

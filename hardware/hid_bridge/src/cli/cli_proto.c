@@ -49,7 +49,7 @@ bool cli_pair(const uint8_t b_priv[32], const uint8_t c_pub[32], uint8_t b_pub[3
   if (!zero) return false;  // a low-order point: no shared secret
   memcpy(info, c_pub, 32);
   memcpy(info + 32, b_pub, 32);
-  static const char salt[] = "esp32agent-pair-v1";
+  static const char salt[] = "tentacle-pair-v1";
   bool ok = mbedtls_hkdf(sha256(), (const uint8_t *)salt, sizeof salt - 1, shared, 32, info, 64, k, CLI_KEY_LEN) == 0;
   memset(shared, 0, sizeof shared);
   return ok;
@@ -60,7 +60,7 @@ bool cli_session(const uint8_t k[CLI_KEY_LEN], const uint8_t c_nonce[16], const 
   uint8_t salt[32], okm[32];
   memcpy(salt, c_nonce, 16);
   memcpy(salt + 16, b_nonce, 16);
-  static const char info[] = "esp32agent-session-v1";
+  static const char info[] = "tentacle-session-v1";
   if (mbedtls_hkdf(sha256(), salt, 32, k, CLI_KEY_LEN, (const uint8_t *)info, sizeof info - 1, okm, 32)) return false;
   memcpy(k_c2b, okm, 16);
   memcpy(k_b2c, okm + 16, 16);

@@ -16,3 +16,19 @@ work credits it visibly, for example:
 
   Based on ESP32 iPhone Agent by Henry Yuan
   https://github.com/onehumanbeing/esp32-iphone-agent
+
+----------------------------------------------------------------------
+Tentacle (phone-tentacle)
+----------------------------------------------------------------------
+
+Everything above this line is the original notice of ESP32 iPhone Agent,
+kept word for word. Tentacle is derived from that project.
+
+Modifications and additions: Copyright (c) 2026 kewe87
+https://github.com/kewe87/phone-tentacle
+
+They are licensed under the same terms as the files they are in: the MIT
+License (see LICENSE), and GPL-3.0 for files under
+hardware/hid_bridge/src/airplay/ (ported from UxPlay, see LICENSE-GPL.md
+there). A firmware binary links that directory and is therefore
+distributed under GPL-3.0 as a whole.

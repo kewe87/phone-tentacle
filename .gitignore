@@ -22,8 +22,6 @@ hardware/hid_bridge/build/
 hardware/tests/test
 hardware/tests/test.dSYM/
 
-# Cloudflare CLI local cache (account id/name)
-.cloudflare/
 hardware/tests/sim/cli_sim
 hardware/tests/sim/cli_sim.dSYM/
 hardware/tests/sim/*.o

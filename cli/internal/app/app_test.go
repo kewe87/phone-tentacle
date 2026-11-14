@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/daemon"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/link"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/video"
+	"github.com/kewe87/phone-tentacle/cli/internal/config"
+	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
+	"github.com/kewe87/phone-tentacle/cli/internal/link"
+	"github.com/kewe87/phone-tentacle/cli/internal/video"
 )
 
 type out struct {
@@ -46,7 +46,7 @@ func TestOutputFormat(t *testing.T) {
 		t.Fatalf("%+v", o)
 	}
 	for _, args := range [][]string{{"apps", "list"}, {"dump", "ui"}, {"fs", "ls"}, {"webview", "list"}, {"io", "clipboard", "get"}, {"device", "reboot"}} {
-		if o := run(t, a, args...); o.Status != "error" || o.Error != "not supported on ESP32 Agent" {
+		if o := run(t, a, args...); o.Status != "error" || o.Error != "not supported on Tentacle" {
 			t.Fatalf("%v: %+v", args, o)
 		}
 	}
@@ -128,7 +128,7 @@ func TestSimPairScreenshotTapText(t *testing.T) {
 	}
 	dir, _ := os.MkdirTemp("/tmp", "e32s") // the sim is POSIX: this test runs where /tmp is
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	t.Setenv("ESP32AGENT_HOME", dir)
+	t.Setenv("TENTACLE_HOME", dir)
 	t.Setenv("CLI_SIM_NVS", filepath.Join(dir, "nvs"))
 	logf, _ := os.Create(filepath.Join(dir, "sim.log"))
 	defer logf.Close()

@@ -3,9 +3,9 @@ package app
 import (
 	"encoding/json"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/history"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/intent"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/memory"
+	"github.com/kewe87/phone-tentacle/cli/internal/history"
+	"github.com/kewe87/phone-tentacle/cli/internal/intent"
+	"github.com/kewe87/phone-tentacle/cli/internal/memory"
 )
 
 // Tools answered here, from the files in the config dir, without the daemon or a board.

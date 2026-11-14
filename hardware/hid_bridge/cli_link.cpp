@@ -131,7 +131,7 @@ bool cli_in_use() {
 static void pair(const uint8_t *p, size_t n) {
   pair_req r;
   if (!pair_parse(p, n, &r)) return error("bad pair request");
-  if (!r.commit) return error("this CLI is too old to pair: update esp32agent");
+  if (!r.commit) return error("this CLI is too old to pair: update tentacle");
   const char *const IN_USE = "busy: board in use (a paired computer's session; end it, wait 10 s)";
   if (cli_in_use()) return error(IN_USE);  // before the window: a double press opens none while the board is in use
   // Not asked for at the board: nothing is shown, the LED stays as it is, and no lock counts up (the gate below

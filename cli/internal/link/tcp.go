@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/proto"
+	"github.com/kewe87/phone-tentacle/cli/internal/proto"
 )
 
 // WiFiPort is the board's CLI link (docs/cli-protocol.md, "Wi-Fi link"): frames in records [u16 LE length][frame].

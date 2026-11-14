@@ -65,9 +65,9 @@ func mac(k []byte, parts ...[]byte) []byte {
 	return h.Sum(nil)[:macLen]
 }
 
-// PairKey is K = HKDF(shared, "esp32agent-pair-v1", c_pub || b_pub).
+// PairKey is K = HKDF(shared, "tentacle-pair-v1", c_pub || b_pub).
 func PairKey(shared, cPub, bPub []byte) []byte {
-	return derive(shared, []byte("esp32agent-pair-v1"), append(append([]byte{}, cPub...), bPub...))
+	return derive(shared, []byte("tentacle-pair-v1"), append(append([]byte{}, cPub...), bPub...))
 }
 
 // PairCommit is what PAIR carries instead of the nonce itself: SHA-256(n_c). The computer shows n_c only after the
@@ -111,7 +111,7 @@ func HelloMAC(k, cNonce, bNonce []byte) []byte { return mac(k, []byte("hello"), 
 
 // SessionKeys returns the AES-128 keys client→board and board→client.
 func SessionKeys(k, cNonce, bNonce []byte) (c2b, b2c []byte) {
-	okm := derive(k, append(append([]byte{}, cNonce...), bNonce...), []byte("esp32agent-session-v1"))
+	okm := derive(k, append(append([]byte{}, cNonce...), bNonce...), []byte("tentacle-session-v1"))
 	return okm[:16], okm[16:]
 }
 

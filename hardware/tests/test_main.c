@@ -26,7 +26,7 @@ static void test_bplist_roundtrip(void) {
   int root = bp_w_dict(&w);
   bp_w_set(&w, root, "features", bp_w_uint(&w, 0x5A7FFEE6ull));
   bp_w_set(&w, root, "big", bp_w_uint(&w, 0x123456789ull));
-  bp_w_set(&w, root, "name", bp_w_string(&w, "ESP32 Agent with a long name"));
+  bp_w_set(&w, root, "name", bp_w_string(&w, "Tentacle with a long name"));
   bp_w_set(&w, root, "ok", bp_w_bool(&w, true));
   bp_w_set(&w, root, "rate", bp_w_real(&w, 1.0 / 60));
   uint8_t pk[32];
@@ -49,7 +49,7 @@ static void test_bplist_roundtrip(void) {
   CHECK(bp_get_uint(&r, bp_dict_get(&r, top, "features"), &u) && u == 0x5A7FFEE6ull);
   CHECK(bp_get_uint(&r, bp_dict_get(&r, top, "big"), &u) && u == 0x123456789ull);
   char s[64];
-  CHECK(bp_get_string(&r, bp_dict_get(&r, top, "name"), s, sizeof s) && !strcmp(s, "ESP32 Agent with a long name"));
+  CHECK(bp_get_string(&r, bp_dict_get(&r, top, "name"), s, sizeof s) && !strcmp(s, "Tentacle with a long name"));
   bool b = false;
   CHECK(bp_get_bool(&r, bp_dict_get(&r, top, "ok"), &b) && b);
   double d = 0;
@@ -273,11 +273,11 @@ static void test_cli_proto(void) {
   CHECK(cli_pair(b_priv, c_pub, b_pub, k));
   hex("5714769d116bf76436ae74bc793d2c30ad1903c59ac5273805c7e2698b410c36", want);
   CHECK(!memcmp(b_pub, want, 32));
-  hex("efcbf0a5e51d114b9d6c9570183c9e44cb623c0581ee3ae762c00d6acc18fbf9", want);
+  hex("c07dccb75b1bc3461ff97978252c817f17838929f5ee8e46853bf60960ac1b4b", want);
   CHECK(!memcmp(k, want, 32));
   hex("a0a1a2a3a4a5a6a7a8a9aaabacadaeaf", id);
   cli_mac(k, "paired", id, 16, NULL, 0, mac);
-  hex("53ce351ad116adba4688e0c848c1fc64", want);
+  hex("7798e5494589af0a3a0693c8f69845c0", want);
   CHECK(!memcmp(mac, want, 16));
   uint8_t zero[32] = {0};
   CHECK(!cli_pair(b_priv, zero, b_pub, k));  // low-order point: refused
@@ -285,44 +285,44 @@ static void test_cli_proto(void) {
   // Pairing over Wi-Fi: the computer's commitment to its nonce, and the 6-digit code both sides show.
   uint8_t nc[16], commit[32];
   char code[7];
-  hex("efcbf0a5e51d114b9d6c9570183c9e44cb623c0581ee3ae762c00d6acc18fbf9", k);
+  hex("c07dccb75b1bc3461ff97978252c817f17838929f5ee8e46853bf60960ac1b4b", k);
   hex("303132333435363738393a3b3c3d3e3f", nc);
   cli_pair_commit(nc, commit);
   hex("816b9e7c25d559c5766755b3bbb36654ad451e080ffa93694a793d6eed41f40a", want);
   CHECK(!memcmp(commit, want, 32));
   cli_pair_code(k, nc, code);
-  CHECK(!strcmp(code, "615618"));
+  CHECK(!strcmp(code, "736717"));
   nc[0] ^= 1;  // another nonce, another code
   cli_pair_code(k, nc, code);
-  CHECK(strcmp(code, "615618") && strlen(code) == 6);
+  CHECK(strcmp(code, "736717") && strlen(code) == 6);
 
-  hex("efcbf0a5e51d114b9d6c9570183c9e44cb623c0581ee3ae762c00d6acc18fbf9", k);
+  hex("c07dccb75b1bc3461ff97978252c817f17838929f5ee8e46853bf60960ac1b4b", k);
   hex("101112131415161718191a1b1c1d1e1f", cn);
   hex("202122232425262728292a2b2c2d2e2f", bn);
   CHECK(cli_session(k, cn, bn, c2b, b2c));
-  hex("776bc8c110fb6e0440169cfef36ba161", want);
+  hex("f7aa391511dd90a81e1c1a428156d7c8", want);
   CHECK(!memcmp(c2b, want, 16));
-  hex("93478dfeacc3cf696f2764d316a5dff7", want);
+  hex("fcd94939cf057d1e0211098b17d96f7a", want);
   CHECK(!memcmp(b2c, want, 16));
   cli_mac(k, "hello", cn, 16, bn, 16, mac);
-  hex("c204a4e56de057834bf60fba723d5ffa", want);
+  hex("f56acc021dbffef560a8711bb7bb34bd", want);
   CHECK(!memcmp(mac, want, 16));
 
   uint8_t frame[64], plain[64], expect[64];
   uint32_t ctr = 0;
-  hex("100100000068afc0f78c919458f5b70b4012515053649a24", expect);
+  hex("1001000000f408fb72dbfb180661172c15ebf19d92f98017", expect);
   int n = cli_open(c2b, 'C', expect, 24, &ctr, plain);
   CHECK(n == 7 && ctr == 1 && !memcmp(plain, "c7 ping", 7));
   CHECK(cli_open(c2b, 'B', expect, 24, &ctr, plain) == -1);  // wrong stream: other nonce
   expect[7] ^= 1;
   CHECK(cli_open(c2b, 'C', expect, 24, &ctr, plain) == -1);  // tampered
   CHECK(cli_seal(b2c, CLI_DATA, 'B', 2, (const uint8_t *)"r7 ok", 5, frame) == 22);
-  hex("1002000000caf6fbb8977c45ee4dff70db24f7ebd04d", expect);
+  hex("10020000000b79c3cb3399dad58409d400ed0ce6dbf8", expect);
   CHECK(!memcmp(frame, expect, 22));
   uint8_t v[8];
   hex("0100050000000001", v);
   CHECK(cli_seal(b2c, CLI_VIDEO, 'V', 1, v, 8, frame) == 25);
-  hex("110100000038443201752074c91e78396e0bca7521a4e30a63", expect);
+  hex("110100000091c4931fb64b82f0eed8ab2aac6d31f5faf1c93d", expect);
   CHECK(!memcmp(frame, expect, 25));
 }
 
@@ -406,14 +406,14 @@ static const char *txt_value(const mdns_stub_service *s, const char *key) {
 }
 
 static void test_mdns(void) {
-  ap_cfg.name = "ESP32 Agent";
+  ap_cfg.name = "Tentacle";
   uint8_t mac[6] = {0x7C, 0x3E, 0x01, 0x02, 0xAB, 0xCD};
   memcpy(ap_cfg.hwaddr, mac, 6);
   for (int i = 0; i < 32; i++) ap_pk[i] = (uint8_t)i;
   CHECK(ap_mdns_start() && mdns_stub_count == 2);
   const mdns_stub_service *a = &mdns_stub[0], *r = &mdns_stub[1];
-  CHECK(!strcmp(a->type, "_airplay") && !strcmp(a->instance, "ESP32 Agent"));
-  CHECK(!strcmp(r->type, "_raop") && !strcmp(r->instance, "7C3E0102ABCD@ESP32 Agent"));
+  CHECK(!strcmp(a->type, "_airplay") && !strcmp(a->instance, "Tentacle"));
+  CHECK(!strcmp(r->type, "_raop") && !strcmp(r->instance, "7C3E0102ABCD@Tentacle"));
   CHECK(a->port == r->port && a->port > 0);
   CHECK(txt_value(a, "deviceid") && !strcmp(txt_value(a, "deviceid"), "7C:3E:01:02:AB:CD"));
   const char *pk = txt_value(a, "pk");

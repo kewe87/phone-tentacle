@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Replayable are the moves the app repeats blindly (Replay.swift).
+// Replayable are the moves the upstream app repeats blindly (Replay.swift).
 var Replayable = map[string]bool{"tap": true, "swipe": true, "type": true, "home": true, "back": true, "key": true, "wait": true}
 
 // Summary is one run in `history list`.
@@ -19,7 +19,7 @@ type Summary struct {
 	Task        string `json:"task,omitempty"`
 }
 
-// Step is one action of a run with the screen it was done on (the last screenshot before it), as the app's
+// Step is one action of a run with the screen it was done on (the last screenshot before it), as the upstream app's
 // RunStore.load pairs them.
 type Step struct {
 	Step   int            `json:"step"` // 1-based, what `intent save --steps` takes
@@ -29,16 +29,16 @@ type Step struct {
 	Frame  string         `json:"frame,omitempty"` // file in the run folder
 }
 
-// Replayable: a move the app can repeat, and it worked.
+// Replayable: a move the upstream app can repeat, and it worked.
 func (s Step) Replayable() bool {
 	name, _ := s.Action["action"].(string)
 	return s.Error == "" && Replayable[name]
 }
 
-// JSON is the action as the app stores it (RecordedStep.action).
+// JSON is the action as the upstream app stores it (RecordedStep.action).
 func (s Step) JSON() string { return JSON(s.Action) }
 
-// JSON is an object written as the app's PyJSON.dumps writes it.
+// JSON is an object written as the upstream app's PyJSON.dumps writes it.
 func JSON(m map[string]any) string {
 	b, _ := marshal(m)
 	return string(b)
@@ -109,7 +109,7 @@ func start(id string) string {
 	return ""
 }
 
-// Outcome: the app's words when the run ended with done/fail/stopped, else active, failed (last step erred) or ended.
+// Outcome: the upstream app's words when the run ended with done/fail/stopped, else active, failed (last step erred) or ended.
 func (r *Run) Outcome(now time.Time) string {
 	if len(r.Steps) == 0 {
 		if r.active(now) {

@@ -18,9 +18,10 @@ ck, bk = X25519PrivateKey.from_private_bytes(c_priv), X25519PrivateKey.from_priv
 c_pub, b_pub = pub(ck), pub(bk)
 shared = bk.exchange(ck.public_key())
 client_id = bytes(range(0xA0, 0xB0)); board_id = bytes.fromhex("246f28aa6ad5")
-K = hkdf(shared, b"esp32agent-pair-v1", c_pub + b_pub)
+K = hkdf(shared, b"tentacle-pair-v1", c_pub + b_pub)
+pair_nonce = bytes(range(0x30, 0x40))  # n_c of the pairing: PAIR carries SHA-256(n_c), the code is made from it
 c_nonce, b_nonce = bytes(range(0x10, 0x20)), bytes(range(0x20, 0x30))
-okm = hkdf(K, c_nonce + b_nonce, b"esp32agent-session-v1")
+okm = hkdf(K, c_nonce + b_nonce, b"tentacle-session-v1")
 k_c2b, k_b2c = okm[:16], okm[16:]
 
 def seal(key, stream, typ, ctr, plain):
@@ -34,6 +35,8 @@ v = {
     "c_priv": c_priv.hex(), "b_priv": b_priv.hex(), "c_pub": c_pub.hex(), "b_pub": b_pub.hex(),
     "shared": shared.hex(), "client_id": client_id.hex(), "board_id": board_id.hex(), "K": K.hex(),
     "pair_mac": mac(K, b"paired" + client_id).hex(),
+    "pair_nonce": pair_nonce.hex(), "pair_commit": hashlib.sha256(pair_nonce).hexdigest(),
+    "pair_code": "%06d" % (int.from_bytes(mac(K, b"code" + pair_nonce)[:4], "big") % 1000000),
     "c_nonce": c_nonce.hex(), "b_nonce": b_nonce.hex(), "k_c2b": k_c2b.hex(), "k_b2c": k_b2c.hex(),
     "hello_mac": mac(K, b"hello" + c_nonce + b_nonce).hex(),
     "frame_c": {"stream": "C", "type": 16, "ctr": 1, "plain": (b"c" + b"7 ping").hex(), "frame": seal(k_c2b, "C", 0x10, 1, b"c7 ping")},

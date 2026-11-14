@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/audio"
-	"github.com/onehumanbeing/esp32-iphone-agent/cli/internal/config"
+	"github.com/kewe87/phone-tentacle/cli/internal/audio"
+	"github.com/kewe87/phone-tentacle/cli/internal/config"
 )
 
 func TestListenSettings(t *testing.T) {
