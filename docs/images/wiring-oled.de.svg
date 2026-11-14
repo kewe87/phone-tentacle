@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 660" width="1000" height="660" font-family="'Segoe UI',Inter,system-ui,sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1724"/><stop offset="1" stop-color="#0d0a12"/></linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffb03a"/><stop offset=".5" stop-color="#ff6a4d"/><stop offset="1" stop-color="#ff3d8b"/></linearGradient>
+    <linearGradient id="pcb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b2136"/><stop offset="1" stop-color="#1a1422"/></linearGradient>
+  </defs>
+  <rect x="1" y="1" width="998" height="658" rx="28" fill="url(#bg)" stroke="#30263a" stroke-width="2"/>
+
+  <text x="40" y="62" font-size="26" font-weight="800" fill="#f6f1f4">Verdrahtung: Status-OLED</text>
+  <text x="40" y="90" font-size="15" fill="#a59bab">Seeed Studio XIAO ESP32S3 von oben, USB-C zeigt nach oben</text>
+
+  <!-- legend -->
+  <g font-size="15" fill="#f6f1f4">
+    <text x="40" y="150" font-size="13" font-weight="700" fill="#a59bab" letter-spacing="1">VIER LEITUNGEN</text>
+    <line x1="40" y1="182" x2="84" y2="182" stroke="#ff3d8b" stroke-width="6" stroke-linecap="round"/>
+    <text x="98" y="187"><tspan font-weight="700">3V3</tspan> → OLED <tspan font-weight="700">VCC</tspan></text>
+    <line x1="40" y1="218" x2="84" y2="218" stroke="#d9d2de" stroke-width="6" stroke-linecap="round"/>
+    <text x="98" y="223"><tspan font-weight="700">GND</tspan> → OLED <tspan font-weight="700">GND</tspan></text>
+    <line x1="40" y1="254" x2="84" y2="254" stroke="#ffb03a" stroke-width="6" stroke-linecap="round"/>
+    <text x="98" y="259"><tspan font-weight="700">D4</tspan> (GPIO5) → OLED <tspan font-weight="700">SDA</tspan></text>
+    <line x1="40" y1="290" x2="84" y2="290" stroke="#ff6a4d" stroke-width="6" stroke-linecap="round"/>
+    <text x="98" y="295"><tspan font-weight="700">D5</tspan> (GPIO6) → OLED <tspan font-weight="700">SCL</tspan></text>
+  </g>
+  <g font-size="13.5" fill="#a59bab">
+    <text x="40" y="345" font-size="13" font-weight="700" letter-spacing="1">VOR DEM LÖTEN</text>
+    <text x="40" y="370">Nach der Beschriftung auf dem OLED gehen,</text>
+    <text x="40" y="389">nicht nach der Lage: Die Reihenfolge der</text>
+    <text x="40" y="408">Pins ist je nach Modul anders (VCC/GND).</text>
+    <text x="40" y="438">OLED: 0,96", 128×64, SSD1306, I²C,</text>
+    <text x="40" y="457">3,3 V. Bauen mit <tspan font-family="Consolas,'Cascadia Mono',monospace" fill="#ff8a5c">--display</tspan>.</text>
+    <text x="40" y="487">BOOT-Taster und LED sind auf dem Board:</text>
+    <text x="40" y="506">dafür ist nichts zu löten.</text>
+  </g>
+
+  <!-- wires (under the parts) -->
+  <g fill="none" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M616 257 H690 V250 H772" stroke="#d9d2de"/>
+    <path d="M616 299 H700 V290 H772" stroke="#ff3d8b"/>
+    <path d="M384 383 H330 V572 H735 V370 H772" stroke="#ffb03a"/>
+    <path d="M384 425 H348 V554 H717 V330 H772" stroke="#ff6a4d"/>
+  </g>
+
+  <!-- USB-C -->
+  <rect x="462" y="118" width="76" height="62" rx="12" fill="#cfc6d6" stroke="#0d0a12" stroke-width="2"/>
+  <rect x="476" y="126" width="48" height="14" rx="7" fill="#2b2136"/>
+  <text x="500" y="106" font-size="14" font-weight="700" fill="#f6f1f4" text-anchor="middle">USB-C → iPhone</text>
+
+  <!-- board -->
+  <rect x="370" y="160" width="260" height="350" rx="22" fill="url(#pcb)" stroke="url(#brand)" stroke-width="3"/>
+  <rect x="452" y="262" width="96" height="120" rx="8" fill="#3a2e48" stroke="#52435f" stroke-width="2"/>
+  <text x="500" y="318" font-size="14" font-weight="700" fill="#f6f1f4" text-anchor="middle">ESP32-S3</text>
+  <text x="500" y="338" font-size="11" fill="#a59bab" text-anchor="middle">XIAO</text>
+  <!-- buttons + LED next to the USB port -->
+  <rect x="418" y="176" width="20" height="14" rx="3" fill="#cfc6d6"/>
+  <text x="428" y="206" font-size="11" font-weight="700" fill="#ffb03a" text-anchor="middle">BOOT</text>
+  <rect x="562" y="176" width="20" height="14" rx="3" fill="#cfc6d6"/>
+  <text x="572" y="206" font-size="11" fill="#a59bab" text-anchor="middle">RESET</text>
+  <circle cx="500" cy="204" r="6" fill="#ffb03a"/>
+  <text x="500" y="228" font-size="11" fill="#a59bab" text-anchor="middle">LED</text>
+
+  <!-- pads: left D0..D6, right 5V GND 3V3 D10 D9 D8 D7 -->
+  <g font-size="14" font-weight="700">
+    <g fill="#8d7f99" stroke="#52435f" stroke-width="2">
+      <circle cx="384" cy="215" r="9"/><circle cx="384" cy="257" r="9"/><circle cx="384" cy="299" r="9"/><circle cx="384" cy="341" r="9"/>
+      <circle cx="384" cy="467" r="9"/>
+      <circle cx="616" cy="215" r="9"/><circle cx="616" cy="341" r="9"/><circle cx="616" cy="383" r="9"/><circle cx="616" cy="425" r="9"/><circle cx="616" cy="467" r="9"/>
+    </g>
+    <circle cx="384" cy="383" r="10" fill="#ffb03a" stroke="#0d0a12" stroke-width="2"/>
+    <circle cx="384" cy="425" r="10" fill="#ff6a4d" stroke="#0d0a12" stroke-width="2"/>
+    <circle cx="616" cy="257" r="10" fill="#d9d2de" stroke="#0d0a12" stroke-width="2"/>
+    <circle cx="616" cy="299" r="10" fill="#ff3d8b" stroke="#0d0a12" stroke-width="2"/>
+    <g fill="#8d7f99">
+      <text x="402" y="220">D0</text><text x="402" y="262">D1</text><text x="402" y="304">D2</text><text x="402" y="346">D3</text><text x="402" y="472">D6</text>
+      <text x="598" y="220" text-anchor="end">5V</text><text x="598" y="346" text-anchor="end">D10</text><text x="598" y="388" text-anchor="end">D9</text><text x="598" y="430" text-anchor="end">D8</text><text x="598" y="472" text-anchor="end">D7</text>
+    </g>
+    <g fill="#f6f1f4">
+      <text x="402" y="388">D4</text><text x="402" y="430">D5</text>
+      <text x="598" y="262" text-anchor="end">GND</text><text x="598" y="304" text-anchor="end">3V3</text>
+    </g>
+  </g>
+
+  <!-- OLED -->
+  <rect x="772" y="205" width="190" height="210" rx="14" fill="url(#pcb)" stroke="#52435f" stroke-width="2"/>
+  <rect x="838" y="232" width="108" height="156" rx="6" fill="#050308" stroke="#30263a" stroke-width="2"/>
+  <g font-family="Consolas,'Cascadia Mono',monospace" font-size="12" fill="#f6f1f4">
+    <text x="848" y="262">Tentacle</text><text x="848" y="284">6AD5</text><text x="848" y="328" font-weight="700" fill="#ffb03a">RUNNING</text>
+  </g>
+  <g font-size="13" font-weight="700" fill="#f6f1f4">
+    <circle cx="786" cy="250" r="8" fill="#d9d2de" stroke="#0d0a12" stroke-width="2"/><text x="800" y="255">GND</text>
+    <circle cx="786" cy="290" r="8" fill="#ff3d8b" stroke="#0d0a12" stroke-width="2"/><text x="800" y="295">VCC</text>
+    <circle cx="786" cy="330" r="8" fill="#ff6a4d" stroke="#0d0a12" stroke-width="2"/><text x="800" y="335">SCL</text>
+    <circle cx="786" cy="370" r="8" fill="#ffb03a" stroke="#0d0a12" stroke-width="2"/><text x="800" y="375">SDA</text>
+  </g>
+  <text x="867" y="440" font-size="13" fill="#a59bab" text-anchor="middle">OLED 128×64, SSD1306</text>
+
+  <text x="500" y="612" font-size="13" fill="#a59bab" text-anchor="middle">Zeichnung, nicht maßstäblich; die Taster sind auf dem Board mit B (BOOT) und R (RESET) beschriftet. Noch nicht auf Hardware getestet.</text>
+  <text x="500" y="634" font-size="13" fill="#a59bab" text-anchor="middle">Optionale Akku-Anzeige: BAT+ → 100 kΩ → D0 → 100 kΩ → GND, siehe docs/hardware-addons.de.md</text>
+</svg>

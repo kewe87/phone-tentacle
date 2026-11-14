@@ -42,6 +42,9 @@ Vom leeren Board bis zum ersten Tipp auf dem Handy, und was Taste, LED und Displ
 
 OLED-Anschluss: VCC→3V3, GND→GND, SDA→D4 (GPIO5), SCL→D5 (GPIO6).
 
+<p align="center"><img src="images/wiring-oled.de.svg" alt="Verdrahtung des OLED am XIAO ESP32S3: 3V3 an VCC, GND an GND, D4 an SDA, D5 an SCL" width="820"></p>
+
+
 Das Board kann nur 2,4-GHz-WLAN (ESP32-S3). Computer, iPhone und Board müssen im selben Netz sein, und dieses
 Netz muss seine Geräte miteinander reden lassen (viele Gastnetze tun das nicht).
 

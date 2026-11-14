@@ -21,6 +21,9 @@ Wiring (XIAO ESP32-S3 default I²C pins):
 | SDA  | D4 (GPIO5) |
 | SCL  | D5 (GPIO6) |
 
+<p align="center"><img src="images/wiring-oled.svg" alt="Wiring the OLED to the XIAO ESP32S3: 3V3 to VCC, GND to GND, D4 to SDA, D5 to SCL" width="820"></p>
+
+
 Build: `hardware/flash.sh --display`. Needs the U8g2 library once: `arduino-cli lib install U8g2`.
 
 ## Battery gauge (LiPo) — `--battery-pin <gpio>`

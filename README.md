@@ -91,6 +91,9 @@ What is left open: [docs/hardening.md](docs/hardening.md) and [SECURITY.md](SECU
 | **Display** | 0.96″ OLED (SSD1306, I²C), recommended: without it the pairing code cannot be compared |
 | **Computer** | Windows, macOS or Linux on the same Wi-Fi (2.4 GHz), with [arduino-cli](https://arduino.github.io/arduino-cli/), [Go](https://go.dev/dl/) and `ffmpeg` |
 
+<p align="center"><img src="docs/images/wiring-oled.svg" alt="Wiring the OLED to the XIAO ESP32S3: 3V3 to VCC, GND to GND, D4 to SDA, D5 to SCL" width="820"></p>
+
+
 ## Quick start
 
 ```bash

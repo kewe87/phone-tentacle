@@ -42,6 +42,9 @@ From a bare board to the first tap on the phone, and what the button, the LED an
 
 OLED wiring: VCC→3V3, GND→GND, SDA→D4 (GPIO5), SCL→D5 (GPIO6).
 
+<p align="center"><img src="images/wiring-oled.svg" alt="Wiring the OLED to the XIAO ESP32S3: 3V3 to VCC, GND to GND, D4 to SDA, D5 to SCL" width="820"></p>
+
+
 The board's Wi-Fi is 2.4 GHz only (ESP32-S3). The computer, the iPhone and the board have to be on the same
 network, and that network must let its devices talk to each other (many guest networks do not).
 

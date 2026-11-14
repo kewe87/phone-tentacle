@@ -91,6 +91,9 @@ Was offen bleibt, steht in [docs/hardening.de.md](docs/hardening.de.md) und [SEC
 | **Display** | 0,96″-OLED (SSD1306, I²C), empfohlen: Ohne es lässt sich der Koppel-Code nicht vergleichen |
 | **Computer** | Windows, macOS oder Linux im selben WLAN (2,4 GHz), mit [arduino-cli](https://arduino.github.io/arduino-cli/), [Go](https://go.dev/dl/) und `ffmpeg` |
 
+<p align="center"><img src="docs/images/wiring-oled.de.svg" alt="Verdrahtung des OLED am XIAO ESP32S3: 3V3 an VCC, GND an GND, D4 an SDA, D5 an SCL" width="820"></p>
+
+
 ## Schnellstart
 
 ```bash
