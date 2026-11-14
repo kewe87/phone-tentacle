@@ -35,7 +35,7 @@
 
   <text x="356" y="196" font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="124" font-weight="800" letter-spacing="-2" fill="#f6f1f4">Tentacle</text>
   <text x="362" y="252" font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="36" fill="#a59bab">Your PC's arm into a real phone</text>
-  <text x="362" y="298" font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="26" font-weight="600" fill="#ff8a5c">USB hands · AirPlay eyes · iPhone &amp; Android</text>
+  <text x="362" y="298" font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="26" font-weight="600" fill="#ff8a5c">USB hands · AirPlay eyes · Wi-Fi only</text>
 
   <!-- how it fits together: PC, the board, the phone -->
   <g font-family="Segoe UI, Inter, Helvetica Neue, Helvetica, Arial, sans-serif" text-anchor="middle">
@@ -60,14 +60,14 @@
       <rect x="-52" y="-92" width="104" height="176" rx="22" fill="#130d19" stroke="#ddd3da" stroke-width="8"/>
       <circle cy="-8" r="30" fill="none" stroke="#f6f1f4" stroke-width="5" opacity=".4"/>
       <circle cy="-8" r="12" fill="#f6f1f4"/>
-      <text y="118" font-size="24" font-weight="600" fill="#f6f1f4">iPhone · Android</text>
+      <text y="118" font-size="24" font-weight="600" fill="#f6f1f4">iPhone</text>
     </g>
     <!-- links -->
     <g fill="none" stroke="url(#wire)" stroke-width="6" stroke-linecap="round">
       <path d="M424 456H556" stroke-dasharray="2 16"/>
       <path d="M736 456H966"/>
     </g>
-    <text x="490" y="434" font-size="20" fill="#a59bab">Wi-Fi · BLE</text>
+    <text x="490" y="434" font-size="20" fill="#a59bab">Wi-Fi</text>
     <text x="851" y="434" font-size="20" fill="#a59bab">mouse · keyboard</text>
     <text x="851" y="492" font-size="20" fill="#a59bab">screen via AirPlay</text>
   </g>

@@ -111,23 +111,75 @@ static void redirect(const String &to) {
   server.send(303, "text/plain", "");
 }
 
+// The look of every page (docs/brand): the style sheet and the small logo, everything inline (the setup hotspot
+// has no internet, and the CSP allows nothing from elsewhere). One constant in flash; sendPage() writes it to the
+// client as it is, so it is never copied to the heap. The pages are dark only.
+static const char LOOK[] =
+  "<style>body{margin:0;padding:12px;background:#0d0a12;color:#f6f1f4;"
+  "font:16px/1.45 'Segoe UI',Inter,-apple-system,system-ui,sans-serif}"
+  ".c{max-width:26em;margin:0 auto;padding:20px;border:1px solid #30263a;border-radius:20px;"
+  "background:linear-gradient(#1d1724,#0d0a12)}"
+  "svg{display:block;border-radius:22%}"
+  "h1{font-size:1.35em;font-weight:800;margin:14px 0 18px}"
+  "h1:after{content:'';display:block;width:56px;height:4px;margin-top:10px;border-radius:2px;"
+  "background:linear-gradient(90deg,#ffb03a,#ff6a4d,#ff3d8b)}"
+  "label{display:block;margin:18px 0 6px;font-weight:600}"
+  "select,input,button{font:inherit;width:100%;box-sizing:border-box;min-height:48px;padding:10px 12px;"
+  "border-radius:12px}"
+  "select,input{color:#f6f1f4;background:#130d19;border:1px solid #6b5c78}"
+  "button{margin-top:22px;border:0;font-weight:700;color:#1a1420;"
+  "background:linear-gradient(90deg,#ffb03a,#ff6a4d,#ff3d8b)}"
+  ":focus-visible{outline:3px solid #ffb03a;outline-offset:2px}"
+  "a{color:#ff8a5c}.h{color:#a59bab;font-size:.9em}"
+  ".e{color:#ff8a5c;font-weight:700;padding:10px 12px;border:1px solid #ff6a4d;border-radius:12px}"
+  "#m{font-size:1.1em;padding:14px;border-left:4px solid #ff6a4d;border-radius:0 12px 12px 0;background:#130d19}"
+  "</style></head><body><div class=c>"
+  // docs/brand/logo-mark-small.svg on a 64-unit grid; the style sheet above rounds its corners
+  "<svg viewBox='0 0 64 64' width=44 height=44 aria-hidden=true><linearGradient id=g gradientUnits=userSpaceOnUse "
+  "x1=8 y1=59 x2=55 y2=9><stop stop-color='#ffb03a'/><stop offset=.5 stop-color='#ff6a4d'/><stop offset=1 "
+  "stop-color='#ff3d8b'/></linearGradient><path fill='#17121d' d='M0 0h64v64H0z'/><rect x=32 y=10.2 width=24 "
+  "height=45 rx=6 fill='#2a1c31' stroke='#f6f1f4' stroke-width=4.2 /><path d='M-0.6 67.9C-0.6 67.3-0.6 65.6-0.6 "
+  "64.5C-0.6 63.3-0.5 62.2-0.5 61.1C-0.4 59.9-0.3 58.8-0.2 57.6C0 56.5 0.1 55.4 0.3 54.2C0.5 53.1 0.7 52 1 50.9C1.2"
+  " 49.7 1.5 48.6 1.9 47.5C2.2 46.4 2.5 45.3 2.9 44.2C3.3 43.1 3.8 42 4.2 40.9C4.7 39.8 5.2 38.7 5.8 37.7C6.4 36.6 "
+  "7 35.6 7.6 34.6C8.3 33.6 9 32.6 9.7 31.7C10.5 30.7 11.2 29.8 12.1 28.9C12.9 28 13.8 27.2 14.7 26.4C15.7 25.6 "
+  "16.7 24.8 17.8 24.1C18.9 23.4 20 22.7 21.2 22.2C22.3 21.6 23.5 21.2 24.8 20.8C26.1 20.4 27.4 20.2 28.8 20C30.1 "
+  "19.9 31.6 19.9 33 20.1C34.5 20.3 36 20.7 37.3 21.3C38.7 21.9 40 22.8 41.1 23.8C42.2 24.8 43.1 25.9 43.9 "
+  "27.1C44.6 28.4 45.2 29.7 45.6 31.1C45.9 32.5 46.1 34.1 45.9 35.6C45.8 37 44.8 39.3 44.6 40A4 4 0 0 1 37.4 "
+  "36.5C37.4 36.3 37.6 35.6 37.5 35.2C37.5 34.7 37.3 34.2 37.1 33.8C36.9 33.3 36.5 32.8 36.2 32.4C35.8 32 35.4 31.6"
+  " 35 31.4C34.5 31.1 34.1 30.9 33.6 30.9C33.2 30.8 32.7 30.7 32.1 30.8C31.6 30.8 31.1 30.9 30.5 31.1C29.9 31.2 "
+  "29.3 31.4 28.7 31.7C28.1 32 27.4 32.4 26.9 32.8C26.3 33.2 25.7 33.6 25.2 34.1C24.7 34.6 24.2 35.1 23.8 35.6C23.3"
+  " 36.2 22.8 36.8 22.4 37.5C21.9 38.1 21.5 38.8 21.1 39.5C20.7 40.2 20.4 40.9 20.1 41.6C19.8 42.3 19.4 43.1 19.2 "
+  "43.8C18.9 44.6 18.7 45.4 18.5 46.1C18.3 46.9 18.1 47.7 17.9 48.5C17.8 49.3 17.6 50.1 17.5 51C17.4 51.8 17.4 52.6"
+  " 17.3 53.5C17.2 54.3 17.2 55.1 17.2 56C17.2 56.8 17.2 57.6 17.2 58.5C17.3 59.4 17.3 60.2 17.4 61C17.5 61.9 17.6 "
+  "62.7 17.7 63.6C17.8 64.4 18 65.7 18.1 66.1A9.4 9.4 0 0 1-0.6 67.9Z' fill='url(#g)' stroke='#17121d' "
+  "stroke-width=3.2 stroke-linejoin=round /><circle cx=41.5 cy=44 r=4.8 fill='#f6f1f4'/></svg>";
+
+// A page goes out in three parts: its head up to the title, LOOK, its body.
 static void pageHead(String &h, const Text &t, const char *extra) {
   h += "<!doctype html><html lang=";
   h += t.lang;
   h += "><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">"
-       "<meta name=color-scheme content=\"light dark\">";
+       "<meta name=color-scheme content=dark>";
   h += extra;
   h += "<title>";
   h += t.title;
-  h += "</title><style>body{font:16px/1.45 system-ui,sans-serif;margin:0 auto;max-width:28em;padding:1em}"
-       "h1{font-size:1.3em}label{display:block;margin:1em 0 .3em}"
-       "select,input,button{font:inherit;width:100%;box-sizing:border-box;padding:.6em}button{margin-top:1.2em}"
-       ".e{color:#b00020;font-weight:bold}.h{color:#666;font-size:.9em}"
-       "@media(prefers-color-scheme:dark){.e{color:#ff6b6b}.h{color:#aaa}}</style></head><body><h1>";
-  h += esc(BOARD_NAME_TEXT);
-  h += " – ";
-  h += t.title;
-  h += "</h1>";
+  h += "</title>";
+}
+
+static void pageTitle(String &b, const Text &t) {
+  b += "<h1>";
+  b += esc(BOARD_NAME_TEXT);
+  b += " – ";
+  b += t.title;
+  b += "</h1>";
+}
+
+static void sendPage(const String &head, const String &body) {
+  headers();
+  server.setContentLength(head.length() + sizeof(LOOK) - 1 + body.length());  // known, so the reply is not chunked
+  server.send(200, "text/html; charset=utf-8", head);
+  server.sendContent_P(LOOK, sizeof(LOOK) - 1);
+  server.sendContent(body);
 }
 
 static void sendForm(int err) {
@@ -135,10 +187,11 @@ static void sendForm(int err) {
   static NetScan nets[NETS_MAX];  // only this task uses it
   bool running = false;
   int n = net_setup_scan(nets, NETS_MAX, &running);
-  String h;
+  String head, h;
   h.reserve(4096);
   // Reload by itself only while there is no list yet: later a reload would empty a half-filled form.
-  pageHead(h, t, !n && running && !err ? "<meta http-equiv=refresh content=3>" : "");
+  pageHead(head, t, !n && running && !err ? "<meta http-equiv=refresh content=3>" : "");
+  pageTitle(h, t);
   if (err) {
     h += "<p class=e>";
     h += err == ERR_SSID ? t.badSsid : err == ERR_PASS ? t.badPass : t.busy;
@@ -184,9 +237,8 @@ static void sendForm(int err) {
   h += t.go;
   h += "</button></form><p class=h>";
   h += t.hint;
-  h += "</p></body></html>";
-  headers();
-  server.send(200, "text/html; charset=utf-8", h);
+  h += "</p></div></body></html>";
+  sendPage(head, h);
 }
 
 // What the wait page says for a state; plain text (the caller escapes it for HTML or JSON).
@@ -221,10 +273,11 @@ static void sendWait() {
   char msg[320], lost[2 * 320];
   stateText(t, s, msg, sizeof msg);
   setup_json_esc(t.lost, lost, sizeof lost);
-  String h;
+  String head, h;
   h.reserve(2048);
   bool live = s.state == NS_WAIT || s.state == NS_TRYING || s.state == NS_OK;
-  pageHead(h, t, live ? "<noscript><meta http-equiv=refresh content=2></noscript>" : "");
+  pageHead(head, t, live ? "<noscript><meta http-equiv=refresh content=2></noscript>" : "");
+  pageTitle(h, t);
   h += "<p id=m>";
   h += esc(msg);
   h += "</p><p><a href=\"/\">";
@@ -242,9 +295,8 @@ static void sendWait() {
          "x.onerror=x.ontimeout=r;x.send()}"
          "setTimeout(p,1000)</script>";
   }
-  h += "</body></html>";
-  headers();
-  server.send(200, "text/html; charset=utf-8", h);
+  h += "</div></body></html>";
+  sendPage(head, h);
 }
 
 static void sendStatus() {

@@ -130,14 +130,8 @@ Boards dort, und das Setup-WLAN schaltet sich ab. Ist das Passwort falsch oder d
 die Seite das, und nichts wird gespeichert: zurück und noch einmal.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/setup-page-de-dark.png">
-    <img src="images/setup-page-de.png" alt="WLAN-Einrichtungsseite mit ausgewähltem Netz" width="300">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/setup-confirm-de-dark.png">
-    <img src="images/setup-confirm-de.png" alt="Einrichtungsseite wartet auf den BOOT-Taster" width="300">
-  </picture>
+  <img src="images/setup-page-de.png" alt="WLAN-Einrichtungsseite mit ausgewähltem Netz" width="300">
+  <img src="images/setup-confirm-de.png" alt="Einrichtungsseite wartet auf den BOOT-Taster" width="300">
 </p>
 
 <sub>Einrichtungsseite, aus dem Quelltext der Firmware gerendert (`setup_portal.cpp`), in einem Desktop-Browser

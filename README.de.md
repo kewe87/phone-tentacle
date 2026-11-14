@@ -1,15 +1,10 @@
 [English](README.md) | **Deutsch**
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-wordmark-dark.png">
-    <img src="docs/brand/logo-wordmark.png" alt="Tentacle" width="460">
-  </picture>
-</p>
+<p align="center"><img src="docs/brand/banner.png" alt="Tentacle" width="760"></p>
 
 <p align="center">
   <b>Der Fangarm deines PCs ins echte Handy.</b><br>
-  Ein daumennagelgroßes ESP32-S3-Board am USB-C-Anschluss des iPhones: Maus und Tastatur als Hände, ein AirPlay-Empfänger als Augen, gesteuert vom Computer über WLAN.
+  <i>Your PC's arm into a real phone.</i>
 </p>
 
 <p align="center">
@@ -18,33 +13,85 @@
   <img src="https://img.shields.io/badge/Status-noch%20nicht%20auf%20Hardware%20getestet-c7361f" alt="Status: noch nicht auf Hardware getestet">
 </p>
 
-> **Basiert auf [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) von Henry Yuan (MIT).**
+<p align="center"><img src="docs/images/demo.de.gif" alt="Am Computer werden drei tentacle-Befehle getippt, das Board reicht sie weiter, auf einem schematischen Handy bewegt sich der Zeiger, tippt und schreibt hello" width="800"></p>
+
+<sub>Die Animationen auf dieser Seite sind Illustrationen, keine Aufnahmen; das Handy ist absichtlich nur ein Schema. Echte Aufnahmen folgen nach dem ersten Hardwaretest.</sub>
+
+> **Based on [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan (MIT).**
 > Tentacle ist ein eigenes, davon abgeleitetes Projekt und weder mit ihm verbunden noch von ihm unterstützt:
 > [Herkunft und Lizenz](#herkunft-und-lizenz).
 
 > [!WARNING]
-> **Noch nicht auf Hardware getestet.** Alles kompiliert und besteht seine Tests am Computer (Host-Tests, ein
-> simuliertes Board, die Tests der CLI), aber noch kein Build ist auf einem echten Board gelaufen. Erster
-> Hardware-Test: 17. November 2026. Solange dieser Hinweis hier steht, kann einiges nicht funktionieren.
+> **Noch nicht auf Hardware getestet.** Alles kompiliert und besteht seine Tests am Computer, aber noch kein Build
+> ist auf einem echten Board gelaufen. Erster Hardwaretest: 17. November 2026.
 
-<p align="center"><img src="docs/images/how-it-works.svg" alt="Computer, Tentacle-Board und iPhone: Eingaben gehen über WLAN und USB zum Handy, das Bild kommt über AirPlay zurück" width="820"></p>
+## Was ist Tentacle?
 
-## Was es kann
+Ein daumennagelgroßes ESP32-S3-Board am USB-C-Anschluss des iPhones. Dein Computer bedient darüber ein echtes Handy.
 
 - **Hände:** Das Board ist USB-Maus und -Tastatur; mit AssistiveTouch tippt der Zeiger wie ein Finger
-- **Augen:** Das Board empfängt die Bildschirmsynchronisierung (AirPlay) des Handys und reicht das Bild weiter
-- **Vom Computer aus:** die Kommandozeile `tentacle`, die zugleich MCP-Server für KI-Assistenten ist
-- **Nur WLAN:** Der Computer findet das Board von selbst (mDNS) und spricht über einen verschlüsselten Port mit ihm
-- **Jemand muss am Board stehen:** WLAN-Einrichtung und Koppeln werden mit der BOOT-Taste bestätigt
-- **Ein Stopp-Taster:** einmal kurz BOOT drücken, und das Board schickt keine Eingaben mehr
+- **Augen:** Es empfängt die Bildschirmsynchronisierung (AirPlay) und reicht das Bild weiter
+- **Vom Computer aus:** die Kommandozeile `tentacle`, für dich oder einen KI-Assistenten
+- **Nur WLAN:** Der Computer findet das Board von selbst und spricht über einen verschlüsselten Port mit ihm
+- **Jemand muss am Board stehen:** Einrichtung und Koppeln bestätigt die BOOT-Taste
+- **Ein Stopp-Taster:** einmal kurz drücken, und das Board schickt keine Eingaben mehr
 
 Keine App auf dem Handy, kein Jailbreak, kein Bluetooth, keine Cloud.
 
-## Schnellstart
+<p align="center">
+  <img src="docs/images/hands.de.png" alt="Hände: Das Board ist USB-Maus und -Tastatur" width="410">
+  <img src="docs/images/eyes.de.png" alt="Augen: Das Board empfängt die Bildschirmsynchronisierung und liefert Screenshots" width="410">
+</p>
 
-Du brauchst ein Seeed Studio XIAO ESP32S3, ein USB-C-Datenkabel, ein iPhone mit USB-C und am Computer
-[arduino-cli](https://arduino.github.io/arduino-cli/), [Go](https://go.dev/dl/) und `ffmpeg`. Ein kleines OLED
-ist empfohlen. Teile, Verdrahtung und jeder Schritt im Einzelnen: **[das Handbuch](docs/manual.de.md)**.
+## So funktioniert es
+
+<p align="center"><img src="docs/images/how-it-works.svg" alt="Computer, Tentacle-Board und iPhone: Eingaben gehen über WLAN und USB zum Handy, das Bild kommt über AirPlay zurück (englisch)" width="820"></p>
+
+## In sechs Schritten
+
+<p align="center"><img src="docs/images/setup-steps.de.svg" alt="Einrichtung in sechs Schritten: flashen, WLAN, Koppeln öffnen, koppeln, iPhone, los" width="820"></p>
+
+<p align="center">
+  <img src="docs/images/setup-page-de.png" alt="Die WLAN-Einrichtungsseite des Boards" width="236">
+  <img src="docs/images/pairing.de.gif" alt="Koppeln: BOOT doppelt drücken, tentacle pair starten, Code an Computer und Display vergleichen, BOOT drücken" width="560">
+</p>
+
+<sub>Links: die Einrichtungsseite, aus dem Quelltext der Firmware gerendert. Rechts: Display-Texte und LED-Takt aus dem Quelltext der Firmware, Terminalzeilen aus einem Lauf gegen das simulierte Board (gekürzt).</sub>
+
+## Für KI-Assistenten
+
+- **`tentacle mcp`** ist ein MCP-Server über stdio, für jeden MCP-Client
+- **Neun Tools:** sehen, tippen, wischen, schreiben, Tasten, Status
+- **Screenshots kommen als Bild**, Koordinaten sind Pixel dieses Bildes
+
+<p align="center"><img src="docs/images/mcp-tools.de.png" alt="tentacle mcp und seine neun Tools: screenshot, tap, longpress, swipe, type_text, press_key, press_button, device_info, phone_audio" width="820"></p>
+
+Einrichtung für deinen Client: [Handbuch, Kapitel 8](docs/manual.de.md#8-nutzung-mit-einem-ki-assistenten-mcp).
+
+## Sicher gebaut
+
+- **Koppeln nur am Board:** Ein Doppeldruck auf BOOT öffnet es für 60 Sekunden
+- **Derselbe Code auf beiden Seiten:** Computer und OLED zeigen ihn, erst dann drückst du BOOT
+- **Stopp geht immer:** ein kurzer Druck, und der Computer kann ihn nicht aufheben
+- **Bleibt im eigenen WLAN:** ein verschlüsselter Port, kein Bluetooth, keine Cloud
+
+<p align="center"><img src="docs/images/safety.de.png" alt="Doppeldruck öffnet das Koppeln, derselbe Code an Computer und Board, ein kurzer Druck stoppt" width="820"></p>
+
+<p align="center"><img src="docs/images/led-patterns.de.gif" alt="Die fünf LED-Muster in Echtzeit: langsames Blinken, Dauerlicht, zwei Blitze pro Sekunde, schnelles Blinken, Flackern" width="800"></p>
+
+Was offen bleibt, steht in [docs/hardening.de.md](docs/hardening.de.md) und [SECURITY.md](SECURITY.md).
+
+## Was du brauchst
+
+| | |
+|---|---|
+| **Board** | Seeed Studio XIAO ESP32S3 (die einfache Version, nicht Sense, nicht Plus) |
+| **Kabel** | USB-C auf USB-C, ein Datenkabel |
+| **Handy** | iPhone mit USB-C, iOS 18 oder neuer |
+| **Display** | 0,96″-OLED (SSD1306, I²C), empfohlen: Ohne es lässt sich der Koppel-Code nicht vergleichen |
+| **Computer** | Windows, macOS oder Linux im selben WLAN (2,4 GHz), mit [arduino-cli](https://arduino.github.io/arduino-cli/), [Go](https://go.dev/dl/) und `ffmpeg` |
+
+## Schnellstart
 
 ```bash
 git clone https://github.com/kewe87/phone-tentacle.git && cd phone-tentacle
@@ -58,44 +105,43 @@ cli/tentacle pair                  # 6-stelligen Code mit dem OLED vergleichen, 
 cli/tentacle screenshot
 ```
 
-<p align="center"><img src="docs/images/setup-steps.de.svg" alt="Einrichtung in sechs Schritten: flashen, WLAN, Koppeln öffnen, koppeln, iPhone, los" width="820"></p>
+Jeder Schritt im Einzelnen, Verdrahtung und Fehlersuche: **[das Handbuch](docs/manual.de.md)**.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-page-de-dark.png">
-    <img src="docs/images/setup-page-de.png" alt="Die WLAN-Einrichtungsseite des Boards" width="236">
-  </picture>
-  <img src="docs/images/cli-pair.svg" alt="Ausgabe von tentacle devices und tentacle pair" width="560">
-</p>
+<details>
+<summary><b>Was die CLI antwortet</b> (Mitschnitt gegen das simulierte Board)</summary>
 
-<sub>Links: Einrichtungsseite, aus dem Quelltext der Firmware gerendert. Rechts: Ausgabe gegen das simulierte
-Board. Fotos folgen nach dem ersten Hardwaretest.</sub>
+<p align="center"><img src="docs/images/terminal.gif" alt="Ausgaben von tentacle devices, device info, screenshot, io button HOME und io text hello gegen das simulierte Board" width="800"></p>
 
-## Dokumentation
+<sub>Die Ausgaben sind unverändert die eines Laufs gegen das simulierte Board (`hardware/tests/sim`); nur das Tippen ist nachgestellt.</sub>
 
-- **[Handbuch](docs/manual.de.md)** — Teile, Flashen, Einrichtung, Koppeln, Taste und LED, Fehlersuche, alle Befehle
-- [cli/README.md](cli/README.md) — das Innenleben der CLI: Daemon, Verlauf, Intents, Gedächtnis, Entwicklung (englisch)
-- [docs/hardening.de.md](docs/hardening.de.md) — wer was erreichen kann und was offen bleibt · [SECURITY.md](SECURITY.md)
-- [docs/hardware-addons.de.md](docs/hardware-addons.de.md) — OLED, Akku, Gehäuse
-- [docs/cli-protocol.md](docs/cli-protocol.md) — was über die Leitung geht (englisch)
-- [CHANGELOG.md](CHANGELOG.md) · [CONTRIBUTING.md](CONTRIBUTING.md) (englisch)
+</details>
 
 ## Roadmap
 
-- Erster Lauf auf Hardware, danach Korrekturen
-- **Web-Fernbedienung auf dem Board:** Live-Bild, Maus und Tastatur im Browser, nichts am Computer zu installieren
+- **Erster Lauf auf Hardware**, danach Korrekturen
+- **Web-Fernbedienung auf dem Board:** Live-Bild, Maus und Tastatur im Browser
 - **Android:** dasselbe Board als Hände, Screenshots über ADB ([docs/android.de.md](docs/android.de.md))
 
 Mehr: [ROADMAP.de.md](ROADMAP.de.md).
 
+## Dokumentation
+
+| | |
+|---|---|
+| **[Handbuch](docs/manual.de.md)** | Teile, Flashen, Einrichtung, Koppeln, Taste und LED, Fehlersuche, alle Befehle |
+| [cli/README.md](cli/README.md) | das Innenleben der CLI (englisch) |
+| [docs/hardening.de.md](docs/hardening.de.md) · [SECURITY.md](SECURITY.md) | wer was erreichen kann und was offen bleibt |
+| [docs/hardware-addons.de.md](docs/hardware-addons.de.md) | OLED, Akku, Gehäuse |
+| [docs/cli-protocol.md](docs/cli-protocol.md) | was über die Leitung geht (englisch) |
+| [CHANGELOG.md](CHANGELOG.md) · [CONTRIBUTING.md](CONTRIBUTING.md) | englisch |
+
 ## Herkunft und Lizenz
 
-**Basiert auf [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) von Henry Yuan**
-(MIT, Copyright © 2026 Henry Yuan) — *Based on ESP32 iPhone Agent by Henry Yuan*. Die Idee, die
-AirPlay-Portierung, die USB-Seite und die Kommandozeile stammen aus seinem Projekt. Sein Urheberrechts- und
-Erlaubnisvermerk steht unverändert in [LICENSE](LICENSE) und [NOTICE](NOTICE). Tentacle hat aus diesem Code die
-iPhone-App, Bluetooth und Updates über Funk entfernt und die reine WLAN-Verbindung, das Setup-WLAN, das Koppeln
-per Taste, den Stopp-Taster und das Display ergänzt.
+**Based on [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan**
+(MIT, Copyright © 2026 Henry Yuan). Die Idee, die AirPlay-Portierung, die USB-Seite und die Kommandozeile stammen
+aus seinem Projekt. Sein Urheberrechts- und Erlaubnisvermerk steht unverändert in [LICENSE](LICENSE) und
+[NOTICE](NOTICE). Tentacle hat die iPhone-App, Bluetooth und Updates über Funk entfernt und die reine
+WLAN-Verbindung, das Setup-WLAN, das Koppeln per Taste, den Stopp-Taster und das Display ergänzt.
 
 - **MIT** ([LICENSE](LICENSE)) für alles außer dem Verzeichnis unten. Tentacles eigene Änderungen: Copyright ©
   2026 kewe87, zu denselben Bedingungen (siehe [NOTICE](NOTICE)).
@@ -115,6 +161,4 @@ per Taste, den Stopp-Taster und das Display ergänzt.
 
 > Based on ESP32 iPhone Agent by Henry Yuan — https://github.com/onehumanbeing/esp32-iphone-agent
 
-Nur Geräte und Konten automatisieren, die dir gehören oder die du benutzen darfst. Apple, iPhone und AirPlay
-sind Marken von Apple Inc. Tentacle ist kein Apple-Produkt und steht in keiner Verbindung zu Apple. Der Name hat
-nichts mit dem gleichnamigen Deployment-Agenten von Octopus Deploy zu tun.
+<sub>Nur Geräte und Konten automatisieren, die dir gehören oder die du benutzen darfst. Apple, iPhone und AirPlay sind Marken von Apple Inc. Tentacle ist kein Apple-Produkt und steht in keiner Verbindung zu Apple. Der Name hat nichts mit dem gleichnamigen Deployment-Agenten von Octopus Deploy zu tun.</sub>

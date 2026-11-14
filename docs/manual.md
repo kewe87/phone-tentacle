@@ -126,14 +126,8 @@ and the setup Wi-Fi switches off. If the password is wrong or the network is not
 nothing is stored: go back and try again.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/setup-page-en-dark.png">
-    <img src="images/setup-page-en.png" alt="Wi-Fi setup page with a network chosen" width="300">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/setup-confirm-en-dark.png">
-    <img src="images/setup-confirm-en.png" alt="Setup page waiting for the BOOT button" width="300">
-  </picture>
+  <img src="images/setup-page-en.png" alt="Wi-Fi setup page with a network chosen" width="300">
+  <img src="images/setup-confirm-en.png" alt="Setup page waiting for the BOOT button" width="300">
 </p>
 
 <sub>The setup page, rendered from the firmware's source code (`setup_portal.cpp`) in a desktop browser at phone
