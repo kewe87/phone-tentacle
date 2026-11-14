@@ -30,6 +30,7 @@ type Board struct {
 	Name     string // TXT name
 	FW       string // TXT fw
 	Paired   int    // TXT paired: computers paired with it; -1 if not given
+	Open     int    // TXT open: 1 while the board takes a pairing request (BOOT was double-pressed), 0 not; -1 if not given
 	IP       net.IP // where the answer came from
 	Port     int
 	Iface    string // the interface it was found on
@@ -177,7 +178,7 @@ func Parse(msg []byte, from net.IP) []Board {
 			continue
 		}
 		seen[key] = true
-		b := Board{Instance: strings.TrimSuffix(inst[:max(0, len(inst)-len(Service))], "."), Port: Port, Paired: -1, IP: from}
+		b := Board{Instance: strings.TrimSuffix(inst[:max(0, len(inst)-len(Service))], "."), Port: Port, Paired: -1, Open: -1, IP: from}
 		if s, ok := srvs[key]; ok {
 			if s.port != 0 {
 				b.Port = s.port
@@ -190,6 +191,9 @@ func Parse(msg []byte, from net.IP) []Board {
 			b.ID, b.Name, b.FW = strings.ToLower(t["id"]), t["name"], t["fw"]
 			if n, err := strconv.Atoi(t["paired"]); err == nil {
 				b.Paired = n
+			}
+			if n, err := strconv.Atoi(t["open"]); err == nil && (n == 0 || n == 1) {
+				b.Open = n
 			}
 		}
 		if b.Name == "" {

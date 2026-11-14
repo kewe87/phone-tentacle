@@ -13,9 +13,10 @@ offers the same as tools: screenshot, tap, longpress, swipe, type_text, press_ke
 plus history, intent_list, intent_show, intent_save, memory_recall and memory_add.
 
 ## Setup (once)
-- `esp32agent pair`: it prints a 6-digit code and waits; the user compares it with the board's display and presses
-  the BOOT button on the board within 30 s. This needs the user at the board: ask them, never retry in a loop
-  (the board locks pairing for a while after a request that was not confirmed).
+- `esp32agent pair`: the user first double-presses the BOOT button on the board (two quick presses; pairing is then
+  open for 60 s, and `pair` waits up to 60 s for it). It prints a 6-digit code and waits; the user compares it with
+  the board's display and presses BOOT once more within 30 s. This needs the user at the board: ask them, never
+  retry in a loop (the board locks pairing for a while after a request that was not confirmed).
 - Screen Mirroring on the iPhone: Control Center > Screen Mirroring > ESP32 Agent.
 - `esp32agent calibrate` (also runs by itself on the first tap). It needs the mouse pointer visible on screen.
 
@@ -73,7 +74,8 @@ After a task succeeded, save it so the next run is faster:
 ## Errors to act on
 - `screen mirroring is off`: ask the user to start Screen Mirroring to ESP32 Agent.
 - `video frozen`: ask the user to stop and restart Screen Mirroring.
-- `not paired`: run `esp32agent pair` and ask the user to press BOOT on the board when the code shows.
+- `not paired`: ask the user to double-press BOOT on the board, run `esp32agent pair`, and ask them to press BOOT
+  once more when the code shows.
 - `not found on the network`: the board is off, on another Wi-Fi, or not set up yet; ask the user (its address can
   be given with `--host IP`).
 - `stopped (safety button)`: the user pressed BOOT to stop all input. Stop, and ask before going on.

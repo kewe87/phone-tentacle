@@ -1,4 +1,4 @@
-// Button and confirmation state machines, see confirm.h.
+// Button, confirmation and pairing window state machines, see confirm.h.
 #include "confirm.h"
 #include <string.h>
 
@@ -70,3 +70,34 @@ uint32_t cf_left_ms(const confirm_slot *c, uint32_t now) {
   uint32_t gone = now - c->start;
   return gone >= c->timeout ? 0 : c->timeout - gone;
 }
+
+void pw_init(pair_window *w) { memset(w, 0, sizeof *w); }
+
+int pw_press(pair_window *w, bool allowed, uint32_t now) {
+  if (w->first && allowed && now - w->first_at <= PW_DOUBLE_MS) {
+    w->first = false;  // a third press starts over
+    w->open = true;
+    w->open_at = now;
+    return PW_DOUBLE;
+  }
+  w->first = true;
+  w->first_at = now;
+  return PW_SINGLE;
+}
+
+void pw_forget(pair_window *w) { w->first = false; }
+
+void pw_tick(pair_window *w, uint32_t now) {
+  if (w->first && now - w->first_at > PW_DOUBLE_MS) w->first = false;
+  if (w->open && now - w->open_at >= PW_OPEN_MS) w->open = false;
+}
+
+bool pw_is_open(const pair_window *w) { return w->open; }
+
+uint32_t pw_left_ms(const pair_window *w, uint32_t now) {
+  if (!w->open) return 0;
+  uint32_t gone = now - w->open_at;
+  return gone >= PW_OPEN_MS ? 0 : PW_OPEN_MS - gone;
+}
+
+void pw_close(pair_window *w) { w->open = false; }

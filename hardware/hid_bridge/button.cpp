@@ -1,5 +1,6 @@
 // BOOT button, status LED and the confirmation request, see button.h. Pins are overridable for non-XIAO boards.
 #include "button.h"
+#include "cli_link.h"
 #include "dbg.h"
 
 #ifndef STOP_BTN_PIN
@@ -17,29 +18,42 @@ const uint32_t HOLD_HINT_MS = 2000;  // held this long: the LED flickers until t
 static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;  // guards everything below
 static btn_state btn;
 static confirm_slot slot;
+static pair_window win;
 static bool stopped, stoppedBefore, toggled, longPending;
 #if TENTACLE_DEBUG
-static volatile int injected;  // a press from the serial port (`dbg btn`): BTN_PRESS or BTN_LONG
+static volatile int injected;      // a press from the serial port (`dbg btn`): BTN_PRESS or BTN_LONG
+static volatile int injectedMore;  // ... and this many more presses after it (`dbg btn double`)
 #endif
 
 static void buttonTask(void *) {
   for (;;) {
     uint32_t now = millis();
     bool pressed = digitalRead(STOP_BTN_PIN) == LOW;
+    bool inUse = cli_in_use();  // a computer drives the phone: BOOT is its stop button and nothing else
     portENTER_CRITICAL(&mux);
     int ev = btn_step(&btn, pressed, now);
 #if TENTACLE_DEBUG
     if (injected) {
       ev = injected;
-      injected = 0;
+      injected = injectedMore ? BTN_PRESS : 0;
+      if (injectedMore) injectedMore--;
     }
 #endif
-    bool confirmed = false;
+    bool confirmed = false, doubled = false;
     cf_tick(&slot, now);
+    pw_tick(&win, now);
     if (ev == BTN_PRESS) {
       toggled = false;
+      bool asked = slot.state == CF_WAITING;  // a request waits (armed or not): presses are single ones
       confirmed = cf_press(&slot, now);
-      if (!confirmed) {  // a press that confirms never toggles the stop; one too soon to be an answer does
+      if (confirmed) {  // a press that confirms never toggles the stop; one too soon to be an answer does
+        pw_forget(&win);
+      } else if (pw_press(&win, !inUse && !asked, now) == PW_DOUBLE) {
+        doubled = true;
+#if SAFETY_CONTROLS
+        stopped = stoppedBefore;  // the first press toggled the stop at once: taken back, and this one toggles nothing
+#endif
+      } else {
 #if SAFETY_CONTROLS
         stoppedBefore = stopped;
         stopped = !stopped;  // at once, not on release: it is the emergency stop
@@ -48,16 +62,19 @@ static void buttonTask(void *) {
       }
     } else if (ev == BTN_LONG) {
       longPending = true;
+      pw_forget(&win);
       if (toggled) stopped = stoppedBefore;  // the long press is not also a stop toggle
     }
-    bool waiting = slot.state == CF_WAITING;
+    bool waiting = slot.state == CF_WAITING, pairing = pw_is_open(&win);
     bool holding = btn.down && !btn.long_fired && btn_held_ms(&btn, now) >= HOLD_HINT_MS;
     bool stop = stopped;
     portEXIT_CRITICAL(&mux);
     (void)confirmed;
+    (void)doubled;
 #if TENTACLE_DEBUG
     static bool wasWaiting;
-    if (ev == BTN_PRESS) DBG("btn: short press, %s", confirmed ? "confirmed the request" : stop ? "stop ON" : "stop off");
+    if (ev == BTN_PRESS && doubled) DBG("btn: double press, pairing window open (%s)", stop ? "stop ON" : "stop off");
+    else if (ev == BTN_PRESS) DBG("btn: short press, %s", confirmed ? "confirmed the request" : stop ? "stop ON" : "stop off");
     if (ev == BTN_LONG) DBG("btn: held 10 s");
     if (waiting != wasWaiting) DBG("confirm: %s", waiting ? "a request waits for BOOT" : "no request waiting");
     wasWaiting = waiting;
@@ -67,6 +84,10 @@ static void buttonTask(void *) {
       bool on;
       if (holding) on = (now / 50) & 1;
       else if (waiting) on = (now / 125) & 1;
+      else if (pairing) {  // two short flashes a second; while stopped the LED stays on and the flashes are dark
+        bool flash = now % 1000 < 80 || (now % 1000 >= 200 && now % 1000 < 280);
+        on = flash != (SAFETY_CONTROLS && stop);
+      }
       else if (SAFETY_CONTROLS) on = stop || ((now / 1000) & 1);
       else on = false;
       digitalWrite(STATUS_LED_PIN, (on ^ (bool)STATUS_LED_ACTIVE_LOW) ? HIGH : LOW);
@@ -76,12 +97,16 @@ static void buttonTask(void *) {
 }
 
 #if TENTACLE_DEBUG
-void button_debug_press(bool longPress) { injected = longPress ? BTN_LONG : BTN_PRESS; }
+void button_debug_press(int kind) {
+  injectedMore = kind == DBG_BTN_DOUBLE ? 1 : 0;  // the second press follows 10 ms later
+  injected = kind == DBG_BTN_LONG ? BTN_LONG : BTN_PRESS;
+}
 #endif
 
 void button_begin() {
   btn_init(&btn);
   cf_init(&slot);
+  pw_init(&win);
   pinMode(STOP_BTN_PIN, INPUT_PULLUP);
   if (STATUS_LED_PIN >= 0) pinMode(STATUS_LED_PIN, OUTPUT);
   xTaskCreatePinnedToCore(buttonTask, "button", TENTACLE_DEBUG ? 4096 : 2560, NULL, 2, NULL, 1);  // debug: it prints
@@ -100,6 +125,22 @@ bool button_take_long() {
   longPending = false;
   portEXIT_CRITICAL(&mux);
   return l;
+}
+
+bool pair_window_open(uint32_t *left_ms) {
+  uint32_t now = millis();
+  portENTER_CRITICAL(&mux);
+  pw_tick(&win, now);
+  bool open = pw_is_open(&win);
+  if (left_ms) *left_ms = pw_left_ms(&win, now);
+  portEXIT_CRITICAL(&mux);
+  return open;
+}
+
+void pair_window_close() {
+  portENTER_CRITICAL(&mux);
+  pw_close(&win);
+  portEXIT_CRITICAL(&mux);
 }
 
 bool confirm_request(int kind, const char *line1, const char *line2, uint32_t timeout_ms) {

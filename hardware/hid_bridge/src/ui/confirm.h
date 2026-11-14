@@ -6,8 +6,8 @@
 extern "C" {
 #endif
 
-// The BOOT button and the "press the button to confirm" request, as plain state machines (the task, the pin and
-// the LED are in button.cpp). Times are millis(); they may wrap.
+// The BOOT button, the "press the button to confirm" request and the pairing window, as plain state machines (the
+// task, the pin and the LED are in button.cpp). Times are millis(); they may wrap.
 
 // ---- Button: debounced press edge, and one long-press event while it stays held.
 #define BTN_DEBOUNCE_MS 30
@@ -47,6 +47,31 @@ bool cf_press(confirm_slot *c, uint32_t now);        // a press: true if it acce
 int cf_state(const confirm_slot *c, int kind);       // CF_IDLE for a kind that did not ask
 void cf_clear(confirm_slot *c, int kind);            // the asker read the result, or withdraws the request
 uint32_t cf_left_ms(const confirm_slot *c, uint32_t now);  // 0 unless waiting
+
+// ---- Pairing window: a double press (two presses within PW_DOUBLE_MS) opens it for PW_OPEN_MS. Only while it is
+// open does the board take a pairing request from the network (cli_link.cpp), so nothing on the Wi-Fi can make the
+// display or the LED ask for the button by itself.
+#define PW_DOUBLE_MS 500
+#define PW_OPEN_MS 60000
+
+enum { PW_SINGLE = 0, PW_DOUBLE };
+
+typedef struct {
+  bool first, open;  // first: the last press may still become a double press
+  uint32_t first_at, open_at;
+} pair_window;
+
+void pw_init(pair_window *w);
+// A press that answered no request. allowed: a double press may open the window now (nothing drives the phone and
+// no request waits for the button). PW_SINGLE: an ordinary press; it is done at once (the stop toggle is never
+// delayed). PW_DOUBLE: the second press of a double press: the window is open (if it was already, its time starts
+// over), and the caller undoes what the first press did instead of acting on this one.
+int pw_press(pair_window *w, bool allowed, uint32_t now);
+void pw_forget(pair_window *w);                    // the last press can not start a double press (it confirmed, or is held)
+void pw_tick(pair_window *w, uint32_t now);        // closes the window once its time is up
+bool pw_is_open(const pair_window *w);
+uint32_t pw_left_ms(const pair_window *w, uint32_t now);  // 0 unless open
+void pw_close(pair_window *w);                     // paired, or a session came up
 
 #ifdef __cplusplus
 }

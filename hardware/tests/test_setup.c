@@ -1,4 +1,4 @@
-// Host tests for the Wi-Fi setup page's text helpers and the BOOT button / confirmation state machines.
+// Host tests for the Wi-Fi setup page's text helpers and the BOOT button / confirmation / pairing window state machines.
 // Part of `make -C hardware/tests`; alone (no mbedtls needed):
 //   gcc -std=c11 -Wall -Wextra -DTEST_SETUP_MAIN -o test_setup test_setup.c ../hid_bridge/src/setup/setup_text.c ../hid_bridge/src/ui/confirm.c
 #include <stdio.h>
@@ -209,7 +209,56 @@ static void test_confirm(void) {
   CHECK(cf_press(&c, 29000));
 }
 
+static void test_pair_window(void) {
+  pair_window w;
+  pw_init(&w);
+  CHECK(!pw_is_open(&w) && pw_left_ms(&w, 0) == 0);
+  // one press is an ordinary press, however long one waits
+  CHECK(pw_press(&w, true, 1000) == PW_SINGLE && !pw_is_open(&w));
+  pw_tick(&w, 5000);
+  CHECK(!pw_is_open(&w));
+  // two presses within PW_DOUBLE_MS open the window for PW_OPEN_MS
+  CHECK(pw_press(&w, true, 10000) == PW_SINGLE);
+  CHECK(pw_press(&w, true, 10000 + PW_DOUBLE_MS) == PW_DOUBLE && pw_is_open(&w));
+  uint32_t opened = 10000 + PW_DOUBLE_MS;
+  CHECK(pw_left_ms(&w, opened) == PW_OPEN_MS && pw_left_ms(&w, opened + 1000) == PW_OPEN_MS - 1000);
+  pw_tick(&w, opened + PW_OPEN_MS - 1);
+  CHECK(pw_is_open(&w));
+  pw_tick(&w, opened + PW_OPEN_MS);
+  CHECK(!pw_is_open(&w) && pw_left_ms(&w, opened + PW_OPEN_MS) == 0);
+  // a second press a moment too late is a new first press
+  CHECK(pw_press(&w, true, 100000) == PW_SINGLE);
+  CHECK(pw_press(&w, true, 100000 + PW_DOUBLE_MS + 1) == PW_SINGLE && !pw_is_open(&w));
+  CHECK(pw_press(&w, true, 100000 + PW_DOUBLE_MS + 200) == PW_DOUBLE && pw_is_open(&w));
+  // the press after a double press starts over: three quick presses are a double press and a single one
+  CHECK(pw_press(&w, true, 100000 + PW_DOUBLE_MS + 300) == PW_SINGLE);
+  // a double press while the window is open starts its time over
+  CHECK(pw_press(&w, true, 100000 + PW_DOUBLE_MS + 400) == PW_DOUBLE);
+  CHECK(pw_left_ms(&w, 100000 + PW_DOUBLE_MS + 400) == PW_OPEN_MS);
+  pw_close(&w);  // paired, or a session came up
+  CHECK(!pw_is_open(&w) && pw_left_ms(&w, 100900) == 0);
+  // not allowed (a session drives the phone, or a request waits for the button): two ordinary presses, no window
+  CHECK(pw_press(&w, false, 200000) == PW_SINGLE);
+  CHECK(pw_press(&w, false, 200100) == PW_SINGLE && !pw_is_open(&w));
+  pw_tick(&w, 200100 + PW_DOUBLE_MS + 1);
+  // a press that answered a request, or is being held, starts no double press
+  CHECK(pw_press(&w, true, 300000) == PW_SINGLE);
+  pw_forget(&w);
+  CHECK(pw_press(&w, true, 300100) == PW_SINGLE && !pw_is_open(&w));
+  // a first press goes stale: long after it, a press is a first press again (also when millis() has wrapped)
+  pw_tick(&w, 300100 + PW_DOUBLE_MS + 1);
+  CHECK(!w.first);
+  // across the millis() wrap
+  CHECK(pw_press(&w, true, 0xffffff00u) == PW_SINGLE);
+  CHECK(pw_press(&w, true, 0x00000020u) == PW_DOUBLE && pw_is_open(&w));
+  pw_tick(&w, 0x20u + PW_OPEN_MS - 1);
+  CHECK(pw_is_open(&w));
+  pw_tick(&w, 0x20u + PW_OPEN_MS);
+  CHECK(!pw_is_open(&w));
+}
+
 int test_setup(void) {
+  test_pair_window();
   test_html_esc();
   test_json_esc();
   test_hex();

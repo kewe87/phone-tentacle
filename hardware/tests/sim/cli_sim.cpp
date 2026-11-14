@@ -4,6 +4,7 @@
 //   cli_sim [screen.h264]      stdin/stdout: records [u16 LE length][frame]; length 0 = the link dropped
 // Env: CLI_SIM_NVS=path (pairings survive restarts), CLI_SIM_FROZEN=1,
 //      CLI_SIM_WAIT_IDR=1 (empty GOP waiting for IDR), CLI_SIM_AP=idle|connected|streaming (AirPlay state for snap),
+//      CLI_SIM_OPEN=MS|never (BOOT is double-pressed MS after the start, which opens pairing for 60 s; default 0),
 //      CLI_SIM_BOOT=MS|never (the BOOT button is pressed MS after a pairing request opens; default 1500),
 //      CLI_SIM_CONFIRM_MS=MS (how long a request waits for the button instead of the board's 30 s).
 // Commands are logged to stderr as "cmd: <line>" so tests can check what the CLI sent; a pairing request is logged
@@ -115,6 +116,27 @@ void confirm_clear(int kind) {
   pressDue = false;
 }
 
+// The pairing window (button.cpp on the board): the real state machine, BOOT double-pressed by env.
+static pair_window win;
+static bool openDue;
+static uint32_t openAt;
+bool pair_window_open(uint32_t *left_ms) {
+  uint32_t now = millis();
+  if (openDue && (int32_t)(now - openAt) >= 0) {
+    openDue = false;
+    bool allowed = !cli_in_use();  // as the board: no window while a computer drives the phone
+    pw_press(&win, allowed, now);
+    fprintf(stderr, "boot: double press, %s\n", pw_press(&win, allowed, now) == PW_DOUBLE ? "pairing open" : "not opened (board in use)");
+  }
+  pw_tick(&win, now);
+  if (left_ms) *left_ms = pw_left_ms(&win, now);
+  return pw_is_open(&win);
+}
+void pair_window_close() {
+  if (pw_is_open(&win)) fprintf(stderr, "pair: window closed\n");
+  pw_close(&win);
+}
+
 // The network side cli_link.cpp talks to (cli_tcp.cpp on the board): the pipe is the Wi-Fi link.
 static bool linked = true;
 static void writeRecord(const uint8_t *p, size_t n) {
@@ -195,6 +217,9 @@ int main(int argc, char **argv) {
   nvsLoad();
   if (argc > 1) loadScreen(argv[1]);
   cli_begin();
+  const char *openEnv = getenv("CLI_SIM_OPEN");
+  openDue = !(openEnv && !strcmp(openEnv, "never"));
+  openAt = openEnv ? (uint32_t)atoi(openEnv) : 0;
   logring_add(&ring, "[0.001] boot sim fw 0.2.3");
   logring_add(&ring, "[0.120] wifi: hotspot up");
   bool streaming = false, frozen = getenv("CLI_SIM_FROZEN") && !strcmp(getenv("CLI_SIM_FROZEN"), "1");
@@ -220,6 +245,7 @@ int main(int argc, char **argv) {
         in.erase(in.begin(), in.begin() + 2 + len);
       }
     }
+    pair_window_open();  // a double press that is due (the button task on the board)
     cli_pair_poll();  // the button's answer to an open pairing request (cli_tcp.cpp's task on the board)
     for (std::string line : cmds) {
       fprintf(stderr, "cmd: %s\n", line.c_str());

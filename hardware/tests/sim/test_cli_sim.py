@@ -202,6 +202,33 @@ f = d.hello(b)
 check(f and f[0] == 0xE0 and f[1:] == b"not paired", "... and nothing was stored")
 b.close()
 
+# Pairing is closed until BOOT is double-pressed at the board: a request then gets an error and nothing else
+# happens (no display, no lock). After the double press one computer can pair, which closes it again.
+b = Board(nvs, CLI_SIM_OPEN="1500")
+e = Client()
+f = e.pair(b)
+check(f and f[0] == 0xE0 and f[1:] == b"pairing closed: double-press BOOT on the board, then pair within 60 s",
+      "PAIR before BOOT was double-pressed: 'pairing closed'")
+f = e.pair(b)
+check(f and f[0] == 0xE0 and b"pairing closed" in f, "... again at once: still closed, and no lock counted up")
+check("confirm:" not in b.log(), "... and nothing is shown on the board")
+time.sleep(1.7)
+f = e.pair(b)
+check(f and f[0] == 0x81 and e.k is not None, "after the double press the request goes through (no lock from the refused ones)")
+check("boot: double press, pairing open" in b.log(), "... the board was double-pressed")
+g = Client()
+f = g.pair(b)
+check(f and f[0] == 0xE0 and b"pairing closed" in f, "the window closed with that pairing: the next computer needs a new double press")
+b.close()
+
+# A double press while a paired computer's session is up opens nothing (two ordinary presses of the stop button).
+b = Board(nvs, CLI_SIM_OPEN="700")
+e.hello(b)
+e.cmd(b, "1 ping")
+frames(b, e, 1.2)
+check("boot: double press, not opened (board in use)" in b.log(), "a double press during a session opens no pairing window")
+b.close()
+
 # Pair (BOOT pressed), then a session: board proves K, commands get replies, status arrives.
 b = Board(nvs)
 f = c.pair(b)

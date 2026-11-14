@@ -115,7 +115,11 @@ func (w *WiFi) Scan(ctx context.Context, d time.Duration) ([]Found, error) {
 	var out []Found
 	seen := map[string]bool{}
 	for _, b := range discover.Find(ctx, d, logf) {
-		out = append(out, Found{Name: b.Name, Addr: b.Addr(), ID: b.ID, FW: b.FW, Paired: b.Paired, Source: "mdns"})
+		f := Found{Name: b.Name, Addr: b.Addr(), ID: b.ID, FW: b.FW, Paired: b.Paired, Source: "mdns"}
+		if b.Open >= 0 {
+			f.Open = map[int]string{0: "closed", 1: "open"}[b.Open]
+		}
+		out = append(out, f)
 		seen[b.ID] = true
 	}
 	if len(out) > 0 {

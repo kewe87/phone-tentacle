@@ -89,7 +89,7 @@ func TestQuery(t *testing.T) {
 }
 
 func TestParseAnswer(t *testing.T) {
-	m := answer("id=246F28AA6AD5", "name=ESP32 Agent 6AD5", "fw=0.2.5", "paired=1", "v=1")
+	m := answer("id=246F28AA6AD5", "name=ESP32 Agent 6AD5", "fw=0.2.5", "paired=1", "open=1", "v=1")
 	from := net.IPv4(192, 168, 178, 61).To4()
 	bs := Parse(m.b, from)
 	if len(bs) != 1 {
@@ -97,7 +97,7 @@ func TestParseAnswer(t *testing.T) {
 	}
 	b := bs[0]
 	if b.Instance != "ESP32 Agent 6AD5" || b.ID != "246f28aa6ad5" || b.Name != "ESP32 Agent 6AD5" || b.FW != "0.2.5" ||
-		b.Paired != 1 || b.Port != 7202 || !b.IP.Equal(from) || b.Addr() != "192.168.178.61:7202" {
+		b.Paired != 1 || b.Open != 1 || b.Port != 7202 || !b.IP.Equal(from) || b.Addr() != "192.168.178.61:7202" {
 		t.Fatalf("board: %+v", b)
 	}
 	// Without the sender's address (a relayed answer) the A record gives it.
@@ -115,7 +115,7 @@ func TestParseWithoutTXTOrWithAnotherPort(t *testing.T) {
 		m.name(host...)
 	})
 	bs := Parse(m.b, net.IPv4(10, 0, 0, 7))
-	if len(bs) != 1 || bs[0].Port != 7999 || bs[0].ID != "" || bs[0].Paired != -1 || bs[0].Name != "ESP32 Agent 6AD5" {
+	if len(bs) != 1 || bs[0].Port != 7999 || bs[0].ID != "" || bs[0].Paired != -1 || bs[0].Open != -1 || bs[0].Name != "ESP32 Agent 6AD5" {
 		t.Fatalf("boards: %+v", bs)
 	}
 }

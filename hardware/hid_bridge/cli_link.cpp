@@ -102,8 +102,9 @@ static void plain(uint8_t type, const uint8_t *p, size_t n) {
 
 static void error(const char *why) { plain(CLI_ERROR, (const uint8_t *)why, strlen(why)); }
 
-// ---- Pairing (docs/cli-protocol.md, "Pairing"): over Wi-Fi only, one request at a time, and the key is stored
-// only after a short press of BOOT. Everything below runs on cli_tcp's task: frames, cli_pair_poll(), cli_reset().
+// ---- Pairing (docs/cli-protocol.md, "Pairing"): only while the pairing window is open (a double press of BOOT,
+// button.h), one request at a time, and the key is stored only after a short press of BOOT. Everything below runs
+// on cli_tcp's task: frames, cli_pair_poll(), cli_reset().
 //   PAIR (c_pub, id, commit, name) -> PAIR_KEY (b_pub) -> PAIR_NONCE (n_c) -> PAIR_WAIT, code on the display,
 //   LED blinking -> BOOT -> PAIRED, key in NVS. No press in 30 s, a dropped link, a bad nonce: ERROR, nothing kept.
 struct PairPending {
@@ -114,6 +115,7 @@ static pair_gate gate;
 static PairPending pend;
 
 static void pairEnd(bool paired) {
+  if (paired) pair_window_close();  // one double press, one computer
   confirm_clear(CONFIRM_PAIR);  // ours alone: nothing else asks for this kind
   memset(&pend, 0, sizeof pend);
   pg_end(&gate, paired, millis());
@@ -121,7 +123,7 @@ static void pairEnd(bool paired) {
 
 // A paired computer is driving the phone, or was a moment ago: no request may open now, so the BOOT button stays
 // the stop button for as long as there is something to stop.
-static bool inUse() {
+bool cli_in_use() {
   uint32_t last = lastFrameMs;
   return cli_up() || (last && millis() - last < PAIR_QUIET_MS);
 }
@@ -130,11 +132,16 @@ static void pair(const uint8_t *p, size_t n) {
   pair_req r;
   if (!pair_parse(p, n, &r)) return error("bad pair request");
   if (!r.commit) return error("this CLI is too old to pair: update esp32agent");
+  const char *const IN_USE = "busy: board in use (a paired computer's session; end it, wait 10 s)";
+  if (cli_in_use()) return error(IN_USE);  // before the window: a double press opens none while the board is in use
+  // Not asked for at the board: nothing is shown, the LED stays as it is, and no lock counts up (the gate below
+  // never sees the request).
+  if (!pair_window_open()) return error("pairing closed: double-press BOOT on the board, then pair within 60 s");
   uint32_t wait = 0;
   char why[80];
-  switch (pg_begin(&gate, LINK, inUse(), millis(), &wait)) {
+  switch (pg_begin(&gate, LINK, false, millis(), &wait)) {
     case PG_OPEN: return error("busy: another pairing request is open");
-    case PG_IN_USE: return error("busy: board in use (a paired computer's session; end it, wait 10 s)");
+    case PG_IN_USE: return error(IN_USE);
     case PG_LOCKED:
       snprintf(why, sizeof why, "busy: pairing locked for %lu s (a request was not confirmed)",
                (unsigned long)((wait + 999) / 1000));
@@ -253,6 +260,7 @@ static void data(const uint8_t *p, size_t n) {
   lastFrameMs = millis() | 1;
   if (!s.authed) {
     s.authed = true;  // one computer at a time: cli_tcp.h holds one connection
+    pair_window_close();  // a session is up: BOOT is its stop button now
     audioOn = false;  // asked again by every session
     gen++;
     board_log("cli: session up");

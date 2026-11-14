@@ -20,6 +20,7 @@ type Found struct {
 	ID     string // board id (12 hex) when the board told it (mDNS, a remembered address); "" otherwise
 	FW     string // firmware version (mDNS)
 	Paired int    // computers paired with the board (mDNS); -1 if unknown
+	Open   string // the board's pairing window (mDNS): "open", "closed"; "" if unknown
 	Source string // how it was found: "mdns", "remembered", "host", "probe"; "" for the simulator
 }
 

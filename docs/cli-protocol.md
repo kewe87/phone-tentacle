@@ -20,6 +20,7 @@ hotspot), through the same responder as its AirPlay receiver (host `iphone-agent
 | TXT `name` | as the instance |
 | TXT `fw` | firmware version |
 | TXT `paired` | how many computers are paired (0-4) |
+| TXT `open` | `1` while the board takes a pairing request (BOOT was double-pressed, see "Pairing"), else `0` |
 | TXT `v` | `1` |
 
 Nothing in it is secret; who answers at that address is proven by the session keys, not by the record.
@@ -63,8 +64,15 @@ additional section). The CLI takes the answer's source address as the board's, s
 | `0x12` DATA (audio) | ← | `ctr u32 LE, ciphertext, tag[12]` (after `listen raw on`) |
 | `0xE0` ERROR | ← | UTF-8 reason, plain (only before a session exists) |
 
-### Pairing (confirmed with the BOOT button)
+### Pairing (opened and confirmed with the BOOT button)
+The board takes a pairing request only while its **pairing window** is open: a **double press of BOOT** (two
+presses within 0.5 s) opens it for 60 s. The LED then flashes twice a second, the display says `PAIRING OPEN`,
+and the mDNS TXT `open` is `1`. The window closes when a computer has paired, after the 60 s, or when a paired
+computer's session comes up. Outside it PAIR is answered `0xE0 "pairing closed: double-press BOOT on the board,
+then pair within 60 s"` and nothing else happens: nothing on the display, no LED, no lock (below). So nothing on
+the network can make the board ask for its button; that takes someone at the board first.
 ```
+        ... a person double-presses BOOT on the board: the window is open for 60 s ...
 C → B  PAIR        c_pub, client_id, commit = SHA-256(n_c), name     n_c: 16 random bytes, kept back
 B → C  PAIR_KEY    b_pub                                             b_priv: fresh per request
 C → B  PAIR_NONCE  n_c                                               the board checks it against commit
@@ -87,19 +95,38 @@ mac    = HMAC-SHA256(K, "paired" || client_id)[0:16]
   The same if the link drops while the board waits (the request is withdrawn), or `n_c` does not match.
 - A press counts as an answer only once the request has waited a second; before that it is an ordinary press (the
   stop toggle), so a request from the network cannot catch a press that was already on its way.
+- A request that got in while the window was open keeps its 30 s for the button, also when the window's 60 s end
+  meanwhile.
 - While it waits the board sends a keepalive record every 2 s, and the computer its own: the link stays up.
-- The board's answers to PAIR instead of PAIR_KEY (`0xE0`):
-  - `busy: another pairing request is open`: only one at a time. A second PAIR never replaces the first one's
-    name, code or key.
+- The board's answers to PAIR instead of PAIR_KEY (`0xE0`), checked in this order:
+  - `this CLI is too old to pair: update esp32agent`: a PAIR without `commit` (the 48-byte form of older CLIs).
   - `busy: board in use …`: a paired computer has a session, or had one in the last 10 s. No request opens then,
     so the BOOT button stays the stop button while something drives the phone. (The CLI asks again for 20 s: its
     own session, closed for the pairing, counts too.)
+  - `pairing closed: double-press BOOT …`: the window is not open. (The CLI says so and asks again every 2 s for
+    60 s, so the person can go and press.)
+  - `busy: another pairing request is open`: only one at a time. A second PAIR never replaces the first one's
+    name, code or key.
   - `busy: pairing locked for N s …`: after a request that ended without the button (timeout, dropped link, bad
     nonce) pairing is locked for 5 s, then 10, 20 … up to 5 min; a pairing that succeeds, or 10 min without a
-    failed one, starts over at 5 s. So the LED and the display cannot be kept busy from the network.
-  - `this CLI is too old to pair: update esp32agent`: a PAIR without `commit` (the 48-byte form of older CLIs).
-- Without a display the code cannot be compared: the press then only says "someone at the board agrees that a
+    failed one, starts over at 5 s. Only a request that got through the open window can fail this way.
+- Without a display the code cannot be compared: the presses then only say "someone at the board agrees that a
   computer pairs now". Pair right after you asked for it yourself, or fit the OLED (docs/hardware-addons.md).
+
+The double press and the stop button (BOOT, short press: the stop toggle):
+- The stop is never delayed: the **first** press of a double press toggles it at once, like any press. The second
+  press takes that toggle back and opens the window, so a double press leaves the stop as it was. Three quick
+  presses are a double press and then one ordinary press.
+- **While a paired computer's session is up** (or was in the last 10 s) a double press opens nothing: it is two
+  ordinary presses (stop on, stop off). End the session first.
+- **While a request waits for the button** (a pairing code, or the Wi-Fi setup page's network) presses are never
+  a double press: the one that comes after the request has waited a second confirms it, any other is an ordinary
+  press.
+- A double press while the window is open starts its 60 s over. Holding BOOT (10 s: forget the Wi-Fi) is not part
+  of a double press.
+- In a build without the stop toggle (`flash.sh --no-safety`) a single press does nothing and a double press opens
+  the window all the same.
+- The setup hotspot does not change any of this: a board that is being set up can be paired over its hotspot.
 
 ### Session (every connection)
 ```

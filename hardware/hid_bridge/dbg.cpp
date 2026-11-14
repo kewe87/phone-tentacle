@@ -28,7 +28,7 @@ void dbg_log(const char *fmt, ...) {
 
 void dbg_begin(const char *reset, const char *crash) {
   dbg_log("boot: fw %s, reset %s, last crash: %s", FW_VERSION, reset, crash);
-  dbg_log("boot: DEBUG BUILD, serial commands: dbg state | nvs | wifi [scan] | btn short | btn long | reboot | forget");
+  dbg_log("boot: DEBUG BUILD, serial commands: dbg state | nvs | wifi [scan] | btn short | btn long | btn double | reboot | forget");
 }
 
 static const char *usb() { return !tud_mounted() ? "off" : tud_suspended() ? "asleep" : "ok"; }
@@ -42,6 +42,8 @@ static void state() {
   char c1[CF_TEXT] = "", c2[CF_TEXT] = "";
   uint32_t left = 0;
   bool waiting = confirm_open(c1, c2, &left);
+  uint32_t pairLeft = 0;
+  bool pairOpen = pair_window_open(&pairLeft);  // the pairing window (BOOT double press), and what is left of its 60 s
   NetSetup su;
   net_setup_status(&su);
   uint8_t id[6];
@@ -49,12 +51,12 @@ static void state() {
   Serial.printf("dbg state {\"fw\":\"%s\",\"up\":%lu,\"id\":\"%02x%02x%02x%02x%02x%02x\",\"net\":\"%s\",\"ip\":\"%s\","
                 "\"wifi_status\":%d,\"rssi\":%d,\"setup\":%d,\"setup_state\":%d,\"usb\":\"%s\",\"airplay\":\"%s\","
                 "\"stopped\":%d,\"confirm\":%d,\"confirm_l1\":\"%s\",\"confirm_l2\":\"%s\",\"confirm_left\":%lu,"
-                "\"tcp\":%d,\"session\":%d,\"pairing\":%d,\"paired\":%d,"
+                "\"tcp\":%d,\"session\":%d,\"pair_open\":%d,\"pair_left\":%lu,\"pairing\":%d,\"paired\":%d,"
                 "\"heap\":%u,\"heap_min\":%u,\"psram\":%u}\n",
                 FW_VERSION, (unsigned long)millis(), id[0], id[1], id[2], id[3], id[4], id[5], net_mode(),
                 net_ip().c_str(), (int)WiFi.status(), (int)WiFi.RSSI(), (int)net_setup_active(), su.state, usb(), airplay(),
                 (int)stop_active(), (int)waiting, c1, c2, (unsigned long)left, (int)cli_tcp_up(), (int)cli_up(),
-                (int)cli_pair_open(), cli_paired(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                (int)pairOpen, (unsigned long)pairLeft, (int)cli_pair_open(), cli_paired(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                 (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 }
@@ -115,8 +117,8 @@ bool dbg_command(const char *line) {
   else if (arg == "nvs") nvs();
   else if (arg == "wifi") wifi(false);
   else if (arg == "wifi scan") wifi(true);
-  else if (arg == "btn short" || arg == "btn long") {
-    button_debug_press(arg == "btn long");
+  else if (arg == "btn short" || arg == "btn long" || arg == "btn double") {
+    button_debug_press(arg == "btn long" ? DBG_BTN_LONG : arg == "btn double" ? DBG_BTN_DOUBLE : DBG_BTN_SHORT);
     Serial.printf("dbg ok %s\n", arg.c_str());
   } else if (arg == "reboot") {
     Serial.println("dbg ok reboot");
@@ -128,7 +130,7 @@ bool dbg_command(const char *line) {
     net_request("{\"mode\":\"ap\"}");
     Serial.println("dbg ok forget");
   } else {
-    Serial.println("dbg err usage: dbg state | nvs | wifi [scan] | btn short | btn long | reboot | forget");
+    Serial.println("dbg err usage: dbg state | nvs | wifi [scan] | btn short | btn long | btn double | reboot | forget");
   }
   return true;
 }

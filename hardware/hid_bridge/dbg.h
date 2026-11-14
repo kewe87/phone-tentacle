@@ -3,7 +3,7 @@
 //   DBG("fmt", ...)   one line "[sec.ms] D text" on USB serial (not in the RAM log)
 //   dbg_begin()       boot report: reset reason, the last crash
 //   dbg_poll()        loop(): logs every state change, and heap / PSRAM / stack low-water marks every 10 s
-//   dbg_command()     a serial line "dbg state|nvs|wifi [scan]|btn short|btn long|reboot|forget"
+//   dbg_command()     a serial line "dbg state|nvs|wifi [scan]|btn short|btn long|btn double|reboot|forget"
 // A debug build must never be handed out: `dbg btn` presses the BOOT button from the serial port.
 #pragma once
 

@@ -159,6 +159,11 @@ static void display_poll() {  // ~2 Hz from loop()
     snprintf(l2, sizeof l2, "%s", c1);
     snprintf(l3, sizeof l3, "%s", c2);
     snprintf(l4, sizeof l4, "%lu s left", (unsigned long)((left + 999) / 1000));
+  } else if (pair_window_open(&left)) {  // BOOT was double-pressed: a computer may ask to pair now
+    snprintf(l1, sizeof l1, "PAIRING OPEN");
+    snprintf(l2, sizeof l2, "On the computer run:");
+    snprintf(l3, sizeof l3, "esp32agent pair");
+    snprintf(l4, sizeof l4, "%lu s left", (unsigned long)((left + 999) / 1000));
   } else if (net_setup_active()) {  // no Wi-Fi stored: how to reach the setup page
     snprintf(l1, sizeof l1, "Wi-Fi setup: join");
     snprintf(l2, sizeof l2, "%s", net_ap_ssid().c_str());
@@ -478,9 +483,10 @@ void startAirplay() {
 
 // How the CLI finds the board on the Wi-Fi (docs/cli-protocol.md, "Discovery"): one more service on the mDNS
 // responder the AirPlay receiver started (src/airplay/mdns.c; same host name, no second responder). The TXT record
-// holds nothing secret: the board id, its name, the firmware version, how many computers are paired.
+// holds nothing secret: the board id, its name, the firmware version, how many computers are paired, and whether
+// the pairing window is open (so the CLI can say "double-press BOOT first" before it connects).
 static const char *const CLI_SERVICE = "_esp32agent";
-static int advertisedPaired = -1;
+static int advertisedPaired = -1, advertisedOpen = 0;
 
 static void advertiseCli() {
   static char id[13], name[40], paired[4];
@@ -490,7 +496,8 @@ static void advertiseCli() {
   snprintf(name, sizeof name, "%s %s", BOARD_NAME_TEXT, board_suffix().c_str());
   advertisedPaired = cli_paired();
   snprintf(paired, sizeof paired, "%d", advertisedPaired);
-  mdns_txt_item_t txt[] = {{"id", id}, {"name", name}, {"fw", FW_VERSION}, {"paired", paired}, {"v", "1"}};
+  advertisedOpen = 0;  // advertiseState() sets it once the window is open
+  mdns_txt_item_t txt[] = {{"id", id}, {"name", name}, {"fw", FW_VERSION}, {"paired", paired}, {"open", "0"}, {"v", "1"}};
   esp_err_t e = mdns_service_add(name, CLI_SERVICE, "_tcp", CLI_TCP_PORT, txt, sizeof txt / sizeof txt[0]);
   if (e != ESP_OK) {
     advertisedPaired = -1;  // nothing to keep up to date
@@ -498,12 +505,22 @@ static void advertiseCli() {
   } else board_log("mdns: %s._tcp on port %d as \"%s\"", CLI_SERVICE, CLI_TCP_PORT, name);
 }
 
-static void advertisePaired() {  // loop(): the count in the TXT record follows pair / unpair
+static void advertiseState() {  // loop(): the TXT record follows pair / unpair and the pairing window; so does the log
+  static bool wasOpen;
+  bool open = pair_window_open();
+  if (open != wasOpen) {
+    wasOpen = open;
+    board_log(open ? "pair: window open for 60 s (BOOT double press)" : "pair: window closed");
+  }
+  if (advertisedPaired < 0) return;  // the service is not there
   int n = cli_paired();
-  if (n == advertisedPaired || advertisedPaired < 0) return;
-  char paired[4];
-  snprintf(paired, sizeof paired, "%d", n);
-  if (mdns_service_txt_item_set(CLI_SERVICE, "_tcp", "paired", paired) == ESP_OK) advertisedPaired = n;
+  if (n != advertisedPaired) {
+    char paired[4];
+    snprintf(paired, sizeof paired, "%d", n);
+    if (mdns_service_txt_item_set(CLI_SERVICE, "_tcp", "paired", paired) == ESP_OK) advertisedPaired = n;
+  }
+  if ((int)open != advertisedOpen && mdns_service_txt_item_set(CLI_SERVICE, "_tcp", "open", open ? "1" : "0") == ESP_OK)
+    advertisedOpen = open;
 }
 
 void setup() {
@@ -549,7 +566,7 @@ void loop() {
   display_poll();
 #endif
   net_poll();
-  advertisePaired();
+  advertiseState();
 #if TENTACLE_DEBUG
   dbg_poll();
 #endif

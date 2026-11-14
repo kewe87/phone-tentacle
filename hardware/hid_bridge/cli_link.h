@@ -9,9 +9,11 @@ void cli_reset();                                         // the connection clos
 bool cli_up();                                            // a session is up: its first sealed frame verified
 uint32_t cli_gen();                                       // bumps when a session authenticates (video starts over)
 void cli_forget_all();                                    // unpair: every client must pair again
-// Pairing (cli_link.cpp, "Pairing"): only over Wi-Fi, confirmed with the BOOT button.
+// Pairing (cli_link.cpp, "Pairing"): only while the pairing window is open (button.h: a double press of BOOT),
+// and then confirmed with the BOOT button.
 void cli_pair_poll();                                     // cli_tcp's task, a few times a second: button, timeouts
 bool cli_pair_open();                                     // a request is open (its link must stay up)
+bool cli_in_use();                                        // a session is up, or was 10 s ago: no pairing now
 int cli_paired();                                         // paired computers (at most 4)
 void cli_board_id(uint8_t out[6]);                        // the id the CLI knows the board by (as esp_read_mac ESP_MAC_BT gives it)
 // Sealed board → CLI frames. Control (replies, status) only from link.cpp's TX task; video only from the video task:

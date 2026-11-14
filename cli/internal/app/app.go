@@ -25,8 +25,9 @@ var Version = "dev"
 const usage = `esp32agent: see and drive an iPhone through an ESP32 Agent board, over Wi-Fi.
 
   devices                          boards on this network (found by mDNS)
-  pair                             pair this computer: the board shows this computer's name and a 6-digit code
-                                   (OLED), its LED blinks; compare the code, press BOOT on the board within 30 s
+  pair                             pair this computer. First double-press BOOT on the board (pairing opens for
+                                   60 s). The board then shows this computer's name and a 6-digit code (OLED),
+                                   its LED blinks; compare the code, press BOOT once more within 30 s
   unpair [--board]                 forget the board here; --board: the board forgets every paired computer too
   screenshot [--format png|jpeg] [--quality N] [--scale F] [--max-size N] [--output PATH|-]
   io tap X,Y [--aim] [--count N]   coordinates are screenshot pixels; --count 2 double-taps
@@ -304,6 +305,7 @@ func (a *App) progress(line []byte) {
 // pair runs `pair`: the daemon finds the board and asks; the code arrives as a progress line while the board waits
 // for its button, the response once it was pressed (or not).
 func (a *App) pair(dev string) int {
+	fmt.Fprintln(a.Err, "The board only pairs after a double press of its BOOT button (two quick presses), for 60 s.")
 	fmt.Fprintln(a.Err, "Looking for the board on this network...")
 	return a.call(daemon.Request{Cmd: "pair", Device: dev})
 }

@@ -288,9 +288,10 @@ type deviceInfo struct {
 	State     string `json:"state"`
 	Paired    bool   `json:"paired"`
 	Connected bool   `json:"connected"`
-	Addr      string `json:"addr,omitempty"`   // where it answers on the network
-	FW        string `json:"fw,omitempty"`     // firmware version
-	Source    string `json:"source,omitempty"` // mdns, remembered, host, probe
+	Addr      string `json:"addr,omitempty"`    // where it answers on the network
+	FW        string `json:"fw,omitempty"`      // firmware version
+	Source    string `json:"source,omitempty"`  // mdns, remembered, host, probe
+	Pairing   string `json:"pairing,omitempty"` // open, closed: whether the board takes a pairing request now
 }
 
 func (s *Server) devices(ctx context.Context) Response {
@@ -317,7 +318,7 @@ func (s *Server) devices(ctx context.Context) Response {
 		if seen[suf] && suf != "" || suf == "" && seenAddr[f.Addr] { // the connected one, found again
 			continue
 		}
-		d := deviceInfo{ID: suf, Name: f.Name, Platform: "ios", Type: "esp32agent", State: "online", Addr: f.Addr, FW: f.FW, Source: f.Source}
+		d := deviceInfo{ID: suf, Name: f.Name, Platform: "ios", Type: "esp32agent", State: "online", Addr: f.Addr, FW: f.FW, Source: f.Source, Pairing: f.Open}
 		if f.ID != "" {
 			d.ID = f.ID
 		}
@@ -510,6 +511,16 @@ const pairBusyWait = 20 * time.Second
 
 var pairBusyRetry = 3 * time.Second
 
+// The board takes a pairing request only for 60 s after a double press of its BOOT button. pair says so and keeps
+// asking a closed board this long, this often, so the person can go and press.
+var (
+	pairClosedWait  = 60 * time.Second
+	pairClosedRetry = 2 * time.Second
+)
+
+const pairClosedHint = "pairing is closed on the board: double-press its BOOT button now (two quick presses; the LED then " +
+	"flashes twice a second and the display says PAIRING OPEN). Waiting for it"
+
 // pair pairs this computer with a board: over the network, confirmed on the board with its BOOT button. The code
 // goes to the client as a progress line before the board waits; the response comes after the button (or its timeout).
 func (s *Server) pair(ctx context.Context, sel string) Response {
@@ -529,6 +540,11 @@ func (s *Server) pair(ctx context.Context, sel string) Response {
 	var l proto.Link
 	var k, boardID []byte
 	started := time.Now()
+	hinted := false
+	if f.Open == "closed" { // the board said so itself (mDNS): tell before the first try
+		hinted = true
+		progress(ctx, map[string]any{"pair": "closed", "message": pairClosedHint})
+	}
 	for {
 		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		s.linkMu.Lock()
@@ -546,6 +562,16 @@ func (s *Server) pair(ctx context.Context, sel string) Response {
 		}
 		l.Close()
 		var be proto.BoardError
+		if errors.As(err, &be) && strings.HasPrefix(string(be), "pairing closed") && time.Since(started) < pairClosedWait {
+			if !hinted {
+				hinted = true
+				progress(ctx, map[string]any{"pair": "closed", "message": pairClosedHint})
+			}
+			if sleepCtx(ctx, pairClosedRetry) != nil {
+				return fail(ctx.Err())
+			}
+			continue
+		}
 		if errors.As(err, &be) && strings.HasPrefix(string(be), "busy: board in use") && time.Since(started) < pairBusyWait {
 			progress(ctx, map[string]any{"pair": "waiting", "message": "the board was in use a moment ago; asking again"})
 			if sleepCtx(ctx, pairBusyRetry) != nil {
@@ -577,6 +603,9 @@ func explainPair(err error) error {
 		return err
 	}
 	switch msg := string(be); {
+	case strings.HasPrefix(msg, "pairing closed"):
+		return errors.New("not paired: pairing was not opened at the board. Double-press its BOOT button (two quick presses), " +
+			"then run esp32agent pair within 60 s. While a paired computer drives the phone a double press opens nothing: end that session first")
 	case strings.HasPrefix(msg, "pairing not confirmed"):
 		return errors.New("not paired: the BOOT button on the board was not pressed in time. Nothing was stored; run esp32agent pair again")
 	case strings.HasPrefix(msg, "busy: pairing locked"):
