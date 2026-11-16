@@ -4,6 +4,17 @@ Tentacle's own history starts here. It is derived from
 [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan (the state of its tag
 `v1.0.6`: board firmware 0.2.5, CLI 0.1.5); that project's history is in its repository.
 
+## tentacle-flash – unreleased
+
+Not run on hardware yet.
+
+- **Firmware installer with nothing to install**: one file each for Windows, macOS (universal) and Linux
+  (amd64, arm64), pure Go. A double click opens a three-step page on `127.0.0.1` (plug in, install, done with the
+  setup Wi-Fi as a QR code), English and German; `--yes` does the same on the command line.
+- Speaks the ESP32-S3 ROM bootloader itself (compressed writes, MD5 check), finds the board on the ROM's and on
+  the firmware's USB port, checks chip, flash size and PSRAM, and keeps the stored Wi-Fi and the pairing.
+- Checks the image's Ed25519 signature with the release key; unsigned images get a warning.
+
 ## 0.3.0 (firmware) – unreleased
 
 Not run on hardware yet.

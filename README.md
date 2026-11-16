@@ -109,6 +109,10 @@ cli/tentacle pair                  # compare the 6-digit code with the OLED, pre
 cli/tentacle screenshot
 ```
 
+**Without arduino-cli:** `tentacle-flash` installs the firmware with a double click on Windows, macOS and Linux,
+with nothing else to install. It finds the board, writes and checks the firmware and shows the setup Wi-Fi as a
+QR code ([the manual, "Flashing the easy way"](docs/manual.md#flashing-the-easy-way-tentacle-flash)).
+
 Every step in detail, wiring and troubleshooting: **[the manual](docs/manual.md)**.
 
 <details>

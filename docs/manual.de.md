@@ -38,7 +38,7 @@ Vom leeren Board bis zum ersten Tipp auf dem Handy, und was Taste, LED und Displ
 | **USB-C-auf-USB-C-Datenkabel**, kurz | Ein reines Ladekabel funktioniert nicht. |
 | **iPhone mit USB-C**, iOS 18 oder neuer | Lightning-iPhones über einen Lightning-auf-USB-Kamera-Adapter: vom Originalprojekt übernommen, hier nicht ausprobiert. |
 | **0,96″-OLED, 128×64, SSD1306, I²C** (4 Pins), empfohlen | Zeigt das Setup-WLAN mit Passwort, die Adresse des Boards und den Koppel-Code. Ohne OLED lässt sich der Code am Board nicht vergleichen. |
-| Ein Computer im selben WLAN | Windows, macOS oder Linux, mit [arduino-cli](https://arduino.github.io/arduino-cli/) zum Flashen, [Go](https://go.dev/dl/) zum Bauen der CLI und `ffmpeg` für Screenshots. |
+| Ein Computer im selben WLAN | Windows, macOS oder Linux, mit tentacle-flash oder [arduino-cli](https://arduino.github.io/arduino-cli/) zum Flashen, [Go](https://go.dev/dl/) zum Bauen der CLI und `ffmpeg` für Screenshots. |
 | Optional: LiPo 3,7 V, zwei 100-kΩ-Widerstände, Gehäuse | [hardware-addons.de.md](hardware-addons.de.md) |
 
 OLED-Anschluss: VCC→3V3, GND→GND, SDA→D4 (GPIO5), SCL→D5 (GPIO6).
@@ -53,6 +53,65 @@ Netz muss seine Geräte miteinander reden lassen (viele Gastnetze tun das nicht)
 
 ## 2. Firmware flashen
 
+Es gibt zwei Wege: `tentacle-flash`, ein einzelnes Programm, für das sonst nichts installiert werden muss, oder
+die Firmware selbst mit arduino-cli bauen (alle Build-Optionen, siehe unten).
+
+### Flashen auf die einfache Art: tentacle-flash
+
+`tentacle-flash` bringt die Firmware mit und schreibt sie über USB, ohne arduino-cli, Python oder Treiber. Es gibt
+eine Datei pro System: `tentacle-flash_windows_amd64.exe`, `tentacle-flash_darwin_universal` (Apple Silicon und
+Intel) und `tentacle-flash_linux_amd64` / `_linux_arm64`. Veröffentlichte Releases gibt es noch nicht; bis dahin
+die Dateien selbst bauen (braucht [Go](https://go.dev/dl/) und einen Firmware-Build, siehe
+[cli/README.md](../cli/README.md#tentacle-flash)).
+
+1. Das Board mit dem USB-C-Datenkabel an den Computer stecken.
+2. `tentacle-flash` doppelklicken. Im Browser öffnet sich eine Seite (sie läuft nur auf diesem Computer, unter
+   `127.0.0.1`), auf Deutsch oder Englisch je nach System; der Knopf oben rechts schaltet um.
+3. Die Seite zeigt das gefundene Board und die Firmware. **Installieren** klicken. Das Programm findet das Board,
+   schaltet es selbst in den Download-Modus, schreibt die Firmware, prüft sie und startet das Board neu. Das
+   dauert etwa eine Minute.
+4. **Fertig.** Die Seite zeigt das Setup-WLAN `Tentacle-XXXX` des Boards mit Passwort und einem QR-Code: mit der
+   Handykamera scannen und mit [Schritt 3](#3-das-board-ins-eigene-wlan-bringen) weitermachen.
+
+Ein gespeichertes WLAN und die Kopplung bleiben auf dem Board; nur die Firmware wird ersetzt. Unter **Erweitert**
+lassen sich der Anschluss wählen, eine eigene `.merged.bin` (mit ihrer `.sig`) installieren, vorher der ganze Flash
+löschen (das entfernt auch WLAN und Kopplung), die Chip-Info lesen und das Protokoll ansehen.
+
+Bevor es etwas schreibt, prüft `tentacle-flash`, dass das Board ein ESP32-S3 mit mindestens 8 MB Flash ist (und
+warnt, wenn PSRAM fehlt), und dass die Firmware mit dem Tentacle-Release-Schlüssel signiert ist. Ein falsch
+signiertes Image wird abgelehnt; ein unsigniertes (ein eigener Build) wird mit Warnung installiert.
+
+Auf der Kommandozeile, ohne Browser:
+
+```sh
+tentacle-flash --yes                         # Board finden, installieren, Setup-WLAN als QR-Code zeigen
+tentacle-flash --yes --port COM5 --image hardware/build/hid_bridge.ino.merged.bin
+tentacle-flash --yes --erase                 # vorher den ganzen Flash löschen
+tentacle-flash --info                        # ein laufendes Board noch einmal nach seinem Setup-WLAN fragen
+tentacle-flash --chip                        # Chip, Flash-Größe, PSRAM, MAC
+tentacle-flash --list                        # serielle Anschlüsse, und welcher das Board ist
+```
+
+Wenn es schiefgeht:
+
+- **„nicht in den Download-Modus gewechselt“**: von Hand. BOOT-Taste (B) halten, RESET (R) kurz drücken, BOOT
+  loslassen, dann noch einmal Installieren klicken. Die beiden winzigen Tasten sitzen neben der USB-C-Buchse.
+- **Kein Board gefunden**: ein anderes Kabel probieren (reine Ladekabel übertragen keine Daten) und einen anderen
+  USB-Anschluss, direkt am Computer statt über einen Hub.
+- **Anschluss lässt sich nicht öffnen**: Arduino IDE oder seriellen Monitor schließen. Unter Linux den eigenen
+  Benutzer in die Gruppe `dialout` aufnehmen (Arch: `uucp`): `sudo usermod -aG dialout $USER`, dann ab- und
+  wieder anmelden.
+- **Windows** warnt eventuell vor einem unbekannten Programm („Der Computer wurde durch Windows geschützt“):
+  Weitere Informationen › Trotzdem ausführen. **macOS** öffnet heruntergeladene Programme erst nach einer
+  Bestätigung: Rechtsklick › Öffnen, oder vorher
+  `xattr -d com.apple.quarantine tentacle-flash_darwin_universal` und `chmod +x`.
+
+Die Firmware in `tentacle-flash` ist der Standard-Build. Für Optionen wie `--name`, `--abs` oder `--battery-pin`
+die Firmware wie unten selbst bauen; die eigene `.merged.bin` lässt sich dann mit `tentacle-flash` (Erweitert,
+oder `--image`) oder mit dem Skript installieren.
+
+### Selbst bauen mit arduino-cli
+
 Einmal den ESP32-Core installieren, und die Bibliothek U8g2, wenn du das OLED benutzt:
 
 ```bash
@@ -62,7 +121,7 @@ arduino-cli core install esp32:esp32@3.3.12
 arduino-cli lib install U8g2                 # nur für --display
 ```
 
-### Linux und macOS
+#### Linux und macOS
 
 Das Board an den Computer stecken, dann:
 
@@ -91,9 +150,9 @@ Skript noch einmal starten.
 
 Alle Optionen stehen im Kopf von [`hardware/flash.sh`](../hardware/flash.sh).
 
-### Windows
+#### Windows
 
-Im Repository liegt kein Flash-Skript für Windows. `hardware/flash.sh` ist ein Bash-Skript und sucht das Board
+Im Repository liegt kein Flash-Skript für Windows (tentacle-flash oben braucht keins). `hardware/flash.sh` ist ein Bash-Skript und sucht das Board
 unter `/dev/cu.usbmodem*` und `/dev/ttyACM*`, also unter den Namen von macOS und Linux. Unter Windows die zwei
 arduino-cli-Aufrufe des Skripts selbst ausführen, in PowerShell im Ordner des Repositorys. Der Pfad hinter
 `-include` muss der volle Pfad von `build_cfg.h` sein, mit Schrägstrichen und ohne Leerzeichen:
