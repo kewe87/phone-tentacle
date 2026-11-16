@@ -115,7 +115,7 @@ const T = {
 };
 
 const $ = (id) => document.getElementById(id);
-let L = T.en, state = {}, st = {}, ws = null, wsOpenedAt = 0, retries = 0;
+let L = T.en, state = {}, st = {}, ws = null, wsOpenedAt = 0, retries = 0, byeWhy = '';
 
 function t(key, vars) {
   let s = L[key] || T.en[key] || key;
@@ -187,16 +187,18 @@ function send(m) { if (ws && ws.readyState === 1) ws.send(m); }
 function connect() {
   ws = new WebSocket('wss://' + location.host + '/ws');
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { wsOpenedAt = Date.now(); retries = 0; video.reset(); send('stream on'); if (video.w) send('size ' + video.w + ' ' + video.h); };
-  ws.onmessage = (e) => { if (typeof e.data === 'string') onText(e.data); else video.chunk(new Uint8Array(e.data)); };
+  ws.onopen = () => { wsOpenedAt = Date.now(); video.reset(); send('stream on'); if (video.w) send('size ' + video.w + ' ' + video.h); };
+  ws.onmessage = (e) => { retries = 0; if (typeof e.data === 'string') onText(e.data); else video.chunk(new Uint8Array(e.data)); };
+  byeWhy = '';
   ws.onclose = async () => {
     ws = null;
-    const lasted = Date.now() - wsOpenedAt;
     let s = {};
     try { s = await api('/api/state'); } catch (x) { /* the board is away */ }
-    if (s.status === 200 && !s.auth) return start();  // signed out (here or by another browser's sign-in)
-    if (lasted > 10000 && retries++ < 5) return setTimeout(connect, 1500);
-    overlay(t(lasted < 10000 && s.status === 200 ? 'replaced' : 'disconnected'), t('reconnect'), () => { retries = 0; connect(); });
+    if (byeWhy === 'signin' || (s.status === 200 && !s.auth)) return start();  // signed out (here or by another browser's sign-in)
+    // Only the board's word says another page took over; anything else (a dropped or refused connection) retries.
+    if (byeWhy === 'replaced') return overlay(t('replaced'), t('reconnect'), () => { retries = 0; connect(); });
+    if (!byeWhy && retries++ < 5) return setTimeout(connect, 1000 * retries);
+    overlay(t('disconnected') + (byeWhy ? ' (' + byeWhy + ')' : ''), t('reconnect'), () => { retries = 0; connect(); });
   };
 }
 setInterval(() => send('ping'), 3000);  // keeps the connection the server's most recently used one
@@ -204,7 +206,8 @@ setInterval(() => send('ping'), 3000);  // keeps the connection the server's mos
 function onText(s) {
   let m;
   try { m = JSON.parse(s); } catch (e) { return; }
-  if (m.t === 'st') { st = m; video.sync(m.now); showStatus(); }
+  if (m.t === 'bye') byeWhy = m.why || '';
+  else if (m.t === 'st') { st = m; video.sync(m.now); showStatus(); }
   else if (m.t === 'err') flash(m.msg === 'control' ? t('errControl') : m.msg === 'stopped' ? t('errStopped') : m.msg === 'busy' ? t('errBusy') : m.msg);
 }
 

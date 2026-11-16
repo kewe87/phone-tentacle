@@ -606,10 +606,34 @@ static void onMessage(const char *m) {
   else if (full) sendErr("busy");
 }
 
+// A short text frame to fd, from the server's task, before the connection is closed: the page tells the person why.
+static void bye(int fd, const char *why) {
+  char m[64];
+  snprintf(m, sizeof m, "{\"t\":\"bye\",\"why\":\"%s\"}", why);
+  httpd_ws_frame_t f = {};
+  f.type = HTTPD_WS_TYPE_TEXT;
+  f.final = true;
+  f.payload = (uint8_t *)m;
+  f.len = strlen(m);
+  if (srv) httpd_ws_send_frame_async(srv, fd, &f);
+}
+
 static esp_err_t onWs(httpd_req_t *r) {
   int fd = httpd_req_to_sockfd(r);
   if (r->method == HTTP_GET) {  // the handshake is done: only now are the headers at hand
-    if (!sameOrigin(r) || !signedIn(r)) return ESP_FAIL;  // closes it
+    if (!sameOrigin(r)) {
+      char o[128], h[96];
+      header(r, "Origin", o, sizeof o);
+      header(r, "Host", h, sizeof h);
+      board_log("web: page refused: origin \"%s\" is not host \"%s\"", o, h);
+      bye(fd, "origin");
+      return ESP_FAIL;  // closes it
+    }
+    if (!signedIn(r)) {
+      board_log("web: page refused: not signed in");
+      bye(fd, "signin");
+      return ESP_FAIL;
+    }
     WsTag *t = (WsTag *)malloc(sizeof(WsTag));
     if (!t) return ESP_FAIL;
     int old = wsFd;
@@ -625,7 +649,11 @@ static esp_err_t onWs(httpd_req_t *r) {
     unlock();
     r->sess_ctx = t;  // freed (wsGone) when the connection closes
     r->free_ctx = wsGone;
-    if (old >= 0 && old != fd) httpd_sess_trigger_close(srv, old);  // one page at a time: the newest
+    if (old >= 0 && old != fd) {  // one page at a time: the newest
+      bye(old, "replaced");
+      httpd_sess_trigger_close(srv, old);
+      board_log("web: a newer page replaced the open one");
+    }
     board_log("web: page connected");
     return ESP_OK;
   }
