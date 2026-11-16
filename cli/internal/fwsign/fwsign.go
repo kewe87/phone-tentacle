@@ -74,6 +74,15 @@ func LoadKey(path string) (ed25519.PrivateKey, error) {
 	return ed25519.NewKeyFromSeed(seed), nil
 }
 
+// ReleaseKey is the public half of the release key, the same 32 bytes as OTA_RELEASE_PUBKEY in
+// hardware/hid_bridge/ota_pubkey.h (a test keeps the two equal). tentacle-flash checks images against it before
+// it writes them over USB. Like ota_pubkey.h it is still the development key.
+var ReleaseKey = ed25519.PublicKey{
+	0xa8, 0x23, 0xce, 0xff, 0x12, 0xc4, 0x59, 0x59,
+	0x80, 0x62, 0x65, 0x67, 0xb3, 0x3f, 0x7e, 0xa6,
+	0x45, 0xfa, 0x2e, 0x66, 0xc2, 0x88, 0x50, 0x6a,
+	0x47, 0x69, 0x7b, 0xa1, 0x03, 0x78, 0x98, 0x5b}
+
 // CArray is a public key as the C initializer ota_pubkey.h takes.
 func CArray(pub []byte) string {
 	var b strings.Builder

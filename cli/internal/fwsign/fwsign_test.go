@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -55,5 +57,30 @@ func TestSignVerifyAndKeyFiles(t *testing.T) {
 	os.WriteFile(p+SigExt, sig, 0o644)
 	if s, err := ReadSig(p); err != nil || hex.EncodeToString(s) != hex.EncodeToString(sig) {
 		t.Fatal("read .sig")
+	}
+}
+
+func TestReleaseKeyMatchesFirmware(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "..", "hardware", "hid_bridge", "ota_pubkey.h"))
+	if err != nil {
+		t.Skip("firmware source not next to the CLI:", err)
+	}
+	s := string(src)
+	i := strings.Index(s, "OTA_RELEASE_PUBKEY")
+	if i < 0 {
+		t.Fatal("no OTA_RELEASE_PUBKEY in ota_pubkey.h")
+	}
+	s = s[i:]
+	s = s[strings.Index(s, "{")+1 : strings.Index(s, "}")]
+	var got []byte
+	for _, f := range strings.Split(s, ",") {
+		b, err := strconv.ParseUint(strings.TrimSpace(f), 0, 8)
+		if err != nil {
+			t.Fatalf("ota_pubkey.h: %q: %v", f, err)
+		}
+		got = append(got, byte(b))
+	}
+	if !ReleaseKey.Equal(ed25519.PublicKey(got)) {
+		t.Fatalf("fwsign.ReleaseKey differs from ota_pubkey.h:\n%x\n%x", []byte(ReleaseKey), got)
 	}
 }

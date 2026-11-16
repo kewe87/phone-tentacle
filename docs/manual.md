@@ -38,7 +38,7 @@ From a bare board to the first tap on the phone, and what the button, the LED an
 | **USB-C to USB-C data cable**, short | A charge-only cable does not work. |
 | **iPhone with USB-C**, iOS 18 or later | Lightning iPhones through a Lightning to USB Camera Adapter: taken over from the original project, not tried here. |
 | **0.96″ OLED, 128×64, SSD1306, I²C** (4 pins), recommended | Shows the setup Wi-Fi and its password, the board's address and the pairing code. Without it the code cannot be compared at the board. |
-| A computer on the same Wi-Fi | Windows, macOS or Linux, with [arduino-cli](https://arduino.github.io/arduino-cli/) to flash, [Go](https://go.dev/dl/) to build the CLI and `ffmpeg` for screenshots. |
+| A computer on the same Wi-Fi | Windows, macOS or Linux, with tentacle-flash or [arduino-cli](https://arduino.github.io/arduino-cli/) to flash, [Go](https://go.dev/dl/) to build the CLI and `ffmpeg` for screenshots. |
 | Optional: LiPo 3.7 V, two 100 kΩ resistors, a case | [hardware-addons.md](hardware-addons.md) |
 
 OLED wiring: VCC→3V3, GND→GND, SDA→D4 (GPIO5), SCL→D5 (GPIO6).
@@ -53,6 +53,61 @@ network, and that network must let its devices talk to each other (many guest ne
 
 ## 2. Flash the firmware
 
+There are two ways: `tentacle-flash`, a single program with nothing else to install, or building the firmware
+yourself with arduino-cli (all build options, see below).
+
+### Flashing the easy way: tentacle-flash
+
+`tentacle-flash` carries the firmware inside and writes it over USB, without arduino-cli, Python or drivers. There
+is one file per system: `tentacle-flash_windows_amd64.exe`, `tentacle-flash_darwin_universal` (Apple silicon and
+Intel) and `tentacle-flash_linux_amd64` / `_linux_arm64`. There are no published releases yet; until then build
+the files yourself (needs [Go](https://go.dev/dl/) and a firmware build, see [cli/README.md](../cli/README.md#tentacle-flash)).
+
+1. Plug the board into the computer with the USB-C data cable.
+2. Double-click `tentacle-flash`. A page opens in the browser (it runs only on this computer, at `127.0.0.1`), in
+   English or German, following the system; the button at the top right switches.
+3. The page shows the board it found and the firmware. Click **Install**. It finds the board, puts it into
+   download mode by itself, writes the firmware, checks it and restarts the board. This takes about a minute.
+4. **Done.** The page shows the board's setup Wi-Fi `Tentacle-XXXX` with its password and a QR code: scan it
+   with the phone's camera and go on with [step 3](#3-put-the-board-on-your-wi-fi).
+
+A stored Wi-Fi and the pairing stay on the board; only the firmware is replaced. Under **Advanced** you can
+choose the port, install your own `.merged.bin` (with its `.sig`), erase the whole flash first (this removes the
+Wi-Fi and the pairing too), read the chip info and see the log.
+
+Before it writes anything, `tentacle-flash` checks that the board is an ESP32-S3 with at least 8 MB flash (and
+warns if it has no PSRAM), and that the firmware is signed with the Tentacle release key. A wrongly signed image
+is refused; an unsigned one (your own build) is installed with a warning.
+
+On the command line, without the browser:
+
+```sh
+tentacle-flash --yes                         # find the board, install, show the setup Wi-Fi as a QR code
+tentacle-flash --yes --port COM5 --image hardware/build/hid_bridge.ino.merged.bin
+tentacle-flash --yes --erase                 # erase the whole flash first
+tentacle-flash --info                        # ask a running board for its setup Wi-Fi again
+tentacle-flash --chip                        # chip, flash size, PSRAM, MAC
+tentacle-flash --list                        # serial ports, and which one is the board
+```
+
+If it goes wrong:
+
+- **"did not switch into download mode"**: do it by hand. Hold the BOOT button (B), press and release RESET (R),
+  let go of BOOT, then click Install again. The two tiny buttons sit next to the USB-C socket.
+- **No board found**: try another cable (charge-only cables do not carry data) and another USB port, directly
+  on the computer rather than through a hub.
+- **Port cannot be opened**: close the Arduino IDE or a serial monitor. On Linux, add yourself to the `dialout`
+  group (Arch: `uucp`): `sudo usermod -aG dialout $USER`, then log out and in again.
+- **Windows** may warn about an unknown program ("Windows protected your PC"): More info › Run anyway.
+  **macOS** opens downloaded programs only after a confirmation: right-click › Open, or
+  `xattr -d com.apple.quarantine tentacle-flash_darwin_universal` and `chmod +x` it first.
+
+The firmware in `tentacle-flash` is the standard build. For options such as `--name`, `--abs` or
+`--battery-pin`, build it yourself as below; you can then install your `.merged.bin` with `tentacle-flash`
+(Advanced, or `--image`) or with the script.
+
+### Building it yourself with arduino-cli
+
 Install the ESP32 core once, and the U8g2 library if you use the OLED:
 
 ```bash
@@ -62,7 +117,7 @@ arduino-cli core install esp32:esp32@3.3.12
 arduino-cli lib install U8g2                 # only for --display
 ```
 
-### Linux and macOS
+#### Linux and macOS
 
 Plug the board into the computer, then:
 
@@ -90,10 +145,10 @@ If the upload fails, put the board into download mode (hold BOOT while plugging 
 
 All options are listed in the header of [`hardware/flash.sh`](../hardware/flash.sh).
 
-### Windows
+#### Windows
 
-The repository has no flash script for Windows. `hardware/flash.sh` is a bash script and looks for the board
-under `/dev/cu.usbmodem*` and `/dev/ttyACM*`, which are macOS and Linux names. On Windows, run the two
+The repository has no flash script for Windows (tentacle-flash above needs none). `hardware/flash.sh` is a bash
+script and looks for the board under `/dev/cu.usbmodem*` and `/dev/ttyACM*`, which are macOS and Linux names. On Windows, run the two
 arduino-cli calls the script makes yourself, in PowerShell from the repository's folder. The path after
 `-include` has to be the full path of `build_cfg.h`, with forward slashes and without spaces:
 

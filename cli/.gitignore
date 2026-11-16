@@ -1,3 +1,5 @@
 /dist/
 /npm/bin/tentacle
 /npm/bin/tentacle.exe
+/internal/flash/release/*.bin
+/internal/flash/release/*.sig

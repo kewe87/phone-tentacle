@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Tentacle Installer</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header>
+  <img src="icon.svg" alt="">
+  <h1 data-i="title"></h1>
+  <span class="grow"></span>
+  <span id="ver" class="muted small"></span>
+  <button id="b-lang" type="button"></button>
+</header>
+
+<main>
+  <ol class="steps">
+    <li id="s1"><span>1</span><b data-i="step1"></b></li>
+    <li id="s2"><span>2</span><b data-i="step2"></b></li>
+    <li id="s3"><span>3</span><b data-i="step3"></b></li>
+  </ol>
+
+  <section class="card" id="v-plug">
+    <h2 data-i="plugTitle"></h2>
+    <p data-i="plugText"></p>
+    <p class="status"><span id="board" class="pill"></span></p>
+    <p class="status"><span id="fw" class="pill"></span></p>
+    <div id="img-notes"></div>
+    <button id="b-install" class="primary" type="button" data-i="install"></button>
+    <p class="muted small" id="keep"></p>
+  </section>
+
+  <section class="card" id="v-run" hidden>
+    <h2 data-i="runTitle"></h2>
+    <p id="stage" class="big"></p>
+    <progress id="bar" max="100" value="0"></progress>
+    <p class="muted small" data-i="dontUnplug"></p>
+  </section>
+
+  <section class="card" id="v-done" hidden>
+    <h2 data-i="doneTitle"></h2>
+    <div id="done-setup"></div>
+    <div id="done-notes"></div>
+    <div class="row">
+      <button id="b-again" type="button" data-i="again"></button>
+      <button id="b-close" type="button" data-i="close"></button>
+    </div>
+  </section>
+
+  <section class="card" id="v-err" hidden>
+    <h2 data-i="errTitle"></h2>
+    <p id="err-text" class="err"></p>
+    <div id="err-help"></div>
+    <button id="b-retry" class="primary" type="button" data-i="retry"></button>
+  </section>
+
+  <details id="adv">
+    <summary data-i="advanced"></summary>
+    <div class="adv">
+      <label for="port" data-i="port"></label>
+      <select id="port"></select>
+      <label for="file" data-i="ownImage"></label>
+      <input id="file" type="file" accept=".bin,.sig" multiple>
+      <p class="muted small" data-i="ownImageHint"></p>
+      <button id="b-builtin" type="button" data-i="useBuiltin" hidden></button>
+      <label class="check"><input id="erase" type="checkbox"> <span data-i="erase"></span></label>
+      <p class="muted small" data-i="eraseHint"></p>
+      <div class="row">
+        <button id="b-chip" type="button" data-i="chipInfo"></button>
+      </div>
+      <dl id="chip" class="stats" hidden></dl>
+      <h3 data-i="log"></h3>
+      <pre id="log"></pre>
+    </div>
+  </details>
+</main>
+</body>
+</html>

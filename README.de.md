@@ -109,6 +109,10 @@ cli/tentacle pair                  # 6-stelligen Code mit dem OLED vergleichen, 
 cli/tentacle screenshot
 ```
 
+**Ohne arduino-cli:** `tentacle-flash` installiert die Firmware per Doppelklick unter Windows, macOS und Linux,
+ohne dass sonst etwas installiert werden muss. Es findet das Board, schreibt und prüft die Firmware und zeigt das
+Setup-WLAN als QR-Code ([Handbuch, „Flashen auf die einfache Art“](docs/manual.de.md#flashen-auf-die-einfache-art-tentacle-flash)).
+
 Jeder Schritt im Einzelnen, Verdrahtung und Fehlersuche: **[das Handbuch](docs/manual.de.md)**.
 
 <details>
