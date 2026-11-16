@@ -135,9 +135,9 @@ Minute.
   per USB flashen.
 - **Nichts geht halb kaputt.** Das Image landet im zweiten Firmware-Slot des Boards. Bricht die Verbindung ab, drückst
   du Strg+C oder ist das Image beschädigt, behält das Board seine bisherige Firmware.
-- **Automatischer Rückfall.** Die neue Firmware ist auf Probe, bis sich ein Computer mit ihr verbunden hat, oder
-  30 s lang. Stürzt sie vorher ab oder startet neu, startet das Board wieder die vorige Firmware, und
-  `tentacle update` meldet das.
+- **Automatischer Rückfall.** Die neue Firmware ist auf Probe, bis sich ein Computer mit ihr verbunden hat oder ihr
+  WLAN 30 s lang steht. Stürzt sie vorher ab, startet neu oder findet sie binnen 2 Minuten kein WLAN, startet das
+  Board wieder die vorige Firmware, und `tentacle update` meldet das.
 - Die erste Firmware, die das kann (0.2.0), muss einmal per USB geflasht werden.
 
 Mit einem `--debug`-Build zeigt `tentacle logs --board --follow` das Log des Boards, während es geschrieben wird,

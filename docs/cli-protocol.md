@@ -323,8 +323,10 @@ build. The status of `dbg state` has `ota.unsigned_ok`.
 
 **Rollback.** The Arduino core's bootloader has `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`. The new firmware starts on
 trial (`ESP_OTA_IMG_PENDING_VERIFY`): it is kept (`esp_ota_mark_app_valid_cancel_rollback`) once a computer's
-session comes up, or after 30 s without a restart. A restart before that (a crash, the watchdog, a hang reset by
-hand) boots the previous firmware again. The CLI waits up to 90 s for the board to come back and compares the `fw`
+session comes up, or once its network (station with an address, or the setup hotspot) has been up for 30 s. Merely
+running is not enough, so an image that lost its Wi-Fi is not kept. A restart before that (a crash, the watchdog, a
+hang reset by hand) boots the previous firmware again, and so does 2 min without network and session
+(`esp_ota_mark_app_invalid_rollback_and_reboot`). The CLI waits up to 90 s for the board to come back and compares the `fw`
 of its first status with the version it sent: the same → `updated: OLD -> NEW`; the old one → the new firmware did
 not start properly and the board went back. `dbg state` shows `ota.rolled_back` (the slot that was given up).
 

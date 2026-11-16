@@ -7,6 +7,7 @@
 #include "cli_link.h"
 #include "link.h"
 #include "logbuf.h"
+#include "netcfg.h"
 #include "ota_pubkey.h"
 #include "version.h"
 #include "src/ota/ota_gate.h"
@@ -16,7 +17,12 @@
 // without it). Referenced below, so the linker keeps it.
 extern "C" const char tentacle_fw_marker[] = FW_MARKER;
 
-const uint32_t TRIAL_MS = 30000;  // a new firmware that ran this long without a restart is kept
+// A new firmware is kept once a session comes up, or once its network (station with an address, or the setup
+// hotspot) has been up this long. Merely running is not enough: an image that starts but lost its Wi-Fi would be
+// kept, and only a USB cable would bring the board back. Without either by TRIAL_GIVEUP_MS it goes back.
+const uint32_t TRIAL_NET_MS = 30000;
+const uint32_t TRIAL_GIVEUP_MS = 120000;
+static uint32_t netSince;  // millis() since the network is up on trial (0: not up)
 // Unsigned images: only a debug build takes them (it is never handed out). A release build takes only images
 // signed with the release key (ota_pubkey.h).
 const bool ALLOW_UNSIGNED = TENTACLE_DEBUG;
@@ -45,8 +51,8 @@ void ota_setup() {
   esp_ota_img_states_t st;
   onTrial = esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY;
   if (onTrial)
-    board_log("ota: new firmware %s in %s on trial: kept once a session comes up or after 30 s, a restart before that "
-              "goes back to the previous one", FW_VERSION, run->label);
+    board_log("ota: new firmware %s in %s on trial: kept once a session comes up or the network has been up "
+              "for 30 s; a restart before that, or 2 min without either, goes back to the previous one", FW_VERSION, run->label);
   else
     board_log("ota: %s in %s%s%s%s, %s", tentacle_fw_marker, run->label, bad ? ", the update in " : "", bad ? bad->label : "",
               bad ? " did not start properly and was given up" : "",
@@ -174,7 +180,20 @@ String ota_command(const String &arg, const String &id) {
 }
 
 void ota_poll() {
-  if (onTrial && (cli_up() || millis() >= TRIAL_MS)) keep(cli_up() ? "a session came up" : "30 s without a restart");
+  if (onTrial) {
+    bool net = net_up() || net_setup_active();
+    if (!net) netSince = 0;
+    else if (!netSince) netSince = millis() | 1;
+    if (cli_up()) keep("a session came up");
+    else if (netSince && millis() - netSince >= TRIAL_NET_MS) keep("the network has been up for 30 s");
+    else if (millis() >= TRIAL_GIVEUP_MS) {
+      board_log("ota: firmware %s found no network and no session in 2 min: back to the previous one", FW_VERSION);
+      link_flush();
+      vTaskDelay(pdMS_TO_TICKS(200));
+      esp_ota_mark_app_invalid_rollback_and_reboot();  // returns only if there is nothing to go back to
+      onTrial = false;
+    }
+  }
   if (!lock) return;
   xSemaphoreTake(lock, portMAX_DELAY);
   if (gate.state == OG_RECEIVING) {

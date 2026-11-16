@@ -130,8 +130,9 @@ to restart and prints `updated: 0.1.0 -> 0.2.0`. A 1.4 MB image takes well under
   builds of it over Wi-Fi; a normal build you made yourself goes over USB.
 - **Nothing breaks halfway.** The image goes into the board's second firmware slot. If the link drops, you press
   Ctrl+C, or the image is damaged, the board keeps the firmware it has.
-- **Automatic rollback.** The new firmware is on trial until a computer has connected to it, or for 30 s. If it
-  crashes or restarts before that, the board starts the previous firmware again, and `tentacle update` says so.
+- **Automatic rollback.** The new firmware is on trial until a computer has connected to it, or until its Wi-Fi
+  has worked for 30 s. If it crashes or restarts before that, or finds no Wi-Fi within 2 minutes, the board starts
+  the previous firmware again, and `tentacle update` says so.
 - The first firmware that can do this (0.2.0) has to be flashed over USB once.
 
 With a `--debug` build, `tentacle logs --board --follow` shows the board's log as it is written, and
