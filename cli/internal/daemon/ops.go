@@ -238,11 +238,11 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 	err := func() error {
 		switch req.Cmd {
 		case "text":
-			p.Layout = c.layout(ctx)
+			p.Layout = c.layout(ctx, req.Text)
 			typed, err := "", error(nil)
 			for rest := pointer.TypeableOn(p.Layout, req.Text); rest != "" && err == nil; {
 				n := min(len(rest), textChunk)
-				for n > 0 && !utf8.RuneStart(rest[n-1]) {
+				for n > 0 && n < len(rest) && !utf8.RuneStart(rest[n]) { // cut before a character, never inside one
 					n--
 				}
 				_, err = p.Type(ctx, rest[:n])
@@ -338,10 +338,13 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 // layout is the phone keyboard layout the board types with ("kbd" in its status); "" from a board without layouts.
 // layout is the board's keyboard layout: from its status, else (right after connecting, before the first status)
 // asked from the board, so a fresh daemon does not type a German phone's text on US keys.
-func (c *Conn) layout(ctx context.Context) string {
+func (c *Conn) layout(ctx context.Context, text string) string {
 	st, _ := c.Status()
 	if l, _ := st["kbd"].(string); l != "" {
 		return l
+	}
+	if !strings.ContainsFunc(text, func(r rune) bool { return r > 0x7e }) {
+		return "" // plain ASCII types the same on every layout: no need to ask
 	}
 	reply, err := c.Send(ctx, "kbd layout")
 	if err != nil {
