@@ -99,34 +99,18 @@ func TestPairAsksAgainWhileTheBoardWasInUse(t *testing.T) {
 	}
 }
 
-// A board whose pairing window is closed: the daemon says to double-press BOOT and asks again until it is open;
-// a board that stays closed is reported with what to do.
-func TestPairWaitsForTheDoublePress(t *testing.T) {
-	oldRetry, oldWait := pairClosedRetry, pairClosedWait
-	pairClosedRetry, pairClosedWait = 20*time.Millisecond, 300*time.Millisecond
-	defer func() { pairClosedRetry, pairClosedWait = oldRetry, oldWait }()
-	const closed = "pairing closed: double-press BOOT on the board, then pair within 60 s"
+// A board whose pairing window is closed refuses at once, and pair reports it at once with what to do.
+func TestPairFailsAtOnceWhenPairingIsClosed(t *testing.T) {
 	b := fakeBoard()
-	b.PairErr = closed
+	b.PairErr = "pairing closed: double-press BOOT on the board, then pair within 60 s"
 	c, s := start(t, fakeTransport{b})
-	var p progressLines
-	var once sync.Once
-	c.Progress = func(line []byte) {
-		p.add(line)
-		once.Do(func() { go func() { time.Sleep(50 * time.Millisecond); b.SetPairErr("") }() }) // BOOT is double-pressed
-	}
-	if r, _ := call(t, c, Request{Cmd: "pair"}); r.Status != "ok" {
-		t.Fatalf("pair: %+v", r)
-	}
-	if l := p.find("message"); l == nil || l["pair"] != "closed" || !strings.Contains(l["message"].(string), "double-press") {
-		t.Fatalf("no word about the double press: %+v", p.lines)
-	}
-	call(t, c, Request{Cmd: "unpair"})
-	b.SetPairErr(closed) // nobody presses
-	c.Progress = nil
+	t0 := time.Now()
 	r, _ := call(t, c, Request{Cmd: "pair"})
 	if r.Status != "error" || !strings.Contains(r.Error, "Double-press its BOOT button") {
-		t.Fatalf("pair on a board that stays closed: %+v", r)
+		t.Fatalf("pair on a closed board: %+v", r)
+	}
+	if d := time.Since(t0); d > 2*time.Second {
+		t.Fatalf("pair took %v on a closed board", d)
 	}
 	if s.Config.Key(mustHex("246f28aa6ad5")) != nil {
 		t.Fatal("a key was stored")

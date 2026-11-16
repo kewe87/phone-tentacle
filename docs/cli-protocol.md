@@ -103,8 +103,8 @@ mac    = HMAC-SHA256(K, "paired" || client_id)[0:16]
   - `busy: board in use …`: a paired computer has a session, or had one in the last 10 s. No request opens then,
     so the BOOT button stays the stop button while something drives the phone. (The CLI asks again for 20 s: its
     own session, closed for the pairing, counts too.)
-  - `pairing closed: double-press BOOT …`: the window is not open. (The CLI says so and asks again every 2 s for
-    60 s, so the person can go and press.)
+  - `pairing closed: double-press BOOT …`: the window is not open. (The CLI stops at once and says to double-press
+    BOOT, then pair again.)
   - `busy: another pairing request is open`: only one at a time. A second PAIR never replaces the first one's
     name, code or key.
   - `busy: pairing locked for N s …`: after a request that ended without the button (timeout, dropped link, bad

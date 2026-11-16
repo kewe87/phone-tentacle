@@ -3,7 +3,8 @@
 //
 // The pointer is relative, so we track where it is (in mouse units) and move from there; every few gestures it
 // is slammed into the top-left corner (`home`) again to cancel drift. Coordinates are fractions of the screen
-// (0..1, origin top-left), so they work for any frame size.
+// (0..1, origin top-left), so they work for any frame size. A board with an absolute pointer (Abs) needs none of
+// this: `abs` takes the fractions as they are.
 package pointer
 
 import (
@@ -32,6 +33,18 @@ const (
 	// second: calibration with 1 s saw no pointer (2026-11-06).
 	FreshWait = 3 * time.Second
 )
+
+// An absolute pointer (firmware ABS_POINTER, status "abs":1): `abs X Y` puts it at X/AbsFull, Y/AbsFull of the
+// phone screen. Without the button held the board moves in one report and waits before it answers (iOS ignores
+// X/Y in a report that changes a button); with the button held it glides there, `step` units per report. A big
+// step is a flick: system gestures need it (a glided home swipe opened the app switcher, 2026-11-07).
+const (
+	AbsFull   = 32767
+	FlickStep = 4096 // per 8 ms report: a full-height stroke in ~7 reports
+)
+
+// AbsUnit is a screen fraction in `abs` units, clamped to the screen.
+func AbsUnit(f float64) int { return int(math.Round(math.Min(math.Max(f, 0), 1) * AbsFull)) }
 
 // CalibrationStops are the distances at which calibration finds the pointer.
 var CalibrationStops = []int{150, 350}
@@ -81,6 +94,9 @@ type Pointer struct {
 	Aspect  *float64 // frame width / height when calibrated
 	Log     func(string)
 	Sleep   func(context.Context, time.Duration) error
+	// Abs: the board positions the pointer absolutely (`abs`), coordinates are fractions of the phone screen.
+	// No calibration, no homing, no aiming: iOS does not show the pointer in the mirror image anyway.
+	Abs bool
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
@@ -115,7 +131,7 @@ func New(dev Device, screen Screen, file string) *Pointer {
 	return p
 }
 
-func (p *Pointer) Calibrated() bool { return p.Span != nil }
+func (p *Pointer) Calibrated() bool { return p.Abs || p.Span != nil }
 
 // Forget makes the position unknown (someone else moved the pointer): the next gesture homes first.
 func (p *Pointer) Forget() { p.pos = nil }
@@ -151,6 +167,9 @@ var ErrNotFound = errors.New("calibration: pointer not found on screen (is the m
 
 // Calibrate finds the pointer on screen at two known distances from the corner and fits the mapping from both.
 func (p *Pointer) Calibrate(ctx context.Context) error {
+	if p.Abs {
+		return nil // nothing to measure
+	}
 	p.pos = nil
 	if err := p.send(ctx, "home"); err != nil {
 		return err
@@ -268,6 +287,9 @@ var ErrNotCalibrated = errors.New("pointer not calibrated")
 
 // Point moves the pointer to x, y. aim: find it on screen afterwards and fix a miss (slower).
 func (p *Pointer) Point(ctx context.Context, x, y float64, aim bool) error {
+	if p.Abs {
+		return p.absTo(ctx, x, y) // aim: nothing to see, the pointer is not in the mirror image
+	}
 	if !p.Calibrated() {
 		return ErrNotCalibrated
 	}
@@ -395,6 +417,17 @@ func (p *Pointer) Fix(t float64, axis string) float64 {
 	return t
 }
 
+// absTo puts the absolute pointer at x, y (screen fractions), button up: one report, then the board's settle wait.
+func (p *Pointer) absTo(ctx context.Context, x, y float64) error {
+	if l := p.dev.Links(); p.link != l { // new link: a dropped gesture may have left the button down
+		if err := p.send(ctx, "release"); err != nil {
+			return err
+		}
+		p.link = l
+	}
+	return p.send(ctx, "abs %d %d", AbsUnit(x), AbsUnit(y))
+}
+
 func (p *Pointer) moveTo(ctx context.Context, tx, ty int, rehome bool) error {
 	if l := p.dev.Links(); p.link != l { // new link: a dropped gesture may have left the button down
 		if err := p.send(ctx, "release"); err != nil {
@@ -438,6 +471,9 @@ func (p *Pointer) Reset(ctx context.Context) error {
 	p.pos = nil
 	if err := p.send(ctx, "release"); err != nil {
 		return err
+	}
+	if p.Abs {
+		return nil
 	}
 	if err := p.send(ctx, "home"); err != nil {
 		return err
@@ -489,7 +525,16 @@ func (p *Pointer) Drag(ctx context.Context, pts []Point, hold bool) error {
 	}
 	err := func() error {
 		for _, pt := range pts[1:] {
-			if err := p.moveTo(ctx, p.dx(pt.X), p.dy(pt.Y), false); err != nil { // never home mid-drag
+			var err error
+			switch {
+			case p.Abs && hold:
+				err = p.send(ctx, "abs %d %d", AbsUnit(pt.X), AbsUnit(pt.Y)) // the board's glide: lists scroll as far as dragged
+			case p.Abs:
+				err = p.send(ctx, "abs %d %d %d", AbsUnit(pt.X), AbsUnit(pt.Y), FlickStep)
+			default:
+				err = p.moveTo(ctx, p.dx(pt.X), p.dy(pt.Y), false) // never home mid-drag
+			}
+			if err != nil {
 				return err
 			}
 		}

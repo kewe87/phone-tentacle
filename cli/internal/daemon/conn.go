@@ -35,6 +35,8 @@ type Conn struct {
 	pending  map[string]chan string
 	status   map[string]any
 	statusAt time.Time
+	linked   time.Time // when the current session was attached: a status from before it may be stale
+	videoAt  time.Time // when the last video chunk arrived
 
 	re        *video.Reassembler
 	dec       *video.Decoder
@@ -50,6 +52,8 @@ type Conn struct {
 	subs      map[chan video.AU]bool
 	frameSubs map[chan image.Image]bool
 	wake      chan struct{} // closed and replaced on every new frame
+	bars      [4]int        // black edges seen in every frame of this size so far: left, top, right, bottom (area.go)
+	barsSize  image.Point
 
 	ptr        *pointer.Pointer
 	lastAction time.Time
@@ -89,7 +93,7 @@ func (c *Conn) attach(s *proto.Session) {
 		close(c.quit)
 	}
 	quit := make(chan struct{})
-	c.sess, c.quit, c.links = s, quit, c.links+1
+	c.sess, c.quit, c.links, c.linked = s, quit, c.links+1, time.Now()
 	c.re = video.NewReassembler()
 	if c.dec != nil { // the new stream starts over from the GOP
 		c.dec.Close()
@@ -263,6 +267,11 @@ func (c *Conn) onStatus(b []byte) {
 		}
 		c.status[k] = v
 	}
+	if _, full := m["fw"]; full { // both status forms carry fw and, on an abs build, abs: gone means relative
+		if _, abs := m["abs"]; !abs {
+			delete(c.status, "abs")
+		}
+	}
 	c.statusAt = now
 	if up, ok := m["up"].(float64); ok {
 		c.learnClock(now, uint32(up))
@@ -280,6 +289,7 @@ func (c *Conn) learnClock(now time.Time, boardMs uint32) {
 func (c *Conn) onVideo(chunk []byte, gap bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.videoAt = time.Now()
 	if gap {
 		c.re.Lost()
 	}
@@ -345,6 +355,10 @@ func (c *Conn) onFrame(f video.Frame) {
 	if hash != c.frameHash || c.frame == nil {
 		c.changed = now
 	}
+	if size := f.Img.Bounds().Size(); size != c.barsSize {
+		c.barsSize, c.bars = size, [4]int{size.X / 4, size.Y / 4, size.X / 4, size.Y / 4}
+	}
+	c.bars = blackEdges(f.Img, c.bars)
 	c.frame, c.frameHash = f.Img, hash
 	for ch := range c.frameSubs {
 		select {
@@ -375,6 +389,35 @@ func (c *Conn) Status() (map[string]any, time.Duration) {
 		return out, -1
 	}
 	return out, time.Since(c.statusAt)
+}
+
+// StatusNow waits up to timeout for a status sent on the current session and returns the merged status; fresh is
+// false when none came. Right after a reconnect the merged one still holds the last session's (or a status the
+// board computed before this session): "screen mirroring is off" while it streamed (2026-11-16).
+func (c *Conn) StatusNow(ctx context.Context, timeout time.Duration) (st map[string]any, fresh bool) {
+	deadline := time.Now().Add(timeout)
+	for {
+		c.mu.Lock()
+		fresh = !c.statusAt.IsZero() && !c.statusAt.Before(c.linked)
+		c.mu.Unlock()
+		if fresh || !time.Now().Before(deadline) || sleepCtx(ctx, 50*time.Millisecond) != nil {
+			st, _ = c.Status()
+			return st, fresh
+		}
+	}
+}
+
+// streaming: video arrived on the current session within the last 2 s.
+func (c *Conn) streaming() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return !c.videoAt.Before(c.linked) && time.Since(c.videoAt) < 2*time.Second
+}
+
+// Abs: the board positions the pointer absolutely (an ABS_POINTER build says "abs":1 in its status).
+func (c *Conn) Abs(ctx context.Context) bool {
+	st, _ := c.StatusNow(ctx, 3*time.Second)
+	return num(st["abs"]) == 1
 }
 
 // Screen (pointer.Screen).

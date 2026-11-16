@@ -43,7 +43,7 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
                                    over the current link (sealed). A new board is set up on its own hotspot's page.
   net join SSID [PASSWORD]         the same, non-interactive
   net hotspot                      the board forgets its Wi-Fi and opens its setup hotspot again
-  calibrate                        measure the pointer (automatic on the first tap)
+  calibrate                        measure the pointer (automatic on the first tap; an --abs board needs none)
   listen                           what the iPhone played in the last 30 s, as words (or why it can't be heard)
   listen on|off                    hear the phone's sound while it mirrors (off by default); the words are made
                                    by whisper.cpp on this computer (install whisper-cpp, plus a model)
@@ -105,6 +105,10 @@ func (a *App) print(r daemon.Response) int {
 }
 
 func (a *App) fail(err error) int {
+	if errors.Is(err, flag.ErrHelp) { // a -help the check in Run missed: never a JSON error
+		fmt.Fprint(a.Err, usage)
+		return 0
+	}
 	return a.print(daemon.Response{Status: "error", Error: err.Error()})
 }
 
@@ -139,6 +143,10 @@ func (a *App) Run(args []string) int {
 		return 0
 	}
 	cmd, rest := args[0], args[1:]
+	if wantsHelp(rest) {
+		a.help(cmd)
+		return 0
+	}
 	dev := new(string)
 	fs := newFS(dev)
 	switch cmd {
@@ -249,6 +257,43 @@ func (a *App) Run(args []string) int {
 		return a.io(fs, dev, rest)
 	}
 	return a.fail(errUnsupported)
+}
+
+// wantsHelp: -h, -help or --help among the arguments (before a "--").
+func wantsHelp(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--":
+			return false
+		case "-h", "-help", "--help":
+			return true
+		}
+	}
+	return false
+}
+
+// help prints the usage lines of cmd (with their continuation lines), or all of it for an unknown command.
+func (a *App) help(cmd string) {
+	var out []string
+	in := false
+	for _, line := range strings.Split(usage, "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		indent := len(line) - len(trimmed)
+		switch {
+		case indent == 2 && (trimmed == cmd || strings.HasPrefix(trimmed, cmd+" ")):
+			in = true
+		case indent <= 2:
+			in = false
+		}
+		if in {
+			out = append(out, line)
+		}
+	}
+	if len(out) == 0 {
+		fmt.Fprint(a.Err, usage)
+		return
+	}
+	fmt.Fprintf(a.Err, "usage: tentacle\n%s\n\n  --device ID, --host IP[:PORT], --verbose: see tentacle --help\n", strings.Join(out, "\n"))
 }
 
 // global takes --host and --verbose out of the arguments (they may stand anywhere) and hands them to the client,

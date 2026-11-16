@@ -30,20 +30,16 @@ func num(v any) float64 { f, _ := v.(float64); return f }
 
 // videoState explains why there is no usable screen, nil when mirroring streams.
 func (s *Server) videoState(ctx context.Context, c *Conn) error {
-	for i := 0; i < 30; i++ { // the first status arrives within a second of connecting
-		if _, age := c.Status(); age >= 0 {
-			break
-		}
-		if sleepCtx(ctx, 100*time.Millisecond) != nil {
-			return ctx.Err()
-		}
-	}
-	st, _ := c.Status()
+	st, _ := c.StatusNow(ctx, 3*time.Second) // the board sends one a second; one from before a reconnect may be stale
 	if num(st["fz"]) == 1 {
 		return errFrozen
 	}
-	if st["ap"] != "streaming" {
-		return errMirroring
+	// Not streaming by the status: the board may have computed it just before this session, or AirPlay just
+	// started. Video coming in on this session, or the next status, says otherwise.
+	for t := time.Now(); st["ap"] != "streaming" && !c.streaming(); st, _ = c.Status() {
+		if time.Since(t) > 1500*time.Millisecond || sleepCtx(ctx, 100*time.Millisecond) != nil {
+			return errMirroring
+		}
 	}
 	c.mu.Lock()
 	ff := c.ffmpeg
@@ -161,6 +157,9 @@ func (c *Conn) size() (float64, float64, error) {
 }
 
 func (s *Server) calibrate(ctx context.Context, c *Conn) Response {
+	if c.Abs(ctx) {
+		return ok(map[string]any{"abs": true, "message": "not needed: this board positions the pointer absolutely (abs build)"})
+	}
 	if err := s.videoState(ctx, c); err != nil {
 		return fail(err)
 	}
@@ -208,11 +207,23 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 			if !strings.EqualFold(req.Text, "HOME") {
 				return fmt.Errorf("button %s not supported on Tentacle (only HOME)", req.Text)
 			}
+			p.Abs = c.Abs(ctx) // the swipe up, should the Home key and Cmd+H not do it
 			return p.GoHome(ctx)
 		}
+		p.Abs = c.Abs(ctx)
 		w, h, err := c.size()
 		if err != nil {
 			return err
+		}
+		pt := func(i int) (float64, float64) { return req.Pts[i] / w, req.Pts[i+1] / h }
+		if p.Abs { // fractions of the phone screen, not of the frame (area.go)
+			r, err := c.screenArea()
+			if err != nil {
+				return err
+			}
+			pt = func(i int) (float64, float64) {
+				return (req.Pts[i] - float64(r.Min.X)) / float64(r.Dx()), (req.Pts[i+1] - float64(r.Min.Y)) / float64(r.Dy())
+			}
 		}
 		if !p.Calibrated() {
 			if s.videoState(ctx, c) != nil {
@@ -229,7 +240,6 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 		if len(req.Pts) < need {
 			return fmt.Errorf("%s needs %d coordinates, got %d", req.Cmd, need, len(req.Pts))
 		}
-		pt := func(i int) (float64, float64) { return req.Pts[i] / w, req.Pts[i+1] / h }
 		switch req.Cmd {
 		case "tap":
 			x, y := pt(0)
