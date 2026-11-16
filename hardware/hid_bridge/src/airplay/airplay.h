@@ -50,6 +50,15 @@ int airplay_state(void);  // AIRPLAY_IDLE / _CONNECTED / _STREAMING
 void airplay_set_display(uint16_t width, uint16_t height, uint8_t max_fps);
 airplay_audio_stats airplay_audio(void);
 
+typedef struct {
+  uint32_t heartbeats;    // heartbeat and streaming reports (types 0x02, 0x05) on the mirror data socket since boot
+  uint32_t rx_bytes;      // bytes on it since boot
+  uint32_t max_gap_ms;    // longest time it stayed silent, in the last 60-120 s (with the silence going on)
+  uint32_t hb_age_ms;     // since the last heartbeat; UINT32_MAX: none yet
+  uint32_t video_age_ms;  // since the last video packet of this session; UINT32_MAX: none
+} airplay_mirror_stats;
+airplay_mirror_stats airplay_mirror(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -29,15 +29,22 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
                                    60 s). The board then shows this computer's name and a 6-digit code (OLED),
                                    its LED blinks; compare the code, press BOOT once more within 30 s
   unpair [--board]                 forget the board here; --board: the board forgets every paired computer too
-  screenshot [--format png|jpeg] [--quality N] [--scale F] [--max-size N] [--output PATH|-]
+  screenshot [--format png|jpeg] [--quality N] [--scale F] [--max-size N] [--output PATH|-] [--wait MS]
+                                   after input, waits up to --wait ms (3000) for a newer picture; the result
+                                   says how old the picture is (age_ms) and "stale" with a warning when none came
   io tap X,Y [--aim] [--count N]   coordinates are screenshot pixels; --count 2 double-taps
   io longpress X,Y [--duration MS]
   io swipe X1,Y1,X2,Y2
-  io text 'TEXT'                   ASCII; Chinese is typed as pinyin
+  io text 'TEXT'                   by the board's keyboard layout (ASCII; on de also ä ö ü ß € ...); Chinese is
+                                   typed as pinyin
   io keys COMBO                    enter, esc, tab, backspace, space, up, cmd+a, ...
   io button HOME
   screencapture --format h264|mjpeg   video to stdout
   device info                      board status
+  keyboard layout [us|de]          the iPhone's hardware keyboard layout the board types for (default us); must
+                                   match Settings > General > Keyboard > Hardware Keyboard on the iPhone
+  video fps N | video res W H      what the board asks the iPhone for (30 fps, 480x1040), from the next
+                                   Screen Mirroring session on
   net                              the board's Wi-Fi
   net join                         the board moves to another Wi-Fi: asks for its name and password and sends them
                                    over the current link (sealed). A new board is set up on its own hotspot's page.
@@ -230,12 +237,12 @@ func (a *App) Run(args []string) int {
 			text = "join " + pos[1] + "\x00" + strings.Join(pos[2:], " ")
 		}
 		return a.call(daemon.Request{Cmd: "net", Device: *dev, Text: text})
-	case "listen":
+	case "listen", "keyboard", "video":
 		pos, err := parse(fs, rest)
 		if err != nil {
 			return a.fail(err)
 		}
-		return a.call(daemon.Request{Cmd: "listen", Device: *dev, Text: strings.Join(pos, " ")})
+		return a.call(daemon.Request{Cmd: cmd, Device: *dev, Text: strings.Join(pos, " ")})
 	case "screenshot":
 		return a.screenshot(fs, dev, rest)
 	case "screencapture":
@@ -413,14 +420,19 @@ func (a *App) screenshot(fs *flag.FlagSet, dev *string, args []string) int {
 	scale := fs.Float64("scale", 1, "0-1")
 	maxSize := fs.Int("max-size", 0, "max(width, height) in pixels")
 	output := fs.String("output", "", "file, directory/, or - for stdout")
+	wait := fs.Int("wait", int(daemon.DefaultFreshWait/time.Millisecond), "after input, wait up to this many ms for a newer picture (0: none)")
 	if _, err := parse(fs, args); err != nil {
 		return a.fail(err)
 	}
 	if *format == "jpg" {
 		*format = "jpeg"
 	}
+	waitMs := *wait
+	if waitMs <= 0 {
+		waitMs = -1 // 0 on the wire is the default
+	}
 	line, err := a.Client.Call(daemon.Request{Cmd: "screenshot", Device: *dev, Format: *format, Quality: *quality,
-		Scale: *scale, MaxSize: *maxSize})
+		Scale: *scale, MaxSize: *maxSize, WaitMs: waitMs})
 	if err != nil {
 		return a.fail(err)
 	}
@@ -429,6 +441,10 @@ func (a *App) screenshot(fs *flag.FlagSet, dev *string, args []string) int {
 		Data struct {
 			Format, Data, Device string
 			Width, Height        int
+			AgeMs                *int64 `json:"age_ms"`
+			CapturedAt           string `json:"captured_at"`
+			Stale                bool   `json:"stale"`
+			Warning              string `json:"warning"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(line, &r); err != nil {
@@ -442,6 +458,9 @@ func (a *App) screenshot(fs *flag.FlagSet, dev *string, args []string) int {
 		return a.fail(err)
 	}
 	if *output == "-" {
+		if r.Data.Warning != "" {
+			fmt.Fprintln(a.Err, "warning: "+r.Data.Warning)
+		}
 		a.Out.Write(img)
 		return 0
 	}
@@ -452,8 +471,15 @@ func (a *App) screenshot(fs *flag.FlagSet, dev *string, args []string) int {
 	if err := os.WriteFile(path, img, 0o644); err != nil {
 		return a.fail(err)
 	}
-	return a.print(daemon.Response{Status: "ok", Data: map[string]any{"format": r.Data.Format, "filePath": path,
-		"width": r.Data.Width, "height": r.Data.Height}})
+	out := map[string]any{"format": r.Data.Format, "filePath": path, "width": r.Data.Width, "height": r.Data.Height,
+		"stale": r.Data.Stale}
+	if r.Data.AgeMs != nil {
+		out["age_ms"], out["captured_at"] = *r.Data.AgeMs, r.Data.CapturedAt
+	}
+	if r.Data.Warning != "" {
+		out["warning"] = r.Data.Warning
+	}
+	return a.print(daemon.Response{Status: "ok", Data: out})
 }
 
 // screenshotPath: a file path as given, or screenshot-<device>-<time>.<ext> in a directory (default: cwd).

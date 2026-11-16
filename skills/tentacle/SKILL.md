@@ -55,7 +55,8 @@ Never retry `pair` in a loop: the board locks pairing for a while after a reques
 | `tap` | Tap at `x`, `y`; `count: 2` double-taps |
 | `longpress` | Press and hold at `x`, `y` (`duration_ms`, default 1000) |
 | `swipe` | Swipe from `x1`, `y1` to `x2`, `y2` |
-| `type_text` | Type into the focused field (ASCII; Chinese is typed as pinyin) |
+| `type_text` | Type into the focused field, by the board's keyboard layout (ASCII; on `de` also ä ö ü ß €); Chinese is typed as pinyin |
+| `keyboard_layout` | The layout the board types for: `us` or `de` (must match the iPhone's hardware keyboard layout) |
 | `press_key` | `enter`, `esc`, `tab`, `backspace`, `space`, arrows, `cmd+a`, `shift+tab` ... |
 | `press_button` | `HOME` only (go to the Home Screen) |
 | `device_info` | Board status: mirroring (`ap`), video frozen (`fz`), `usb`, `net` |
@@ -77,7 +78,8 @@ Every command prints JSON: `{"status":"ok","data":...}` or `{"status":"error","e
 | `io tap X,Y [--aim] [--count N]` | Tap; `--aim` finds the pointer and corrects before tapping |
 | `io longpress X,Y [--duration MS]` | Press and hold |
 | `io swipe X1,Y1,X2,Y2` | Swipe |
-| `io text 'TEXT'` | Type ASCII text |
+| `io text 'TEXT'` | Type text (by the keyboard layout) |
+| `keyboard layout [us\|de]` | The iPhone's hardware keyboard layout the board types for |
 | `io keys COMBO` | Press a key or combo |
 | `io button HOME` | Home Screen |
 | `device info` | Board status |
@@ -96,7 +98,9 @@ With several boards pass `--device <id>` or set `TENTACLE_DEVICE`. A board that 
 ## The see-act loop
 
 1. Take a screenshot (`screenshot` tool, or `tentacle screenshot` and read the PNG at `filePath`).
-   It waits until the screen has settled after your last action.
+   It waits until the screen has settled after your last action. The iPhone sends a picture only when the screen
+   changes: the answer has `age_ms`, and `"stale": true` with a `warning` when no newer picture came within 3 s
+   after your last action. Then screenshot once more; if it stays stale, ask the user to restart Screen Mirroring.
 2. Decide on one action.
 3. Do that one action, with coordinates in pixels of that full-size screenshot. If you used `--scale` or
    `--max-size`, convert the coordinates back to full size.
@@ -145,8 +149,12 @@ You are using a real phone with the owner's accounts, money and contacts.
 | `phone usb asleep` | The phone is locked; ask the user to unlock it |
 | `stopped (safety button)` | The user stopped all input at the board. Ask before going on |
 | `not supported on Tentacle` | There is no app list, UI tree or file access; work from screenshots |
+| Taps do nothing, but `tap done` | AssistiveTouch is off. Ask the user to turn it on (tip: Settings > Accessibility > Accessibility Shortcut > AssistiveTouch, then triple-click the side button) |
+| `_` typed as `?`, Y and Z swapped | Wrong keyboard layout: `keyboard layout de` (or `us`) |
+| `no screen picture yet` | Take a screenshot first |
+| After `update`: no picture | The board restarted; ask the user to start Screen Mirroring again |
 | Taps land off target | Make sure AssistiveTouch is on and the pointer is visible, run `calibrate`, or use `io tap --aim` |
 | Screenshot fails | Check that `ffmpeg` is installed and Screen Mirroring is on |
 
-Limits: screenshots can be a moment behind and animations look choppy. Typing is ASCII only, one key per
-character. HOME is the only button: no volume or power buttons, and no installing or launching apps directly.
+Limits: screenshots can be a moment behind and animations look choppy. Typing covers what the keyboard
+layout has keys for. HOME is the only button: no volume or power buttons, and no installing or launching apps directly.

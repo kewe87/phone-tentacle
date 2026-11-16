@@ -64,6 +64,40 @@ static struct {
   volatile float volume;
 } a;
 
+// The data socket for the status (airplay_mirror()), outliving sessions: why video pauses (2026-11-16: 10-28 s
+// without a frame) - the sender sends nothing at all, or keeps the session up with heartbeats only.
+static struct {
+  volatile uint32_t heartbeats, rx_bytes;
+  volatile int64_t last_rx_us, last_hb_us;  // 0: socket closed / none yet
+  volatile uint32_t gap_ms[2];              // longest silence in this and the last 60 s window
+  int64_t window_us;
+} st;
+
+static void note_rx(int64_t now) {
+  if (st.last_rx_us) {
+    uint32_t gap = (uint32_t)((now - st.last_rx_us) / 1000);
+    if (gap > st.gap_ms[0]) st.gap_ms[0] = gap;
+  }
+  st.last_rx_us = now;
+}
+
+static void roll_window(int64_t now) {
+  if (now - st.window_us < 60000000) return;
+  st.gap_ms[1] = st.gap_ms[0];
+  st.gap_ms[0] = 0;
+  st.window_us = now;
+}
+
+airplay_mirror_stats airplay_mirror(void) {
+  int64_t now = esp_timer_get_time(), rx = st.last_rx_us, hb = st.last_hb_us, video = m.last_video_us;
+  airplay_mirror_stats s = {.heartbeats = st.heartbeats, .rx_bytes = st.rx_bytes};
+  s.max_gap_ms = st.gap_ms[0] > st.gap_ms[1] ? st.gap_ms[0] : st.gap_ms[1];
+  if (rx && (uint32_t)((now - rx) / 1000) > s.max_gap_ms) s.max_gap_ms = (uint32_t)((now - rx) / 1000);  // going on
+  s.hb_age_ms = hb ? (uint32_t)((now - hb) / 1000) : UINT32_MAX;
+  s.video_age_ms = video && m.run ? (uint32_t)((now - video) / 1000) : UINT32_MAX;
+  return s;
+}
+
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 static uint32_t le32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
 
@@ -184,7 +218,11 @@ static int decrypt(uint8_t *p, size_t n) {
 static void handle_packet(const uint8_t *hdr, uint8_t *p, size_t n) {
   m.last_data_us = esp_timer_get_time();
   if (hdr[4] == 0x01) { handle_codec(hdr, p, n); return; }
-  if (hdr[4] != 0x00 || !n) return;  // 0x02/0x05: heartbeat and streaming reports
+  if (hdr[4] == 0x02 || hdr[4] == 0x05) {  // heartbeat and streaming reports
+    st.heartbeats++;
+    st.last_hb_us = m.last_data_us;
+  }
+  if (hdr[4] != 0x00 || !n) return;
   int64_t gap = m.last_video_us ? (m.last_data_us - m.last_video_us) / 1000000 : 0;
   if (gap >= 10) ap_log("mirror: video again after %d s", (int)gap);
   m.last_video_us = m.last_data_us;
@@ -305,6 +343,7 @@ static void mirror_task(void *arg) {
   bool in_payload = false;
   int64_t next_ntp = 0;
   while (m.run) {
+    roll_window(esp_timer_get_time());
     // Heartbeats keep the session "streaming" while no video comes: a still screen, or a stalled sender.
     if (!m.quiet_logged && m.last_video_us && ap_mirror_streaming() && esp_timer_get_time() - m.last_video_us > 10000000) {
       ap_log("mirror: session alive, no video for 10 s");
@@ -341,6 +380,7 @@ static void mirror_task(void *arg) {
       m.got_codec = false;
       m.logged_no_video = false;
       m.accepted_us = m.sfd >= 0 ? esp_timer_get_time() : 0;
+      st.last_rx_us = m.accepted_us;
       ap_log("mirror: data connection %s", m.sfd >= 0 ? "accepted" : "failed");
       continue;
     }
@@ -349,8 +389,11 @@ static void mirror_task(void *arg) {
     if (k <= 0) {
       ap_log("mirror: data connection closed");
       close_fd(&m.sfd);
+      st.last_rx_us = 0;
       continue;
     }
+    st.rx_bytes += k;
+    note_rx(esp_timer_get_time());
     got += k;
     if (got < need) continue;
     if (!in_payload) {

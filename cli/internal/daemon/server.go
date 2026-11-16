@@ -39,6 +39,7 @@ type Request struct {
 	Host    string    `json:"host,omitempty"`    // --host: the board's address by hand, from now on ("auto": find it again)
 	Verbose bool      `json:"verbose,omitempty"` // --verbose: trace discovery, frames and timings, also to this client
 	Force   bool      `json:"force,omitempty"`   // update: send an image without a version marker
+	WaitMs  int       `json:"wait_ms,omitempty"` // screenshot: wait for a picture newer than the last input (0: 3 s, <0: none)
 }
 
 // Response is the CLI's JSON output, as mobilecli's: {"status":"ok","data":…} or {"status":"error","error":"…"}.
@@ -285,6 +286,10 @@ func (s *Server) Do(ctx context.Context, req Request) Response {
 		return s.update(ctx, c, req)
 	case "debug":
 		return s.debug(ctx, c, req.Text)
+	case "keyboard":
+		return s.keyboard(ctx, c, req.Text)
+	case "video":
+		return s.video(ctx, c, req.Text)
 	}
 	return fail(fmt.Errorf("unknown command %q", req.Cmd))
 }

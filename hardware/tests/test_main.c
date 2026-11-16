@@ -19,6 +19,7 @@ static int fails;
 int test_setup(void);  // test_setup.c: the Wi-Fi setup page's text helpers, the BOOT button and its confirmation
 int test_pair(void);   // test_pair.c: the PAIR frame, the pairing code's text, the one-request gate
 int test_ota(void);    // test_ota.c: `update begin`, the chunks' order, the firmware signature
+int test_kbd(void);    // test_kbd.c: the keyboard layouts (US, German), dead keys, what a layout cannot type
 #define CHECK(c) do { if (!(c)) { fails++; printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); } } while (0)
 
 static void test_bplist_roundtrip(void) {
@@ -496,6 +497,7 @@ int main(void) {
   fails += test_setup();
   fails += test_pair();
   fails += test_ota();
+  fails += test_kbd();
   printf(fails ? "%d FAILED\n" : "all tests passed\n", fails);
   return fails != 0;
 }

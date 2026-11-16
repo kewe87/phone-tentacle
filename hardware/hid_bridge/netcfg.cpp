@@ -141,8 +141,11 @@ static void startWifi() {
   WiFi.softAPdisconnect(true);
   WiFi.setHostname("tentacle");
   if (mode == "sta") {
-    WiFi.mode(WIFI_STA);  // modem sleep stays on (the core's default): the phone powers the board
+    WiFi.mode(WIFI_STA);  // modem sleep stays on (the core's default), off while the phone mirrors (hid_bridge.ino)
     WiFi.setAutoReconnect(false);
+    // Full TX power on the home network: the setup hotspot's 5 dBm (below) stays set in the driver when the setup
+    // goes on to the station without a restart.
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
     retryGap = 5000;
     retryAt = millis() + retryGap;
     // the core rejects open networks by default
@@ -288,12 +291,15 @@ static void logWifi(arduino_event_id_t e, arduino_event_info_t info) {
 }
 #endif
 
+static void cfg_migrate();
+
 void net_begin() {
 #if TENTACLE_DEBUG
   WiFi.onEvent(logWifi);
 #endif
   WiFi.persistent(false);  // the driver keeps no copy of a network in flash: ours in NVS is the only one
   prefs.begin("agent", false);
+  cfg_migrate();
   apSsid = prefs.getString("ap_ssid", "");
   apPass = prefs.getString("ap_pass", "");
   if (apSsid.isEmpty() || apPass.length() < 8) {
@@ -452,7 +458,15 @@ void net_setup_status(NetSetup *s) {
 
 uint16_t cfg_width() { return prefs.getUShort("w", 480); }
 uint16_t cfg_height() { return prefs.getUShort("h", 1040); }
-uint8_t cfg_fps() { return prefs.getUChar("fps", 5); }
+// 30 fps since 0.2.2 (5 before): iOS sends a frame when the screen changes, at most this often, and 5 made every
+// change wait. A stored 5 from before 0.2.2 goes to 30 once (cfg_migrate()); `fps N` sets it after that.
+uint8_t cfg_fps() { return prefs.getUChar("fps", 30); }
+
+static void cfg_migrate() {
+  if (prefs.getUChar("cfgv", 0) >= 1) return;
+  if (prefs.isKey("fps") && prefs.getUChar("fps", 30) == 5) prefs.remove("fps");
+  prefs.putUChar("cfgv", 1);
+}
 
 void cfg_set_res(uint16_t w, uint16_t h) {
   prefs.putUShort("w", w);

@@ -6,7 +6,8 @@
 // HID commands (the board answers "ok" or "err <why>"):
 //   ping | pace | home | move <dx> <dy> [speed] | press | release | click
 //   abs <x> <y> [step] (flash.sh --abs builds: 0-32767 across the screen; `home` and `move` still work)
-//   scroll <v> <h> | type <ascii text> | key <combo, e.g. cmd+h, enter>
+//   scroll <v> <h> | type <text, UTF-8> | key <combo, e.g. cmd+h, enter> (both by the phone's keyboard layout:
+//   kbd layout [us|de], kbd_layout.h)
 //   homescreen (the consumer-control Home key, "AC Home": iOS goes to the Home Screen, like a keyboard's home key)
 
 #include <esp_task_wdt.h>
@@ -35,6 +36,7 @@
 #include "button.h"
 #include "dbg.h"
 #include "ota.h"
+#include "kbd_layout.h"
 
 const int STEP = 10;      // pointer speed per report while moving (any direction, see pace.h)
 const int ABS_STEP = 245;      // of 32767, per STEP_MS while dragging with `abs`: the relative mouse's speed
@@ -81,7 +83,7 @@ uint8_t keyCode(const String &k) {
   if (k == "ctrl") return KEY_LEFT_CTRL;
   if (k == "alt") return KEY_LEFT_ALT;
   if (k == "shift") return KEY_LEFT_SHIFT;
-  return k.length() == 1 ? k[0] : 0;
+  return 0;
 }
 
 bool pressCombo(String combo) {
@@ -94,9 +96,12 @@ bool pressCombo(String combo) {
   }
   combo += '+';
   for (int i; (i = combo.indexOf('+')) >= 0; combo = combo.substring(i + 1)) {
-    uint8_t c = keyCode(combo.substring(0, i));
-    if (!c) { keyboard.releaseAll(); return false; }
-    keyboard.press(c);
+    String k = combo.substring(0, i);
+    uint8_t c = keyCode(k);
+    // A character goes by the phone's layout (cmd+z: the key that types z there, on German the one labelled Z):
+    // iOS matches shortcuts by the character the layout gives.
+    if (c) keyboard.press(c);
+    else if (k.length() != 1 || !kbd_press_char(keyboard, k[0])) { keyboard.releaseAll(); return false; }
   }
   delay(30);
   keyboard.releaseAll();
@@ -283,19 +288,24 @@ String run(const String &line) {
   }
   if (cmd == "click") { mouse.press(MOUSE_LEFT); delay(60); mouse.release(MOUSE_LEFT); holdUntil = 0; return "ok"; }
   if (cmd == "scroll") { mouse.move(0, 0, a, b); return "ok"; }
-  if (cmd == "type") { keyboard.print(arg); return "ok"; }
+  if (cmd == "type") return kbd_type(keyboard, arg);
   if (cmd == "key") return pressCombo(arg) ? "ok" : "err unknown key";
   if (cmd == "homescreen") { consumer.press(AC_HOME); delay(40); consumer.release(); return "ok"; }
   return "err unknown command";
 }
 
 static bool cliHolds;  // the computer's session holds the mouse button: let go of when the session ends (loop())
+static volatile uint32_t lastInputMs;  // the last HID input the phone took (for "stall" in the status); 0: none
 
 // An HID command from who (FROM_CLI or FROM_SERIAL).
 String drive(const String &line, char who) {
   int sp = line.indexOf(' ');
   String cmd = sp < 0 ? line : line.substring(0, sp);
   String reply = run(line);
+  if (reply.startsWith("ok") && cmd != "ping" && cmd != "pace" && cmd != "reset") {
+    lastInputMs = millis();
+    if (!lastInputMs) lastInputMs = 1;
+  }
   if (reply == "ok") {
     if (cmd == "press" || cmd == "press_for") cliHolds = who == FROM_CLI;
     else if (cmd == "release" || cmd == "click" || cmd == "flick" || cmd == "reset") cliHolds = false;
@@ -427,6 +437,14 @@ String board(const String &line, const String &id, char who) {
     cli_audio(arg == "raw on");
     return "ok";
   }
+  if (cmd == "kbd") {  // the phone's hardware keyboard layout (kbd_layout.h), kept in NVS
+    if (arg == "layout") return String("ok ") + kbd_layout_get();
+    if (!arg.startsWith("layout ")) return String("err usage: kbd layout [") + kbd_layout_codes() + "]";
+    String code = arg.substring(7);
+    code.trim();
+    if (!kbd_layout_set(code.c_str())) return String("err unknown layout (") + kbd_layout_codes() + ")";
+    return String("ok ") + kbd_layout_get();
+  }
   if (cmd == "result") return recentReply(arg);
   if (cmd == "logs") return board_log_page(arg);  // the RAM log, a page at a time (logbuf.h)
   if (cmd == "vdbg") return "ok " + video_debug();  // why a frozen screen stays frozen (video_link.cpp)
@@ -475,36 +493,91 @@ String board(const String &line, const String &id, char who) {
 #define ABS_FIELD ""
 #endif
 
+// Bytes per second on the mirror data socket, over the last second or more.
+static uint32_t mirrorKbps(uint32_t rx) {
+  static uint32_t lastRx, lastMs, kbps;
+  uint32_t now = millis();
+  if (now - lastMs >= 1000) {
+    kbps = lastMs ? (uint32_t)((uint64_t)(rx - lastRx) * 8 / (now - lastMs)) : 0;
+    lastRx = rx;
+    lastMs = now;
+  }
+  return kbps;
+}
+
+// The sender keeps the mirroring session up (heartbeats) but sends no picture, although the phone took input
+// since the last one: a screen that changed should have come (2026-11-16: 10-28 s gaps). The CLI warns.
+static bool videoStalled(const airplay_mirror_stats &m) {
+  uint32_t in = lastInputMs, now = millis();
+  if (airplay_state() != AIRPLAY_STREAMING || m.hb_age_ms > 5000 || m.video_age_ms == UINT32_MAX || m.video_age_ms < 15000)
+    return false;
+  return in && now - in < m.video_age_ms && now - in >= 2000;  // input after the last frame, a while ago
+}
+
+static const char *psName() {
+  wifi_ps_type_t ps;
+  if (esp_wifi_get_ps(&ps) != ESP_OK) return "?";
+  return ps == WIFI_PS_NONE ? "none" : ps == WIFI_PS_MIN_MODEM ? "min" : "max";
+}
+
 String statusJson(bool full) {
   static const char *apStates[] = {"idle", "connected", "streaming"};
   VideoStats v = video_stats();
+  airplay_mirror_stats mir = airplay_mirror();
+  bool stall = videoStalled(mir);
   airplay_audio_stats au = airplay_audio();
   char s[768];
   if (full) {
     // aud: AirPlay audio packets, sound segments, a segment going on, sender volume (dB), records lost on the way
-    // to the computer, the computer asked for the raw audio. link: bytes to the computer, last second.
+    // to the computer, the computer asked for the raw audio. link: bytes to the computer, last second. hb, mgap,
+    // rxkbps: the mirror data socket (heartbeats, longest silence in the last 60-120 s, rate); rssi, txp (0.25 dBm),
+    // ps: the Wi-Fi; stall: see videoStalled().
+    wifi_ap_record_t ap;
+    int rssi = esp_wifi_sta_get_ap_info(&ap) == ESP_OK ? ap.rssi : 0;
+    int8_t txp = 0;
+    esp_wifi_get_max_tx_power(&txp);
     snprintf(s, sizeof s,
              "{\"fw\":\"%s\"," ABS_FIELD "\"up\":%lu,\"rst\":\"%s\",\"heap\":%u,\"psram\":%u,\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"sta\":%d,"
-             "\"ap\":\"%s\",\"w\":%u,\"h\":%u,\"kbps\":%lu,\"fps\":%.1f,\"idr\":%lu,\"gop\":%lu,\"vage\":%lu,\"ovf\":%lu,\"fz\":%d,"
-             "\"link\":{\"kbps\":%lu},\"aud\":{\"pk\":%lu,\"seg\":%lu,\"snd\":%d,\"vol\":%.0f,\"drop\":%lu,\"raw\":%d},\"lost\":%lu}",
+             "\"ap\":\"%s\",\"kbd\":\"%s\",\"w\":%u,\"h\":%u,\"kbps\":%lu,\"fps\":%.1f,\"idr\":%lu,\"gop\":%lu,\"vage\":%lu,\"ovf\":%lu,\"fz\":%d,"
+             "\"link\":{\"kbps\":%lu},\"aud\":{\"pk\":%lu,\"seg\":%lu,\"snd\":%d,\"vol\":%.0f,\"drop\":%lu,\"raw\":%d},\"lost\":%lu,"
+             "\"hb\":%lu,\"mgap\":%lu,\"rxkbps\":%lu,\"rssi\":%d,\"txp\":%d,\"ps\":\"%s\",\"stall\":%d}",
              FW_VERSION, millis(), resetReason(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM), usbState(), net_mode(), net_ip().c_str(), net_peers(),
-             apStates[airplay_state()], cfg_width(), cfg_height(), (unsigned long)v.kbps, v.fps, (unsigned long)v.idr_ms,
+             apStates[airplay_state()], kbd_layout_get(), cfg_width(), cfg_height(), (unsigned long)v.kbps, v.fps, (unsigned long)v.idr_ms,
              (unsigned long)v.gop_bytes, (unsigned long)v.age_ms, (unsigned long)v.overflows, v.frozen,
              (unsigned long)cli_tcp_kbps(), (unsigned long)au.packets, (unsigned long)au.segments, au.sound, au.volume,
-             (unsigned long)audio_drops(), cli_audio_wanted(), (unsigned long)v.lost);
+             (unsigned long)audio_drops(), cli_audio_wanted(), (unsigned long)v.lost, (unsigned long)mir.heartbeats,
+             (unsigned long)mir.max_gap_ms, (unsigned long)mirrorKbps(mir.rx_bytes), rssi, txp, psName(), stall);
     return s;
   }
   // The short form, should the full one ever outgrow a reply (link.cpp): what the CLI needs to go on.
-  snprintf(s, sizeof s, "{\"fw\":\"%s\"," ABS_FIELD "\"up\":%lu,\"rst\":\"%s\",\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"ap\":\"%s\",\"fz\":%d,\"lost\":%lu}",
-           FW_VERSION, millis(), resetReason(), usbState(), net_mode(), net_ip().c_str(), apStates[airplay_state()], v.frozen,
-           (unsigned long)v.lost);
+  snprintf(s, sizeof s, "{\"fw\":\"%s\"," ABS_FIELD "\"up\":%lu,\"rst\":\"%s\",\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"ap\":\"%s\",\"kbd\":\"%s\",\"fz\":%d,\"stall\":%d,\"lost\":%lu}",
+           FW_VERSION, millis(), resetReason(), usbState(), net_mode(), net_ip().c_str(), apStates[airplay_state()],
+           kbd_layout_get(), v.frozen, stall, (unsigned long)v.lost);
   return s;
+}
+
+// No modem sleep while the phone mirrors: in modem sleep the station wakes for beacons only, and video packets
+// wait in the access point (gaps in the picture). The mode before comes back when mirroring ends.
+static void mirrorPowerSave() {
+  static bool on;
+  static wifi_ps_type_t before = WIFI_PS_MIN_MODEM;
+  bool mirroring = airplay_state() == AIRPLAY_STREAMING;
+  if (mirroring == on) return;
+  on = mirroring;
+  if (on) {
+    if (esp_wifi_get_ps(&before) != ESP_OK) before = WIFI_PS_MIN_MODEM;
+    esp_wifi_set_ps(WIFI_PS_NONE);
+  } else {
+    esp_wifi_set_ps(before);
+  }
+  board_log("wifi: power save %s (mirroring %s)", on ? "off" : psName(), on ? "started" : "ended");
 }
 
 void statusTask(void *) {
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(1000));
+    mirrorPowerSave();
     if (cli_up()) link_status(statusJson(true), statusJson(false));
   }
 }
@@ -584,6 +657,7 @@ void setup() {
 #endif
   mouse.begin();
   keyboard.begin();
+  kbd_layout_begin();
   consumer.begin();
   USB.productName("Tentacle");
   USB.begin();

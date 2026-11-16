@@ -59,6 +59,7 @@ func (a *App) updateProgress(d map[string]any) {
 		}
 	case "restart":
 		fmt.Fprintln(a.Err, "Verified. The board restarts into the new firmware; waiting for it to come back...")
+		fmt.Fprintln(a.Err, "Afterwards start Screen Mirroring on the iPhone again (Control Center > Screen Mirroring > Tentacle).")
 	}
 }
 

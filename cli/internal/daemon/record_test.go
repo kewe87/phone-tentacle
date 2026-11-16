@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"os"
 	"strings"
 	"sync"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/kewe87/phone-tentacle/cli/internal/config"
 	"github.com/kewe87/phone-tentacle/cli/internal/history"
+	"github.com/kewe87/phone-tentacle/cli/internal/video"
 )
 
 func TestActionsAreRecordedAndKeysPaced(t *testing.T) {
@@ -28,6 +30,8 @@ func TestActionsAreRecordedAndKeysPaced(t *testing.T) {
 	b.Status(`{"up":5000,"ap":"idle","w":480,"h":1040}`)
 	time.Sleep(50 * time.Millisecond)
 	os.WriteFile(config.CalibrationPath(s.Dir, "246f28aa6ad5"), []byte(`{"w":400,"h":860,"moves":"axis"}`), 0o600)
+	conn, _ := s.conn(context.Background(), "")
+	conn.onFrame(video.Frame{Img: grey(480, 1040)}) // the screenshot the coordinates are pixels of
 
 	if r, _ := call(t, c, Request{Cmd: "tap", Pts: []float64{240, 520}}); r.Status != "ok" {
 		t.Fatalf("tap: %+v", r)

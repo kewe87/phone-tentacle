@@ -128,6 +128,10 @@ Gemeint ist die Datei `.ino.bin` (nicht `.merged.bin` oder der Bootloader). Die 
 auf den Neustart des Boards und meldet `updated: 0.1.0 -> 0.2.0`. Ein Image von 1,4 MB dauert deutlich unter einer
 Minute.
 
+**Danach die Bildschirmsynchronisierung neu starten.** Der Neustart beendet die Synchronisierung, und das iPhone
+startet sie nicht von selbst wieder: Kontrollzentrum › Bildschirmsynchronisierung › Tentacle XXXX (zeigt es noch
+„verbunden“, zuerst Synchronisierung stoppen). Bis dahin schlagen Screenshots fehl oder zeigen ein altes Bild.
+
 - **Nur signierte Firmware.** Das Board nimmt nur Images, die mit dem Tentacle-Release-Schlüssel signiert sind; die
   Signatur liegt als `FILE.bin.sig` neben dem Image, und `tentacle update` schickt sie mit. Ein unsigniertes oder
   falsch signiertes Image wird abgelehnt, bevor ein Byte geschrieben ist. Ein `--debug`-Build nimmt auch
@@ -212,6 +216,9 @@ Schlüssel sind Dateien im Konfigurationsordner der CLI (`%AppData%\tentacle`,
 
 1. Das Board vom Computer abziehen und mit dem Datenkabel ans iPhone stecken.
 2. *Einstellungen › Bedienungshilfen › Tippen › AssistiveTouch* einschalten. Damit kann der Mauszeiger tippen.
+   Ohne AssistiveTouch bewirken Taps nichts, und die CLI meldet trotzdem `tap done` (sie sieht den Zeiger nicht).
+   Tipp: *Einstellungen › Bedienungshilfen › Kurzbefehl › AssistiveTouch* schaltet es per Dreifachklick auf die
+   Seitentaste ein und aus.
 3. Das iPhone ins selbe WLAN bringen wie das Board. Kontrollzentrum › **Bildschirmsynchronisierung** ›
    **Tentacle XXXX**.
 
@@ -220,6 +227,19 @@ das Handy sperrt.
 
 Prüfen mit `tentacle device info`: `"ap":"streaming"` heißt, das Bild kommt an; `"usb":"ok"` heißt, das Handy
 sieht Maus und Tastatur (`"off"`: keine Datenverbindung, `"asleep"`: Handy entsperren).
+
+4. Das Tastaturlayout: Das Board tippt mit den Tasten des Layouts, das das iPhone von einer Hardware-Tastatur
+   erwartet (*Einstellungen › Allgemein › Tastatur › Hardware-Tastatur*). Ab Werk tippt es für US; für ein
+   deutsches iPhone:
+
+   ```sh
+   tentacle keyboard layout de     # us oder de; tentacle keyboard layout zeigt das aktuelle
+   ```
+
+   Mit dem falschen Layout wird `_` zu `?`, und Y und Z sind vertauscht. Auf `de` tippt das Board auch ä ö ü ß €
+   und Buchstaben mit Akzent (é, à, ô, ñ …); Zeichen, für die ein Layout keine Tasten hat, gehen ohne Akzent raus
+   oder entfallen, und die Antwort nennt sie (`not_typed`). Kurzbefehle wie `io keys cmd+z` richten sich auch nach
+   dem Layout: die Taste, die dort z tippt.
 
 > Foto folgt nach dem ersten Hardwaretest: das Board am iPhone, und Tentacle in der Liste der
 > Bildschirmsynchronisierung.
@@ -231,7 +251,7 @@ tentacle screenshot             # schreibt ein PNG in den aktuellen Ordner und z
 tentacle io button HOME         # zum Home-Bildschirm
 tentacle io tap 240,520         # Koordinaten sind Pixel eines Screenshots in voller Größe
 tentacle io swipe 240,800,240,300
-tentacle io text 'hello'        # nur ASCII
+tentacle io text 'hello'        # nach dem Tastaturlayout (siehe 6.)
 tentacle io keys enter
 ```
 
@@ -351,6 +371,11 @@ gesendet. Die Meldungen der CLI sind englisch.
 | Ein einzelner Druck hat das Board versehentlich gestoppt | Noch einmal drücken |
 | `phone usb asleep (unlock the phone)` | Das iPhone entsperren |
 | `no video (start screen mirroring)` | Die Bildschirmsynchronisierung am iPhone starten |
+| `no screen picture yet, so the coordinates cannot be placed …` | Taps, Wischer und langes Drücken nehmen Pixel eines Screenshots; die CLI hat seit ihrem Start keinen gesehen. Bildschirmsynchronisierung starten und einen Screenshot machen |
+| Ein Screenshot meldet `"stale": true` | Nach der letzten Eingabe kam kein neueres Bild (`age_ms` sagt, wie alt es ist). iOS schickt ein Bild nur, wenn sich der Bildschirm ändert: hätte er sich ändern sollen, noch einen machen; bleibt es alt, die Bildschirmsynchronisierung neu starten |
+| Taps bewirken nichts, die CLI meldet aber `tap done` | AssistiveTouch ist aus (*Einstellungen › Bedienungshilfen › Tippen › AssistiveTouch*). Tipp: als Bedienungshilfen-Kurzbefehl einrichten (Dreifachklick auf die Seitentaste) |
+| Getippter Text hat `?` statt `_`, oder Y und Z sind vertauscht | Das Tastaturlayout: `tentacle keyboard layout de` (oder `us`), wie das Hardware-Tastaturlayout des iPhones |
+| Nach `tentacle update` kein Bild | Die Bildschirmsynchronisierung neu starten: das Board hat neu gestartet |
 | `video frozen (restart screen mirroring)` | Die Bildschirmsynchronisierung stoppen und neu starten |
 | `waiting for keyframe` | Am Handy etwas auf dem Bildschirm ändern (eine App öffnen), dann noch einmal |
 | `calibration: pointer not found on screen …` | AssistiveTouch an? Zeiger sichtbar? Bildschirmsynchronisierung an? Dann `tentacle calibrate` |
@@ -375,21 +400,28 @@ tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
                                    60 s). The board then shows this computer's name and a 6-digit code (OLED),
                                    its LED blinks; compare the code, press BOOT once more within 30 s
   unpair [--board]                 forget the board here; --board: the board forgets every paired computer too
-  screenshot [--format png|jpeg] [--quality N] [--scale F] [--max-size N] [--output PATH|-]
+  screenshot [--format png|jpeg] [--quality N] [--scale F] [--max-size N] [--output PATH|-] [--wait MS]
+                                   after input, waits up to --wait ms (3000) for a newer picture; the result
+                                   says how old the picture is (age_ms) and "stale" with a warning when none came
   io tap X,Y [--aim] [--count N]   coordinates are screenshot pixels; --count 2 double-taps
   io longpress X,Y [--duration MS]
   io swipe X1,Y1,X2,Y2
-  io text 'TEXT'                   ASCII; Chinese is typed as pinyin
+  io text 'TEXT'                   by the board's keyboard layout (ASCII; on de also ä ö ü ß € ...); Chinese is
+                                   typed as pinyin
   io keys COMBO                    enter, esc, tab, backspace, space, up, cmd+a, ...
   io button HOME
   screencapture --format h264|mjpeg   video to stdout
   device info                      board status
+  keyboard layout [us|de]          the iPhone's hardware keyboard layout the board types for (default us); must
+                                   match Settings > General > Keyboard > Hardware Keyboard on the iPhone
+  video fps N | video res W H      what the board asks the iPhone for (30 fps, 480x1040), from the next
+                                   Screen Mirroring session on
   net                              the board's Wi-Fi
   net join                         the board moves to another Wi-Fi: asks for its name and password and sends them
                                    over the current link (sealed). A new board is set up on its own hotspot's page.
   net join SSID [PASSWORD]         the same, non-interactive
   net hotspot                      the board forgets its Wi-Fi and opens its setup hotspot again
-  calibrate                        measure the pointer (automatic on the first tap)
+  calibrate                        measure the pointer (automatic on the first tap; an --abs board needs none)
   listen                           what the iPhone played in the last 30 s, as words (or why it can't be heard)
   listen on|off                    hear the phone's sound while it mirrors (off by default); the words are made
                                    by whisper.cpp on this computer (install whisper-cpp, plus a model)

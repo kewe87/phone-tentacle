@@ -170,8 +170,8 @@ Input (the board is the phone's USB mouse and keyboard):
 | `press_for MS` | Holds the left button; it comes up by itself after MS (1-60000), or at `release`, `click` or `reset`. Moves in between drag. |
 | `flick DX DY [SPEED]` | Press, move, release with no pause between: a fast swipe. |
 | `scroll V H` | Wheel. |
-| `type TEXT` | Types printable ASCII. |
-| `key COMBO` | Keys joined by `+`: `enter esc tab backspace space up down left right cmd ctrl alt shift` or one character, e.g. `cmd+h`. `key eject` toggles the on-screen keyboard (do not retry it after a lost reply: a second press reverses the first). |
+| `type TEXT` | Types UTF-8 text with the keys of the phone's hardware keyboard layout (`kbd layout`). `us` types printable ASCII; `de` (Apple's German layout) also `ä ö ü Ä Ö Ü ß § ° € ´`, and `á é í ó ú à è ì ò ù â ê î ô û ñ ã õ` and their capitals by a dead key and the letter (`^`, `` ` `` and `~` too: the dead key, then space). A character the layout has no keys for: `err cannot type on layout de: <the characters>`, and nothing is typed. |
+| `key COMBO` | Keys joined by `+`: `enter esc tab backspace space up down left right cmd ctrl alt shift` or one character, e.g. `cmd+h`. A character is the key that types it on the layout (`cmd+z` on `de` is the key labelled Z; iOS matches shortcuts by the character): characters that need a dead key cannot be in a combo. `key eject` toggles the on-screen keyboard (do not retry it after a lost reply: a second press reverses the first). |
 | `homescreen` | The consumer-control Home key: iOS goes to the Home Screen. |
 | `reset` | Releases all buttons, keys and consumer controls in place. Safe to retry. |
 
@@ -186,7 +186,8 @@ Board:
 | `stream on\|off` | Sends every access unit as it comes (`V`), starting with the config and the whole GOP since the last IDR. Off again when the session ends. |
 | `snap` | Sends the config and the current GOP once (chunks flagged SNAP), then replies `ok`. `err no video (start screen mirroring)`, `err waiting for keyframe` (mirroring is up, no IDR yet), `err video frozen (restart screen mirroring)`. |
 | `bench KB` | Sends KB kilobytes (1-4096) of filler chunks (flag BENCH), then `ok <ms>`. |
-| `res W H`, `fps N` | The mirroring format (default 480 1040, 5 fps), stored on the board; it applies to the next mirroring session. |
+| `res W H`, `fps N` | The mirroring format (default 480 1040, 30 fps; 5 fps before 0.2.2, and a stored 5 becomes 30 once), stored on the board; it applies to the next mirroring session. `tentacle video fps N`, `tentacle video res W H`. |
+| `kbd layout [us\|de]` | The phone's hardware keyboard layout `type` and `key` use (Settings > General > Keyboard > Hardware Keyboard on the iPhone), stored on the board, `us` until set; `en-US`, `de-DE` are taken too. `ok <layout>`; without a layout only the answer. Unknown: `err unknown layout (us de)`. `tentacle keyboard layout [us\|de]`. |
 | `listen raw on\|off` | Phone audio records on stream `A`. Off again with every new session. |
 | `net`, `net {…}` | The board's Wi-Fi, see "Wi-Fi link". |
 | `result ID` | `ok <the reply>` the board gave to request ID, from this boot's last 8 replies; `err unknown id …` otherwise. Read only: ask it when a reply is late instead of sending the command again. |
@@ -215,10 +216,11 @@ paired computer; replies come back on the port. `stream`, `snap`, `bench`, `list
 ## Status
 Once a second on stream `B`, one JSON object:
 ```json
-{"fw":"0.2.0","up":123456,"rst":"power-on","heap":81234,"psram":6200000,"usb":"ok",
+{"fw":"0.2.2","up":123456,"rst":"power-on","heap":81234,"psram":6200000,"usb":"ok",
  "net":"sta","ip":"192.168.1.50","sta":1,
- "ap":"streaming","w":480,"h":1040,"kbps":180,"fps":4.8,"idr":2000,"gop":42000,"vage":120,"ovf":0,"fz":0,
- "link":{"kbps":350},"aud":{"pk":0,"seg":0,"snd":0,"vol":0,"drop":0,"raw":0},"lost":0}
+ "ap":"streaming","kbd":"de","w":480,"h":1040,"kbps":180,"fps":4.8,"idr":2000,"gop":42000,"vage":120,"ovf":0,"fz":0,
+ "link":{"kbps":350},"aud":{"pk":0,"seg":0,"snd":0,"vol":0,"drop":0,"raw":0},"lost":0,
+ "hb":512,"mgap":1100,"rxkbps":240,"rssi":-58,"txp":78,"ps":"none","stall":0}
 ```
 - `fw` firmware version, `up` ms since boot, `rst` reset reason of this boot
   (`power-on|brownout|watchdog|crash|software|usb|other`), `heap` / `psram` free bytes.
@@ -232,10 +234,19 @@ Once a second on stream `B`, one JSON object:
 - `lost`: AirPlay video packets the board dropped for good since boot. After one, the frames that follow may not
   decode until the next IDR.
 - `link.kbps`: bytes out to the computer in the last second.
+- `kbd`: the keyboard layout (`kbd layout`).
+- The mirror data socket (why the picture pauses): `hb` heartbeat and streaming reports (types 0x02, 0x05) since
+  boot; `mgap` ms of the longest silence on it in the last 60-120 s (with the one going on); `rxkbps` kbit/s on it.
+  The Wi-Fi: `rssi` dBm (0 without a network), `txp` TX power in 0.25 dBm, `ps` power save `none|min|max` (modem
+  sleep is off while the phone mirrors, from 0.2.2).
+- `stall` 1: the sender keeps the session up (heartbeats) but sent no picture for 15 s, although the phone took input
+  (any HID command but `ping`, `pace`, `reset`) at least 2 s ago and after the last picture. The CLI then marks a
+  screenshot stale and says to restart Screen Mirroring. A tap that changes nothing on screen sends no picture
+  either, so it is a hint, not proof.
 - `aud`: see "Phone audio".
 
 Should the object ever outgrow a reply (514 bytes), the board sends a short form instead:
-`{"fw","up","rst","usb","net","ip","ap","fz","lost"}`. The CLI merges every status into what it has.
+`{"fw","up","rst","usb","net","ip","ap","kbd","fz","stall","lost"}`. The CLI merges every status into what it has.
 
 ## Video
 Each chunk: `[seq u16 LE][flags u8][payload]`, payload up to 1380 bytes.

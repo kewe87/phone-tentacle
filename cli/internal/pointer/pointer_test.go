@@ -262,3 +262,28 @@ func TestPointerFarFromTheTargetIsFoundWithAFullScreenSearch(t *testing.T) {
 		t.Fatalf("found %v %+v", ok, pt)
 	}
 }
+
+// On a German layout the board types ä, ß and é itself; on US they lose their accents or are left out, and are
+// named. Han stays pinyin on both.
+func TestTypingFollowsTheKeyboardLayout(t *testing.T) {
+	d := &fakeDevice{}
+	p := newPointer(t, d, nil)
+	p.Layout = "de"
+	p.Type(context.Background(), "Grüße café 拿铁")
+	want := []string{"type Grüße", "key space", "type café", "key space", "type natie"}
+	if fmt.Sprint(d.sent) != fmt.Sprint(want) {
+		t.Fatalf("de sent %q", d.sent)
+	}
+	if got := TypeableOn("us", "Grüße café"); got != "Grue cafe" {
+		t.Fatalf("us: %q", got)
+	}
+	if got := NotTyped("us", "Grüße café ü 拿"); fmt.Sprint(got) != "[ü ß é]" {
+		t.Fatalf("not typed on us: %q", got)
+	}
+	if got := NotTyped("de", "Grüße € é"); got != nil {
+		t.Fatalf("not typed on de: %q", got)
+	}
+	if KnownLayout("DE-de") != "de" || KnownLayout("fr") != "" || !CanType("", 'a') || CanType("", 'ä') {
+		t.Fatal("layout names")
+	}
+}

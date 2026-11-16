@@ -56,7 +56,8 @@ type Conn struct {
 	barsSize  image.Point
 
 	ptr        *pointer.Pointer
-	lastAction time.Time
+	lastAction time.Time // when the last io command ended
+	lastInput  time.Time // when it began: a screenshot wants a picture from after it (ops.go frame())
 	lastShot   time.Time
 
 	keyMu   sync.Mutex // held across the gap and the send of key/type commands

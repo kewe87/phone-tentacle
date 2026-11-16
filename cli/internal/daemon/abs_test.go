@@ -31,14 +31,16 @@ func sent(b *proto.FakeBoard) string { return strings.Join(b.Commands, ",") }
 // Taps and swipes on an abs board: screenshot pixels as fractions of the screen in 0..32767, the press only after
 // the move, no calibration or homing.
 func TestAbsBoardTapsAndSwipesAbsolutely(t *testing.T) {
-	b, c, _ := absBoard(t)
+	b, c, s := absBoard(t)
 	if r, data := call(t, c, Request{Cmd: "calibrate"}); r.Status != "ok" || !strings.Contains(data["message"].(string), "not needed") {
 		t.Fatalf("calibrate: %+v", r)
 	}
 	if len(b.Commands) != 0 {
 		t.Fatalf("calibrate sent %s", sent(b))
 	}
-	// no frame yet: the AirPlay size from the status (480x1040)
+	// the coordinates are pixels of a 480x1040 screenshot
+	conn, _ := s.conn(context.Background(), "")
+	conn.onFrame(video.Frame{Img: grey(480, 1040)})
 	if r, _ := call(t, c, Request{Cmd: "tap", Pts: []float64{240, 260}, Count: 2, Aim: true}); r.Status != "ok" {
 		t.Fatalf("tap: %+v", r)
 	}

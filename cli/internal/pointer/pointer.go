@@ -97,6 +97,8 @@ type Pointer struct {
 	// Abs: the board positions the pointer absolutely (`abs`), coordinates are fractions of the phone screen.
 	// No calibration, no homing, no aiming: iOS does not show the pointer in the mirror image anyway.
 	Abs bool
+	// Layout: the phone's keyboard layout the board types with ("kbd" in its status; "" before layouts: US).
+	Layout string
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
@@ -549,11 +551,11 @@ func (p *Pointer) Drag(ctx context.Context, pts []Point, hold bool) error {
 	return err
 }
 
-// Type types text as the board can (see Typeable).
+// Type types text as the board can on its layout (see TypeableOn).
 func (p *Pointer) Type(ctx context.Context, text string) (string, error) {
-	ascii := Typeable(text)
+	ascii := TypeableOn(p.Layout, text)
 	if ascii == "" {
-		return "", errors.New("nothing typeable in that text (the board types ASCII only)")
+		return "", errors.New("nothing typeable in that text (see tentacle keyboard layout)")
 	}
 	// Spaces go as their own key: inside a `type` line iOS dropped every one ("coffee near East Broadway" came
 	// out "coffeenearEastBroadway" in Maps, 2026-10-21), while a separate space key always landed.

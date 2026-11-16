@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/kewe87/phone-tentacle/cli/internal/daemon"
 )
@@ -43,19 +44,28 @@ func schema(required []string, props map[string]any) map[string]any {
 var (
 	numProp = map[string]any{"type": "number"}
 	tools   = []tool{
-		{"screenshot", "The iPhone's screen now (after the last action has settled). Coordinates for the other tools are pixels of this image.", schema(nil, map[string]any{})},
+		{"screenshot", "The iPhone's screen now (after the last action has settled). Coordinates for the other tools are pixels of this image. " +
+			"The iPhone sends a picture only when the screen changes: the answer gives the picture's age, and says stale with a warning " +
+			"when no newer picture came after the last action.", schema(nil, map[string]any{
+			"wait_ms": map[string]any{"type": "integer", "description": "after an action, wait up to this long for a newer picture (default 3000)"}})},
 		{"tap", "Tap at x, y (screenshot pixels).", schema([]string{"x", "y"}, map[string]any{"x": numProp, "y": numProp,
 			"count": map[string]any{"type": "integer", "description": "taps in a row at the point; 2 is a double tap (default 1)"}})},
 		{"longpress", "Press and hold at x, y.", schema([]string{"x", "y"}, map[string]any{"x": numProp, "y": numProp,
 			"duration_ms": map[string]any{"type": "integer", "description": "default 1000"}})},
 		{"swipe", "Swipe from x1, y1 to x2, y2 (rests at the end, so lists stop there).", schema([]string{"x1", "y1", "x2", "y2"},
 			map[string]any{"x1": numProp, "y1": numProp, "x2": numProp, "y2": numProp})},
-		{"type_text", "Type text into the focused field. ASCII only: Chinese is typed as pinyin (then commit a candidate with press_key space or a tap).",
+		{"type_text", "Type text into the focused field, by the board's keyboard layout (keyboard_layout): ASCII, on de also ä ö ü ß € and accents. " +
+			"Characters the layout lacks lose their accents or are left out (the answer lists them). Chinese is typed as pinyin " +
+			"(then commit a candidate with press_key space or a tap).",
 			schema([]string{"text"}, map[string]any{"text": map[string]any{"type": "string"}})},
 		{"press_key", "Press a key or combo: enter, esc, tab, backspace, space, up, down, left, right, cmd+a, shift+tab ...",
 			schema([]string{"key"}, map[string]any{"key": map[string]any{"type": "string"}})},
 		{"press_button", "Press a hardware button. Only HOME (go to the Home Screen).",
 			schema([]string{"button"}, map[string]any{"button": map[string]any{"type": "string", "enum": []string{"HOME"}}})},
+		{"keyboard_layout", "The iPhone's hardware keyboard layout the board types for: without layout the current one, with it set " +
+			"(kept on the board). Must match the iPhone's Settings > General > Keyboard > Hardware Keyboard; with the wrong one " +
+			"a German iPhone types ? for _ and swaps Y and Z.",
+			schema(nil, map[string]any{"layout": map[string]any{"type": "string", "enum": []string{"us", "de"}}})},
 		{"device_info", "Board status: mirroring (ap), video frozen (fz), USB (usb), Wi-Fi (net, ip), the link's throughput (link).", schema(nil, map[string]any{})},
 		{"phone_audio", "What the iPhone played in the last 30 s (a video, a call, an app's voice) as words, or why it can't be heard " +
 			"(listening off, no sound). The words can be partial or misheard.", schema(nil, map[string]any{})},
@@ -140,7 +150,12 @@ func (a *App) callTool(name string, args map[string]any) map[string]any {
 	req := daemon.Request{Device: dev}
 	switch name {
 	case "screenshot":
-		req.Cmd = "screenshot"
+		req.Cmd, req.WaitMs = "screenshot", int(f("wait_ms"))
+		if _, set := args["wait_ms"]; set && req.WaitMs <= 0 {
+			req.WaitMs = -1
+		}
+	case "keyboard_layout":
+		req.Cmd, req.Text = "keyboard", strings.TrimSpace("layout "+s("layout"))
 	case "tap", "longpress":
 		req.Cmd, req.Pts, req.Ms, req.Count = name, []float64{f("x"), f("y")}, int(f("duration_ms")), int(f("count"))
 	case "swipe":
@@ -176,11 +191,23 @@ func (a *App) callTool(name string, args map[string]any) map[string]any {
 		var d struct {
 			Format, Data  string
 			Width, Height int
+			AgeMs         *int64 `json:"age_ms"`
+			Stale         bool
+			Warning       string
 		}
 		json.Unmarshal(r.Raw, &d)
+		text := fmt.Sprintf("%dx%d screenshot; tap coordinates are pixels of this image", d.Width, d.Height)
+		if d.AgeMs != nil {
+			text += fmt.Sprintf(". Picture age %.1f s", float64(*d.AgeMs)/1000)
+		}
+		if d.Stale {
+			text += ". STALE: " + d.Warning
+		} else if d.Warning != "" {
+			text += ". " + d.Warning
+		}
 		return map[string]any{"content": []map[string]any{
 			{"type": "image", "data": d.Data, "mimeType": "image/" + d.Format},
-			{"type": "text", "text": fmt.Sprintf("%dx%d screenshot; tap coordinates are pixels of this image", d.Width, d.Height)},
+			{"type": "text", "text": text},
 		}, "isError": false}
 	}
 	if name == "phone_audio" {

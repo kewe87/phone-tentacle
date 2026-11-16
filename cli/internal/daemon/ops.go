@@ -24,7 +24,14 @@ import (
 var (
 	errMirroring = errors.New("screen mirroring is off: on the iPhone open Control Center > Screen Mirroring > Tentacle")
 	errFrozen    = errors.New("video frozen: restart Screen Mirroring on the iPhone (Control Center > Screen Mirroring > Stop Mirroring, then Tentacle)")
+	// errNoFrame: coordinates are pixels of a screenshot, and without a frame its size is unknown. The AirPlay size
+	// in the status is not it (480x1040 asked, 718x1560 sent: a tap at x 700 landed on the right edge, 2026-11-16).
+	errNoFrame = errors.New("no screen picture yet, so the coordinates cannot be placed: take a screenshot first " +
+		"(Screen Mirroring must be on: Control Center > Screen Mirroring > Tentacle)")
 )
+
+// DefaultFreshWait is how long a screenshot waits for a picture newer than the last input.
+const DefaultFreshWait = 3 * time.Second
 
 func num(v any) float64 { f, _ := v.(float64); return f }
 
@@ -36,7 +43,7 @@ func (s *Server) videoState(ctx context.Context, c *Conn) error {
 	}
 	// Not streaming by the status: the board may have computed it just before this session, or AirPlay just
 	// started. Video coming in on this session, or the next status, says otherwise.
-	for t := time.Now(); st["ap"] != "streaming" && !c.streaming(); st, _ = c.Status() {
+	for t := time.Now(); !videoAlive(st, c); st, _ = c.Status() {
 		if time.Since(t) > 1500*time.Millisecond || sleepCtx(ctx, 100*time.Millisecond) != nil {
 			return errMirroring
 		}
@@ -54,10 +61,27 @@ func (s *Server) videoState(ctx context.Context, c *Conn) error {
 	return nil
 }
 
-// frame returns the screen as it is after the last action (like the upstream app's VideoFeed.afterAction).
-func (s *Server) frame(ctx context.Context, c *Conn) (image.Image, error) {
+// videoAlive: mirroring streams by the status, or video came in on this session; or the AirPlay session is up
+// ("connected") and there is a picture: iOS sends none while the screen stands still, also for 10-28 s, and the
+// status then said "connected" (2026-11-16). The picture is still the screen; its age goes with it (frame()).
+func videoAlive(st map[string]any, c *Conn) bool {
+	return st["ap"] == "streaming" || c.streaming() || st["ap"] == "connected" && c.Frame() != nil
+}
+
+// shot is a screenshot's frame and what is known of its freshness.
+type shot struct {
+	img      image.Image
+	captured time.Time // when the board got it (local clock)
+	stale    bool      // input went to the phone after it, and no newer picture came within the wait
+	warning  string
+}
+
+// frame returns the screen as it is after the last action (like the upstream app's VideoFeed.afterAction). The
+// iPhone sends a picture only when the screen changes: when input went to the phone after the latest picture,
+// it waits up to wait for a newer one, else the latest is returned as stale.
+func (s *Server) frame(ctx context.Context, c *Conn, wait time.Duration) (shot, error) {
 	if err := s.videoState(ctx, c); err != nil {
-		return nil, err
+		return shot{}, err
 	}
 	if c.Frame() == nil && c.Fresh(ctx, time.Time{}, 6*time.Second) == nil {
 		// nothing streamed yet (the stream starts at the next keyframe): ask for the current GOP
@@ -65,26 +89,39 @@ func (s *Server) frame(ctx context.Context, c *Conn) (image.Image, error) {
 		_, err := c.Send(sctx, "snap")
 		cancel()
 		if err != nil {
-			return nil, fmt.Errorf("no video from the board: %w", err)
+			return shot{}, fmt.Errorf("no video from the board: %w", err)
 		}
 		if c.Fresh(ctx, time.Time{}, 5*time.Second) == nil {
-			return nil, errors.New("no video from the board yet; try again")
+			return shot{}, errors.New("no video from the board yet; try again")
 		}
 	}
 	c.mu.Lock()
-	acted, shot := c.lastAction, c.lastShot
+	acted, input, last := c.lastAction, c.lastInput, c.lastShot
 	c.mu.Unlock()
-	if acted.After(shot) {
+	var out shot
+	// a picture from after the input began: a tap's change comes after its click, and the pointer is not in it
+	if captured, _, _, _ := c.times(); !input.IsZero() && input.After(captured) && c.Fresh(ctx, input, wait) == nil {
+		out.stale = true
+		out.warning = fmt.Sprintf("no new picture since the last input %.1f s ago: the screen may not have changed, "+
+			"or the iPhone stopped sending pictures. If a change was expected, take another screenshot; if it stays "+
+			"old, restart Screen Mirroring on the iPhone (Control Center > Screen Mirroring > Tentacle)", time.Since(input).Seconds())
+	} else if acted.After(last) {
 		c.Settled(ctx, 500*time.Millisecond, 300*time.Millisecond, 3*time.Second)
-		c.Fresh(ctx, acted, 1500*time.Millisecond)
 	}
 	c.mu.Lock()
 	c.lastShot = time.Now()
+	out.img, out.captured = c.frame, c.captured
 	c.mu.Unlock()
-	if st, _ := c.Status(); num(st["fz"]) == 1 {
-		return nil, errFrozen
+	st, _ := c.Status()
+	if num(st["fz"]) == 1 {
+		return shot{}, errFrozen
 	}
-	return c.Frame(), nil
+	if num(st["stall"]) == 1 { // the board saw input, heartbeats, and no picture for 15 s (firmware 0.2.2)
+		out.stale = true
+		out.warning = "the iPhone sends no pictures any more (mirroring is up, but nothing came for a while after input): " +
+			"restart Screen Mirroring on the iPhone (Control Center > Screen Mirroring > Stop Mirroring, then Tentacle)"
+	}
+	return out, nil
 }
 
 func encode(img image.Image, format string, quality int, scale float64, maxSize int) ([]byte, image.Rectangle, error) {
@@ -118,10 +155,15 @@ func encode(img image.Image, format string, quality int, scale float64, maxSize 
 }
 
 func (s *Server) screenshot(ctx context.Context, c *Conn, req Request) Response {
-	img, err := s.frame(ctx, c)
+	wait := DefaultFreshWait
+	if req.WaitMs != 0 {
+		wait = time.Duration(max(req.WaitMs, 0)) * time.Millisecond
+	}
+	sh, err := s.frame(ctx, c, wait)
 	if err != nil {
 		return fail(err)
 	}
+	img := sh.img
 	data, r, err := encode(img, req.Format, req.Quality, req.Scale, req.MaxSize)
 	if err != nil {
 		return fail(err)
@@ -131,9 +173,19 @@ func (s *Server) screenshot(ctx context.Context, c *Conn, req Request) Response 
 		format = "jpeg"
 	}
 	s.recordShot(img, r.Dx(), r.Dy())
-	return ok(map[string]any{"format": format, "data": base64.StdEncoding.EncodeToString(data),
-		"width": r.Dx(), "height": r.Dy(), "device": c.ID})
+	out := map[string]any{"format": format, "data": base64.StdEncoding.EncodeToString(data),
+		"width": r.Dx(), "height": r.Dy(), "device": c.ID, "stale": sh.stale}
+	if !sh.captured.IsZero() {
+		out["age_ms"] = max(time.Since(sh.captured).Milliseconds(), 0)
+		out["captured_at"] = sh.captured.Format(capturedFormat)
+	}
+	if sh.warning != "" {
+		out["warning"] = sh.warning
+	}
+	return ok(out)
 }
+
+const capturedFormat = "2006-01-02T15:04:05.000Z07:00"
 
 func (c *Conn) pointer(dir string) *pointer.Pointer {
 	c.mu.Lock()
@@ -144,16 +196,13 @@ func (c *Conn) pointer(dir string) *pointer.Pointer {
 	return c.ptr
 }
 
-// size is the screenshot size coordinates refer to: the latest frame, else the AirPlay resolution.
+// size is the screenshot size coordinates refer to: the latest frame this daemon got from the board (kept across
+// pauses in mirroring and reconnects); none yet is errNoFrame.
 func (c *Conn) size() (float64, float64, error) {
 	if f := c.Frame(); f != nil {
 		return float64(f.Bounds().Dx()), float64(f.Bounds().Dy()), nil
 	}
-	st, _ := c.Status()
-	if w, h := num(st["w"]), num(st["h"]); w > 0 && h > 0 {
-		return w, h, nil
-	}
-	return 0, 0, errors.New("screen size unknown (no video yet): take a screenshot first")
+	return 0, 0, errNoFrame
 }
 
 func (s *Server) calibrate(ctx context.Context, c *Conn) Response {
@@ -163,7 +212,7 @@ func (s *Server) calibrate(ctx context.Context, c *Conn) Response {
 	if err := s.videoState(ctx, c); err != nil {
 		return fail(err)
 	}
-	if _, err := s.frame(ctx, c); err != nil {
+	if _, err := s.frame(ctx, c, DefaultFreshWait); err != nil {
 		return fail(err)
 	}
 	p := c.pointer(s.Dir)
@@ -185,11 +234,13 @@ const textChunk = 160
 
 func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 	p := c.pointer(s.Dir)
+	began := time.Now()
 	err := func() error {
 		switch req.Cmd {
 		case "text":
+			p.Layout = c.layout()
 			typed, err := "", error(nil)
-			for rest := pointer.Typeable(req.Text); rest != "" && err == nil; {
+			for rest := pointer.TypeableOn(p.Layout, req.Text); rest != "" && err == nil; {
 				n := min(len(rest), textChunk)
 				for n > 0 && !utf8.RuneStart(rest[n-1]) {
 					n--
@@ -198,7 +249,7 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 				typed, rest = typed+rest[:n], rest[n:]
 			}
 			if typed == "" && err == nil {
-				err = errors.New("nothing typeable in that text (the board types ASCII only)")
+				err = fmt.Errorf("nothing typeable in that text on the %s keyboard layout (see tentacle keyboard layout)", layoutName(p.Layout))
 			}
 			return err
 		case "keys":
@@ -259,18 +310,90 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 		return nil
 	}()
 	c.mu.Lock()
-	c.lastAction = time.Now()
+	c.lastAction, c.lastInput = time.Now(), began
 	c.mu.Unlock()
 	s.recordAction(c, req, err)
 	if err != nil {
 		return fail(err)
 	}
-	out := map[string]string{"message": req.Cmd + " done"}
-	if req.Cmd == "text" && pointer.HasHan(req.Text) {
-		out["typed_as"] = pointer.Typeable(req.Text)
-		out["note"] = "needs the iPhone's Chinese (pinyin) keyboard; if letters appear, tap the globe key and type again"
+	out := map[string]any{"message": req.Cmd + " done"}
+	if req.Cmd == "text" {
+		var notes []string
+		if pointer.HasHan(req.Text) {
+			notes = append(notes, "needs the iPhone's Chinese (pinyin) keyboard; if letters appear, tap the globe key and type again")
+		}
+		if bad := pointer.NotTyped(p.Layout, req.Text); len(bad) > 0 {
+			out["not_typed"] = bad
+			notes = append(notes, fmt.Sprintf("the %s keyboard layout has no keys for %s: typed without accents or left out "+
+				"(a German iPhone: tentacle keyboard layout de)", layoutName(p.Layout), strings.Join(bad, " ")))
+		}
+		if len(notes) > 0 {
+			out["typed_as"] = pointer.TypeableOn(p.Layout, req.Text)
+			out["note"] = strings.Join(notes, "; ")
+		}
 	}
 	return ok(out)
+}
+
+// layout is the phone keyboard layout the board types with ("kbd" in its status); "" from a board without layouts.
+func (c *Conn) layout() string {
+	st, _ := c.Status()
+	l, _ := st["kbd"].(string)
+	return l
+}
+
+func layoutName(l string) string {
+	if l == "" {
+		return "us"
+	}
+	return l
+}
+
+// keyboard runs `keyboard layout [CODE]`: the phone's keyboard layout the board types with (kept on the board).
+func (s *Server) keyboard(ctx context.Context, c *Conn, text string) Response {
+	f := strings.Fields(text)
+	if len(f) == 0 || f[0] != "layout" || len(f) > 2 {
+		return fail(fmt.Errorf("usage: tentacle keyboard layout [%s]", strings.Join(pointer.Layouts, "|")))
+	}
+	line := "kbd layout"
+	if len(f) == 2 {
+		l := pointer.KnownLayout(f[1])
+		if l == "" {
+			return fail(fmt.Errorf("unknown layout %q (known: %s)", f[1], strings.Join(pointer.Layouts, ", ")))
+		}
+		line += " " + l
+	}
+	reply, err := c.Send(ctx, line)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "unknown command") {
+			err = errors.New("this board's firmware has no keyboard layouts (US only): update it (0.2.2 or later)")
+		}
+		return fail(err)
+	}
+	l := strings.TrimSpace(reply)
+	c.mu.Lock()
+	c.status["kbd"] = l // the next status says so too
+	c.mu.Unlock()
+	out := map[string]any{"layout": l}
+	if len(f) == 2 {
+		out["message"] = "the board now types for the " + l + " layout; the iPhone's hardware keyboard layout must be the same " +
+			"(Settings > General > Keyboard > Hardware Keyboard)"
+	}
+	return ok(out)
+}
+
+// video runs `video fps N` and `video res W H`: what the board asks the iPhone for (kept on the board), from the
+// next mirroring session on.
+func (s *Server) video(ctx context.Context, c *Conn, text string) Response {
+	f := strings.Fields(text)
+	if len(f) == 0 || !(f[0] == "fps" && len(f) == 2 || f[0] == "res" && len(f) == 3) {
+		return fail(errors.New("usage: tentacle video fps N | video res W H"))
+	}
+	if _, err := c.Send(ctx, text); err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"message": text + " set: restart Screen Mirroring on the iPhone to use it (Control Center > " +
+		"Screen Mirroring > Stop Mirroring, then Tentacle)"})
 }
 
 // screencapture streams raw H.264 (Annex-B, from the next keyframe) or MJPEG, after one JSON header line.

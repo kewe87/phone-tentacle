@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"errors"
 	"image"
 	"math"
 )
@@ -108,21 +107,18 @@ func iabs(v int) int {
 	return v
 }
 
-// screenArea is the phone screen in screenshot pixels: the latest frame without its bars, else the AirPlay size.
+// screenArea is the phone screen in screenshot pixels: the latest frame without its bars. Without a frame there
+// is no telling which size the caller's pixels are of (errNoFrame).
 func (c *Conn) screenArea() (image.Rectangle, error) {
 	c.mu.Lock()
 	f, bars, size := c.frame, c.bars, c.barsSize
 	c.mu.Unlock()
-	if f != nil {
-		w, h := f.Bounds().Dx(), f.Bounds().Dy()
-		if size != (image.Point{w, h}) {
-			bars = [4]int{}
-		}
-		return screenRect(w, h, bars), nil
+	if f == nil {
+		return image.Rectangle{}, errNoFrame
 	}
-	st, _ := c.Status()
-	if w, h := int(num(st["w"])), int(num(st["h"])); w > 0 && h > 0 {
-		return image.Rect(0, 0, w, h), nil
+	w, h := f.Bounds().Dx(), f.Bounds().Dy()
+	if size != (image.Point{w, h}) {
+		bars = [4]int{}
 	}
-	return image.Rectangle{}, errors.New("screen size unknown (no video yet): take a screenshot first")
+	return screenRect(w, h, bars), nil
 }

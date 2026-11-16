@@ -126,15 +126,20 @@ func (s *Server) update(ctx context.Context, c *Conn, req Request) Response {
 		return Response{Status: "error", Data: out, Error: out["message"].(string)}
 	}
 	out["fw"] = fw
+	out["hint"] = mirroringHint
 	switch {
 	case newVer == "" || fw == newVer:
-		out["message"] = fmt.Sprintf("updated: %s -> %s", oldVer, fw)
+		out["message"] = fmt.Sprintf("updated: %s -> %s. %s", oldVer, fw, mirroringHint)
 		return ok(out)
 	case fw == oldVer:
 		return Response{Status: "error", Data: out, Error: fmt.Sprintf("the board came back with %s: the new firmware did not start properly and the board went back to the old one", fw)}
 	}
 	return Response{Status: "error", Data: out, Error: fmt.Sprintf("the board came back with %s, expected %s", fw, newVer)}
 }
+
+// mirroringHint: a restarted board has no mirroring session, and the iPhone does not start one again by itself.
+const mirroringHint = "The board restarted: restart Screen Mirroring on the iPhone (Control Center > Screen Mirroring > " +
+	"Tentacle; if it still shows as connected, Stop Mirroring first), else screenshots fail or show an old picture"
 
 // waitBack finds the board again after its restart and returns the firmware version its first status names.
 func (s *Server) waitBack(ctx context.Context, sel string, old *Conn, links int, since time.Time) (string, error) {

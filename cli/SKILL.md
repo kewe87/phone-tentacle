@@ -9,8 +9,8 @@ description: See and drive a real iPhone through a Tentacle board (USB mouse/key
 keyboard and receives its AirPlay screen mirroring; this computer reaches it over Wi-Fi (found by itself on the
 local network, or `--host IP`). Every command prints
 JSON: `{"status":"ok","data":...}` or `{"status":"error","error":"..."}`. The MCP server (`tentacle mcp`)
-offers the same as tools: screenshot, tap, longpress, swipe, type_text, press_key, press_button, device_info,
-plus history, intent_list, intent_show, intent_save, memory_recall and memory_add.
+offers the same as tools: screenshot, tap, longpress, swipe, type_text, press_key, press_button, keyboard_layout,
+device_info, plus history, intent_list, intent_show, intent_save, memory_recall and memory_add.
 
 ## Setup (once)
 - `tentacle pair`: the user first double-presses the BOOT button on the board (two quick presses; pairing is then
@@ -18,13 +18,21 @@ plus history, intent_list, intent_show, intent_save, memory_recall and memory_ad
   the board's display and presses BOOT once more within 30 s. This needs the user at the board: ask them, never
   retry in a loop (the board locks pairing for a while after a request that was not confirmed).
 - Screen Mirroring on the iPhone: Control Center > Screen Mirroring > Tentacle XXXX (the board's name with its 4-character suffix).
+- AssistiveTouch on (Settings > Accessibility > Touch > AssistiveTouch): without it taps do nothing, yet the CLI
+  still answers `tap done`. Tip for the user: Settings > Accessibility > Accessibility Shortcut > AssistiveTouch,
+  then a triple click of the side button turns it on.
+- The keyboard layout, once: `tentacle keyboard layout de` for an iPhone with a German hardware keyboard layout
+  (Settings > General > Keyboard > Hardware Keyboard), `us` (default) otherwise. Wrong: `_` comes out `?`, Y/Z swap.
 - `tentacle calibrate` (also runs by itself on the first tap). It needs the mouse pointer visible on screen.
 - `tentacle update FILE.bin` puts new firmware on the board over Wi-Fi (only images signed for it, `FILE.bin.sig`
   beside the file). Only when the user asks for it.
 
 ## The loop
 1. `tentacle screenshot` (writes a PNG in the current directory and prints its `filePath`; read the image).
-   It waits until the screen has settled after your last action, so it never shows the screen from before it.
+   It waits until the screen has settled after your last action. The iPhone sends a picture only when the screen
+   changes: the answer has `age_ms`, and `"stale": true` with a `warning` when no newer picture came within 3 s
+   (`--wait MS`) after your last action. Stale: the action may have changed nothing, or the picture stopped;
+   screenshot once more, and if it stays stale ask the user to restart Screen Mirroring.
 2. Decide one action from what you see.
 3. Act, with coordinates in pixels of that screenshot (full size: don't pass `--scale`/`--max-size` if you
    take coordinates from it):
@@ -40,7 +48,9 @@ When the task depends on what the phone plays (a video, a call, a voice message,
 no sound). The words can be partial or misheard; check the screen when it matters.
 
 ## Typing
-- The board types printable ASCII only, one key per character.
+- The board types with the keys of its keyboard layout (`tentacle keyboard layout`): ASCII; on `de` also
+  ä ö ü ß € and accented letters. Characters the layout lacks are typed without the accent or left out; the reply
+  names them (`not_typed`, `typed_as`).
 - Chinese is typed as pinyin: `io text '拿铁'` types `natie` (the reply says `typed_as`). With the iPhone's Chinese (pinyin)
   keyboard active, commit the first candidate with `io keys space`, or screenshot and tap the right candidate.
   Many search boxes accept the plain pinyin as well.
@@ -75,6 +85,8 @@ After a task succeeded, save it so the next run is faster:
 
 ## Errors to act on
 - `screen mirroring is off`: ask the user to start Screen Mirroring to Tentacle XXXX.
+- `no screen picture yet …`: take a screenshot first (taps need the screenshot's size).
+- After `tentacle update` the board restarted: ask the user to start Screen Mirroring again.
 - `video frozen`: ask the user to stop and restart Screen Mirroring.
 - `not paired`: ask the user to double-press BOOT on the board, run `tentacle pair`, and ask them to press BOOT
   once more when the code shows.

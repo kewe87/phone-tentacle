@@ -8,7 +8,7 @@ BREW := $(shell brew --prefix 2>/dev/null)
 MBEDTLS := $(firstword $(wildcard $(BREW)/opt/mbedtls@3 $(BREW)/opt/mbedtls) /usr)
 SODIUM := $(firstword $(wildcard $(BREW)/opt/libsodium) /usr)
 
-test: test_main.c $(SRC)/bplist/bplist.c $(SRC)/video/gop.c $(SRC)/airplay/keystream.c $(SRC)/cli/cli_proto.c $(SRC)/hid/pace.c $(SRC)/log/logring.c $(SRC)/airplay/mdns.c $(SRC)/airplay/audio.c test_setup.c $(SRC)/setup/setup_text.c $(SRC)/ui/confirm.c test_pair.c $(SRC)/cli/pair_gate.c test_ota.c $(SRC)/ota/ota_gate.c $(SRC)/ota/ota_sig.c
+test: test_main.c $(SRC)/bplist/bplist.c $(SRC)/video/gop.c $(SRC)/airplay/keystream.c $(SRC)/cli/cli_proto.c $(SRC)/hid/pace.c $(SRC)/log/logring.c $(SRC)/airplay/mdns.c $(SRC)/airplay/audio.c test_setup.c $(SRC)/setup/setup_text.c $(SRC)/ui/confirm.c test_pair.c $(SRC)/cli/pair_gate.c test_ota.c $(SRC)/ota/ota_gate.c $(SRC)/ota/ota_sig.c test_kbd.c $(SRC)/hid/kbd_map.c
 	$(CC) $(CFLAGS) -Istubs -I$(MBEDTLS)/include -I$(SODIUM)/include -o $@ $^ -L$(MBEDTLS)/lib -L$(SODIUM)/lib -lmbedcrypto -lsodium -lm
 	./test
 
