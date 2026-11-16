@@ -151,6 +151,16 @@ static void test_messages(void) {
   CHECK(!strcmp(out[0], "type Hi") && !strcmp(out[1], "key space") && !strcmp(out[2], "type there!") &&
         !strcmp(out[3], "key enter"));
   CHECK(wi_message(&s, "text a\xc3\xa4" "b", out, 8, &n, &why) == WI_INPUT && n == 1 && !strcmp(out[0], "type ab"));
+  s.layout = 1;  // German (KBD_DE): ä and € are typed, a character it has no keys for is still skipped
+  CHECK(wi_message(&s, "text a\xc3\xa4" "b \xe2\x82\xac\xe4\xb8\xad", out, 8, &n, &why) == WI_INPUT && n == 3 &&
+        !strcmp(out[0], "type a\xc3\xa4" "b") && !strcmp(out[2], "type \xe2\x82\xac"));
+  {  // a long word is cut between characters, never inside one
+    char msg[200] = "text ", *m = msg + 5;
+    for (int i = 0; i < 60; i++) m += sprintf(m, "\xc3\xa4");
+    CHECK(wi_message(&s, msg, out, 8, &n, &why) == WI_INPUT && n == 2 && strlen(out[0]) == 5 + 80 &&
+          strlen(out[1]) == 5 + 40);
+  }
+  s.layout = 0;
   CHECK(wi_message(&s, "btn home", out, 8, &n, &why) == WI_INPUT && n == 1 && !strcmp(out[0], "homescreen"));
   CHECK(wi_message(&s, "btn control", out, 8, &n, &why) == WI_INPUT && n == 4 && !strcmp(out[2], "abs 30800 20000 4096"));
   CHECK(wi_message(&s, "btn switcher", out, 8, &n, &why) == WI_INPUT && n == 5);

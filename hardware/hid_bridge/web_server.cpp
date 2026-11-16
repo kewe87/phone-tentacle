@@ -16,6 +16,7 @@
 #include "button.h"
 #include "cli_link.h"
 #include "kbd_layout.h"
+#include "src/hid/kbd_map.h"
 #include "logbuf.h"
 #include "netcfg.h"
 #include "ota.h"
@@ -593,7 +594,7 @@ static void onMessage(const char *m) {
   int res = WI_ERR;
   if (!state && !ctl.control) why = "control";
   else if (!state && stop_active()) why = "stopped";
-  else res = wi_message(&inp, m, out, 8, &n, &why);
+  else { int l = kbd_map_find(kbd_layout_get()); inp.layout = l < 0 ? KBD_US : l; res = wi_message(&inp, m, out, 8, &n, &why); }
   bool full = false;
   if (res == WI_INPUT) {
     bool move = !strncmp(m, "move ", 5);

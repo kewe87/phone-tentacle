@@ -508,7 +508,7 @@ im Log des Boards).
 | Mausrad | Scrollt die Liste unter dem Zeiger |
 | Home, App-Umschalter, Kontrollzentrum, Mitteilungen | Die Systemgesten des iPhones |
 | Bildschirmtastatur | Zeigt oder versteckt die Tastatur des iPhones (`key eject`) |
-| Textfeld + Tippen | Tippt den Text (ASCII; andere Zeichen werden übersprungen) |
+| Textfeld + Tippen | Tippt den Text im Tastaturlayout des Boards (bei Deutsch auch ä ö ü ß € …); Zeichen ohne Taste werden übersprungen |
 | Tasten erfassen | Jede gedrückte Taste geht ans iPhone, mit Cmd / Strg / Alt / Shift, bis „Erfassen beenden“ |
 
 Klicks ins Bild brauchen den absoluten Zeiger (`flash.sh --abs`); hat die Firmware keinen, sagt die Seite das.

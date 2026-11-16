@@ -47,6 +47,7 @@ typedef struct {
   int bars[4];
   bool down;     // the left button is held (down ... up)
   int ax, ay;    // where the pointer was sent last (abs units)
+  int layout;    // the keyboard layout text is typed on (KBD_* of src/hid/kbd_map.h; 0, US, after wi_init)
 } wi_state;
 
 void wi_init(wi_state *s);

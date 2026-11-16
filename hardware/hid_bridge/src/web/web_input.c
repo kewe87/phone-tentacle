@@ -1,5 +1,6 @@
 // The web interface's input: see web_input.h.
 #include "web_input.h"
+#include "../hid/kbd_map.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -76,20 +77,34 @@ static bool word_is(const char *msg, const char *w, const char **rest) {
 }
 
 // Text as `type WORD` commands, spaces / newlines / tabs as keys of their own: inside a `type` line iOS dropped every
-// space (cli/internal/pointer/pointer.go, Type). Characters the board can not type are skipped.
-static void text(sink *k, const char *t) {
+// space (cli/internal/pointer/pointer.go, Type). Characters the layout can not type are skipped (the board's `type`
+// would refuse the whole word); the others go as UTF-8, never cut inside a character.
+static void text(sink *k, const char *t, int layout) {
   char word[WI_WORD_MAX + 1];
   size_t w = 0;
-  for (const char *p = t;; p++) {
-    char c = *p;
-    bool printable = c > 0x20 && c < 0x7f, sep = !c || c == ' ' || c == '\n' || c == '\t';
-    if (printable) word[w++] = c;
-    if (w && (sep || w == WI_WORD_MAX)) {
+  for (const char *p = t;;) {
+    const char *at = p;
+    uint32_t cp = kbd_utf8_next(&p);
+    char c = cp < 0x80 ? (char)cp : 0x7f;
+    bool sep = !cp || cp == ' ' || cp == '\n' || cp == '\t';
+    kbd_key_t keys[2];
+    bool printable = cp > 0x20 && cp != 0x7f && cp != 0xFFFD && kbd_map_keys(layout, cp, keys) > 0;
+    size_t len = (size_t)(p - at);
+    if (printable && w + len > WI_WORD_MAX) {  // full: this character starts the next word
       word[w] = 0;
       put(k, "type %s", word);
       w = 0;
     }
-    if (!c) break;
+    if (printable) {
+      memcpy(word + w, at, len);
+      w += len;
+    }
+    if (w && sep) {
+      word[w] = 0;
+      put(k, "type %s", word);
+      w = 0;
+    }
+    if (!cp) break;
     if (c == ' ') put(k, "key space");
     else if (c == '\n') put(k, "key enter");
     else if (c == '\t') put(k, "key tab");
@@ -139,7 +154,7 @@ int wi_message(wi_state *s, const char *msg, char out[][WI_CMD_MAX], int max, in
       *why = "text too long";
       return WI_ERR;
     }
-    text(&k, rest);
+    text(&k, rest, s->layout);
   } else if (word_is(msg, "btn", &rest)) {
     // System gestures on the absolute pointer, as fractions of the screen (portrait).
     if (!strcmp(rest, "home")) put(&k, "homescreen");
