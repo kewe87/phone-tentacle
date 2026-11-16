@@ -618,53 +618,79 @@ static void bye(int fd, const char *why) {
   if (srv) httpd_ws_send_frame_async(srv, fd, &f);
 }
 
+// The page's ticket for its WebSocket: ESP-IDF 5.5 no longer calls the handler for the handshake, so the cookie and
+// the origin can not be checked there. A signed-in page of this origin asks for a ticket (POST, so origin-checked),
+// opens the socket and sends `hello TICKET` first; the ticket works once, for a short while.
+static char wsTicket[33];
+static uint32_t wsTicketAt;
+static const uint32_t TICKET_MS = 15000;
+
+static esp_err_t onWsTicket(httpd_req_t *r) {
+  if (!postOk(r)) return ESP_OK;
+  uint8_t raw[16];
+  esp_fill_random(raw, sizeof raw);
+  lock();
+  for (int i = 0; i < 16; i++) snprintf(wsTicket + 2 * i, 3, "%02x", raw[i]);
+  wsTicketAt = millis();
+  char j[64];
+  snprintf(j, sizeof j, "{\"ticket\":\"%s\"}", wsTicket);
+  unlock();
+  return reply(r, "200 OK", j);
+}
+
+static bool takeTicket(const char *t) {  // under the lock
+  bool ok = wsTicket[0] && strlen(t) == 32 && wa_same(t, wsTicket) && millis() - wsTicketAt < TICKET_MS;
+  wsTicket[0] = 0;  // once, right or wrong
+  return ok;
+}
+
+// The page that sent a valid hello becomes the one page; an open one is told and closed.
+static void adopt(httpd_req_t *r, int fd) {
+  WsTag *t = (WsTag *)malloc(sizeof(WsTag));
+  if (!t) return;
+  int old = wsFd;
+  wsGen++;
+  wsFd = fd;
+  wsStream = false;
+  wc_connect(&ctl, millis());
+  wi_init(&inp);
+  wi_queue_clear(&q);
+  waitUntil = 0;
+  t->fd = fd, t->gen = wsGen;
+  r->sess_ctx = t;  // freed (wsGone) when the connection closes
+  r->free_ctx = wsGone;
+  if (old >= 0 && old != fd) {  // one page at a time: the newest
+    bye(old, "replaced");
+    httpd_sess_trigger_close(srv, old);
+    board_log("web: a newer page replaced the open one");
+  }
+}
+
 static esp_err_t onWs(httpd_req_t *r) {
   int fd = httpd_req_to_sockfd(r);
-  if (r->method == HTTP_GET) {  // the handshake is done: only now are the headers at hand
-    if (!sameOrigin(r)) {
-      char o[128], h[96];
-      header(r, "Origin", o, sizeof o);
-      header(r, "Host", h, sizeof h);
-      board_log("web: page refused: origin \"%s\" is not host \"%s\"", o, h);
-      bye(fd, "origin");
-      return ESP_FAIL;  // closes it
-    }
-    if (!signedIn(r)) {
-      board_log("web: page refused: not signed in");
-      bye(fd, "signin");
-      return ESP_FAIL;
-    }
-    WsTag *t = (WsTag *)malloc(sizeof(WsTag));
-    if (!t) return ESP_FAIL;
-    int old = wsFd;
-    lock();
-    wsGen++;
-    wsFd = fd;
-    wsStream = false;
-    wc_connect(&ctl, millis());
-    wi_init(&inp);
-    wi_queue_clear(&q);
-    waitUntil = 0;
-    t->fd = fd, t->gen = wsGen;
-    unlock();
-    r->sess_ctx = t;  // freed (wsGone) when the connection closes
-    r->free_ctx = wsGone;
-    if (old >= 0 && old != fd) {  // one page at a time: the newest
-      bye(old, "replaced");
-      httpd_sess_trigger_close(srv, old);
-      board_log("web: a newer page replaced the open one");
-    }
-    board_log("web: page connected");
-    return ESP_OK;
-  }
+  if (r->method == HTTP_GET) return ESP_OK;  // older ESP-IDF: the handshake; the page proves itself with hello
   httpd_ws_frame_t f = {};
   if (httpd_ws_recv_frame(r, &f, 0) != ESP_OK || f.len > WS_MSG_MAX) return ESP_FAIL;
   char buf[WS_MSG_MAX + 1];
   f.payload = (uint8_t *)buf;
   if (f.len && httpd_ws_recv_frame(r, &f, f.len) != ESP_OK) return ESP_FAIL;
   buf[f.len] = 0;
-  if (fd != wsFd) return ESP_FAIL;  // a page replaced by a newer one
-  if (f.type == HTTPD_WS_TYPE_TEXT) onMessage(buf);
+  if (f.type != HTTPD_WS_TYPE_TEXT) return fd == wsFd ? ESP_OK : ESP_FAIL;
+  if (fd != wsFd) {
+    if (strncmp(buf, "hello ", 6)) return ESP_FAIL;  // a page replaced by a newer one, or no hello
+    lock();
+    bool ok = takeTicket(buf + 6);
+    if (ok) adopt(r, fd);
+    unlock();
+    if (!ok) {
+      board_log("web: page refused: no valid ticket");
+      bye(fd, "signin");
+      return ESP_FAIL;
+    }
+    board_log("web: page connected");
+    return ESP_OK;
+  }
+  onMessage(buf);
   return ESP_OK;
 }
 
@@ -747,6 +773,7 @@ static void startServer() {
   route(h, "/api/ota/end", HTTP_POST, onOtaEnd);
   route(h, "/api/ota/abort", HTTP_POST, onOtaAbort);
   route(h, "/api/update/check", HTTP_GET, onUpdateCheck);
+  route(h, "/api/wsticket", HTTP_POST, onWsTicket);
   route(h, "/ws", HTTP_GET, onWs, nullptr, true);
   vStuck = false;
   srv = h;

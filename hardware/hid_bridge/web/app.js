@@ -184,22 +184,28 @@ $('b-logout').onclick = async () => { await api('/api/logout', ''); if (ws) ws.c
 // ---- WebSocket ---------------------------------------------------------------------------------------------------
 function send(m) { if (ws && ws.readyState === 1) ws.send(m); }
 
-function connect() {
+async function connect() {
+  // A one-time ticket proves the socket belongs to this signed-in page (the board can not read the cookie there).
+  let tk = {};
+  try { tk = await api('/api/wsticket', ''); } catch (x) { /* the board is away */ }
+  if (tk.status === 401) return start();
+  if (!tk.ticket) return lost('');
   ws = new WebSocket('wss://' + location.host + '/ws');
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { wsOpenedAt = Date.now(); video.reset(); send('stream on'); if (video.w) send('size ' + video.w + ' ' + video.h); };
+  ws.onopen = () => { wsOpenedAt = Date.now(); video.reset(); ws.send('hello ' + tk.ticket); send('stream on'); if (video.w) send('size ' + video.w + ' ' + video.h); };
   ws.onmessage = (e) => { retries = 0; if (typeof e.data === 'string') onText(e.data); else video.chunk(new Uint8Array(e.data)); };
   byeWhy = '';
-  ws.onclose = async () => {
-    ws = null;
-    let s = {};
-    try { s = await api('/api/state'); } catch (x) { /* the board is away */ }
-    if (byeWhy === 'signin' || (s.status === 200 && !s.auth)) return start();  // signed out (here or by another browser's sign-in)
-    // Only the board's word says another page took over; anything else (a dropped or refused connection) retries.
-    if (byeWhy === 'replaced') return overlay(t('replaced'), t('reconnect'), () => { retries = 0; connect(); });
-    if (!byeWhy && retries++ < 5) return setTimeout(connect, 1000 * retries);
-    overlay(t('disconnected') + (byeWhy ? ' (' + byeWhy + ')' : ''), t('reconnect'), () => { retries = 0; connect(); });
-  };
+  ws.onclose = () => { ws = null; lost(byeWhy); };
+}
+
+async function lost(why) {
+  let s = {};
+  try { s = await api('/api/state'); } catch (x) { /* the board is away */ }
+  if (s.status === 200 && !s.auth) return start();  // signed out (here or by another browser's sign-in)
+  // Only the board's word says another page took over; anything else (a dropped or refused connection) retries.
+  if (why === 'replaced') return overlay(t('replaced'), t('reconnect'), () => { retries = 0; connect(); });
+  if (retries++ < 5) return setTimeout(connect, 1000 * retries);
+  overlay(t('disconnected') + (why ? ' (' + why + ')' : ''), t('reconnect'), () => { retries = 0; connect(); });
 }
 setInterval(() => send('ping'), 3000);  // keeps the connection the server's most recently used one
 
