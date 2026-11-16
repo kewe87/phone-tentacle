@@ -21,6 +21,7 @@ int test_pair(void);   // test_pair.c: the PAIR frame, the pairing code's text, 
 int test_ota(void);    // test_ota.c: `update begin`, the chunks' order, the firmware signature
 int test_kbd(void);    // test_kbd.c: the keyboard layouts (US, German), dead keys, what a layout cannot type
 int test_web(void);    // test_web.c: the web interface: password, login lock, input, control, video gate, certificate
+int test_opts(void);   // test_opts.c: the board's hardware settings, the OLED's texts in English and German
 #define CHECK(c) do { if (!(c)) { fails++; printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); } } while (0)
 
 static void test_bplist_roundtrip(void) {
@@ -505,6 +506,7 @@ int main(void) {
   fails += test_ota();
   fails += test_kbd();
   fails += test_web();
+  fails += test_opts();
   printf(fails ? "%d FAILED\n" : "all tests passed\n", fails);
   return fails != 0;
 }

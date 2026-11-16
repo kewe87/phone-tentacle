@@ -42,6 +42,10 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
   io button HOME
   screencapture --format h264|mjpeg   video to stdout
   device info                      board status
+  device settings                  the board's settings: name, display, abs, battery, battery_div, lang
+  device set KEY VALUE             one of them, kept on the board: display auto|on|off (status OLED), abs on|off
+                                   (absolute pointer, after a restart), battery none|GPIO, battery_div 1.00-10.00,
+                                   lang auto|en|de (the OLED's texts), name NAME (after a restart)
   keyboard layout [us|de]          the iPhone's hardware keyboard layout the board types for (default us); must
                                    match Settings > General > Keyboard > Hardware Keyboard on the iPhone
   web password                     a new password for the board's web interface (asked twice, not shown); counts
@@ -53,7 +57,7 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
                                    over the current link (sealed). A new board is set up on its own hotspot's page.
   net join SSID [PASSWORD]         the same, non-interactive
   net hotspot                      the board forgets its Wi-Fi and opens its setup hotspot again
-  calibrate                        measure the pointer (automatic on the first tap; an --abs board needs none)
+  calibrate                        measure the pointer (automatic on the first tap; none with the absolute pointer)
   listen                           what the iPhone played in the last 30 s, as words (or why it can't be heard)
   listen on|off                    hear the phone's sound while it mirrors (off by default); the words are made
                                    by whisper.cpp on this computer (install whisper-cpp, plus a model)
@@ -222,6 +226,14 @@ func (a *App) Run(args []string) int {
 		}
 		if len(pos) >= 2 && pos[0] == "send" { // undocumented: one raw board command, for debugging
 			return a.call(daemon.Request{Cmd: "send", Device: *dev, Text: strings.Join(pos[1:], " ")})
+		}
+		switch {
+		case len(pos) == 1 && pos[0] == "settings":
+			return a.call(daemon.Request{Cmd: "settings", Device: *dev})
+		case len(pos) >= 3 && pos[0] == "set": // a name may hold spaces
+			return a.call(daemon.Request{Cmd: "settings", Device: *dev, Text: pos[1] + " " + strings.Join(pos[2:], " ")})
+		case len(pos) >= 1 && pos[0] == "set":
+			return a.fail(errors.New("usage: tentacle device set KEY VALUE (display, abs, battery, battery_div, lang, name)"))
 		}
 		if len(pos) == 0 || pos[0] != "info" {
 			return a.fail(errUnsupported)

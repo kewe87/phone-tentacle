@@ -21,7 +21,7 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@3.3.12
           arduino-cli lib install "U8g2"
-      - name: Compile firmware (default, opt-outs, display + battery)
+      - name: Compile firmware (release image, opt-outs, debug image)
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           FQBN="esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB"
@@ -34,7 +34,7 @@ jobs:
           }
           build ""
           build "-DSAFETY_CONTROLS=0 -DAP_MAX_CLIENTS=4"
-          build "-DSTATUS_DISPLAY=1 -DBATTERY_PIN=1"
+          build "-DTENTACLE_DEBUG=1"
 
   host-tests:
     runs-on: ubuntu-latest

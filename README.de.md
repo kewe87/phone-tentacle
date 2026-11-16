@@ -100,7 +100,7 @@ Was offen bleibt, steht in [docs/hardening.de.md](docs/hardening.de.md) und [SEC
 ```bash
 git clone https://github.com/kewe87/phone-tentacle.git && cd phone-tentacle
 arduino-cli core install esp32:esp32@3.3.12 && arduino-cli lib install U8g2
-hardware/flash.sh --display        # zeigt das Setup-WLAN Tentacle-XXXX und sein Passwort
+hardware/flash.sh                  # zeigt das Setup-WLAN Tentacle-XXXX und sein Passwort
 #   Tentacle-XXXX beitreten, auf der Seite das eigene WLAN wählen, BOOT drücken
 (cd cli && go build -o tentacle ./cmd/tentacle)
 #   BOOT doppelt drücken, dann:

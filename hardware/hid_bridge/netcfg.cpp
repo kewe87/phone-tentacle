@@ -7,6 +7,7 @@
 #include <esp_netif.h>
 #include <esp_wifi.h>
 #include <dhcpserver/dhcpserver.h>
+#include <nvs.h>
 #include "button.h"
 #include "dbg.h"
 #include "logbuf.h"
@@ -299,6 +300,7 @@ static void logWifi(arduino_event_id_t e, arduino_event_info_t info) {
 #endif
 
 static void cfg_migrate();
+static void loadOpts();
 
 void net_begin() {
 #if TENTACLE_DEBUG
@@ -307,6 +309,7 @@ void net_begin() {
   WiFi.persistent(false);  // the driver keeps no copy of a network in flash: ours in NVS is the only one
   prefs.begin("agent", false);
   cfg_migrate();
+  loadOpts();
   apSsid = prefs.getString("ap_ssid", "");
   apPass = prefs.getString("ap_pass", "");
   if (apSsid.isEmpty() || apPass.length() < 8) {
@@ -473,10 +476,80 @@ uint16_t cfg_height() { return prefs.getUShort("h", 1040); }
 // change wait. A stored 5 from before 0.2.2 goes to 30 once (cfg_migrate()); `fps N` sets it after that.
 uint8_t cfg_fps() { return prefs.getUChar("fps", 15); }
 
+// cfgv 1 (0.2.2): a stored fps of 5 goes. The hardware settings of 0.4.0 (cfg_opts()) need no step here: a board
+// without their keys gets the defaults, which are what the release build does (OLED when one answers, absolute
+// pointer, no battery gauge).
 static void cfg_migrate() {
   if (prefs.getUChar("cfgv", 0) >= 1) return;
   if (prefs.isKey("fps") && prefs.getUChar("fps", 30) == 5) prefs.remove("fps");
   prefs.putUChar("cfgv", 1);
+}
+
+// ---- The hardware settings (netcfg.h) ----------------------------------------------------------------------------
+static board_opts opts;  // read by net_begin(), under optsMux after that
+static portMUX_TYPE optsMux = portMUX_INITIALIZER_UNLOCKED;
+
+static void loadOpts() {
+  board_opts o;
+  bo_defaults(&o);
+  uint8_t d = prefs.getUChar("disp", BO_DISPLAY_AUTO);
+  if (d <= BO_DISPLAY_OFF) o.display = d;
+  o.abs = prefs.getUChar("abs", 1) ? 1 : 0;
+  int8_t pin = prefs.getChar("bat", BO_BAT_NONE);
+  if (bo_bat_pin_ok(pin)) o.bat_pin = pin;
+  uint16_t div = prefs.getUShort("bat_div", BO_DIV_DEFAULT);
+  if (div >= BO_DIV_MIN && div <= BO_DIV_MAX) o.bat_div = div;
+  uint8_t l = prefs.getUChar("oled_lang", BO_LANG_AUTO);
+  if (l <= BO_LANG_DE) o.lang = l;
+  portENTER_CRITICAL(&optsMux);
+  opts = o;
+  portEXIT_CRITICAL(&optsMux);
+}
+
+void cfg_opts(board_opts *o) {
+  portENTER_CRITICAL(&optsMux);
+  *o = opts;
+  portEXIT_CRITICAL(&optsMux);
+}
+
+int cfg_set_opt(const char *key, const char *value) {
+  board_opts o;
+  cfg_opts(&o);
+  int r = bo_set(&o, key, value);
+  if (r != BO_OK) return r;
+  if (!strcmp(key, "display")) prefs.putUChar("disp", o.display);
+  else if (!strcmp(key, "abs")) prefs.putUChar("abs", o.abs);
+  else if (!strcmp(key, "battery")) prefs.putChar("bat", o.bat_pin);
+  else if (!strcmp(key, "battery_div")) prefs.putUShort("bat_div", o.bat_div);
+  else prefs.putUChar("oled_lang", o.lang);
+  portENTER_CRITICAL(&optsMux);
+  opts = o;
+  portEXIT_CRITICAL(&optsMux);
+  return BO_OK;
+}
+
+// Straight from NVS, not through prefs: USB starts before setup() with the report descriptor's length fixed
+// (hid_pointer.h), and the phone may ask for the descriptor itself before setup() runs. The USB task then asks
+// here, possibly before the core has initialised NVS: it waits for that, 0.5 s at most.
+static volatile int8_t absActive = -1;
+
+bool cfg_abs_active() {
+  if (absActive < 0) {
+    uint8_t v = 1;
+    for (int i = 0; i < 50; i++) {
+      nvs_handle_t h;
+      esp_err_t e = nvs_open("agent", NVS_READONLY, &h);
+      if (e == ESP_OK) {
+        nvs_get_u8(h, "abs", &v);  // not there: the default stays
+        nvs_close(h);
+        break;
+      }
+      if (e != ESP_ERR_NVS_NOT_INITIALIZED) break;  // no namespace yet (a new board): the default
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    absActive = v ? 1 : 0;
+  }
+  return absActive == 1;
 }
 
 void cfg_set_res(uint16_t w, uint16_t h) {
@@ -507,6 +580,11 @@ String board_name() {  // read once: a new name takes effect on the next boot (a
     name = nameOk(n) ? n : String(BOARD_NAME_TEXT);
   }
   return name;
+}
+
+String board_name_saved() {
+  String n = prefs.getString("name", "");
+  return nameOk(n) ? n : String(BOARD_NAME_TEXT);
 }
 
 bool board_set_name(const String &name) {

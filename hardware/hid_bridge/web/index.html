@@ -121,6 +121,20 @@
       <div class="row"><button id="b-save" class="primary" data-i="save"></button><span id="save-msg" class="small"></span></div>
     </section>
     <section>
+      <h3 data-i="hardware"></h3>
+      <label for="h-display" data-i="hwDisplay"></label>
+      <div class="row"><select id="h-display"><option value="auto" data-i="hwAuto"></option><option value="on" data-i="hwOn"></option><option value="off" data-i="hwOff"></option></select><span id="h-oled" class="muted small"></span></div>
+      <label for="h-lang" data-i="hwLang"></label>
+      <select id="h-lang"><option value="auto" data-i="hwLangAuto"></option><option value="en">English</option><option value="de">Deutsch</option></select>
+      <label for="h-abs" data-i="hwPointer"></label>
+      <select id="h-abs"><option value="on" data-i="hwAbs"></option><option value="off" data-i="hwRel"></option></select>
+      <label for="h-bat" data-i="hwBattery"></label>
+      <div class="row"><select id="h-bat"><option value="none" data-i="hwNone"></option><option>1</option><option>2</option><option>3</option><option>4</option><option>7</option><option>8</option><option>9</option><option>10</option></select><span id="h-batpct" class="muted small"></span></div>
+      <label for="h-div" data-i="hwDivider"></label>
+      <input id="h-div" inputmode="decimal" maxlength="5" pattern="\d{1,2}(\.\d{1,2})?">
+      <div class="row"><button id="b-hw" class="primary" data-i="save"></button><span id="hw-msg" class="small"></span></div>
+    </section>
+    <section>
       <h3 data-i="network"></h3>
       <dl class="stats" id="s-net"></dl>
       <p class="muted small" data-i="certHint"></p>

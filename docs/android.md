@@ -14,7 +14,7 @@ The board is the **hands** on both: a USB mouse and keyboard. What differs is ho
 |---|---|---|
 | Eyes (screen) | AirPlay Screen Mirroring to the board, passed on to the computer | **ADB screenshots** over Wi-Fi (Wireless debugging, Android 11+); no app, no root |
 | Hands (input) | USB HID from the board | USB HID from the same board |
-| Pointer | relative mouse + AssistiveTouch + calibration | absolute pointer (the firmware has it as `flash.sh --abs`) |
+| Pointer | absolute pointer + AssistiveTouch (the default since 0.4.0; the relative mouse with calibration as setting `abs off`) | absolute pointer (the default) |
 
 The phone's USB port is taken by the board, so ADB has to go over Wi-Fi.
 

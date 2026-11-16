@@ -100,7 +100,7 @@ What is left open: [docs/hardening.md](docs/hardening.md) and [SECURITY.md](SECU
 ```bash
 git clone https://github.com/kewe87/phone-tentacle.git && cd phone-tentacle
 arduino-cli core install esp32:esp32@3.3.12 && arduino-cli lib install U8g2
-hardware/flash.sh --display        # prints the setup Wi-Fi Tentacle-XXXX and its password
+hardware/flash.sh                  # prints the setup Wi-Fi Tentacle-XXXX and its password
 #   join Tentacle-XXXX, choose your Wi-Fi on the page that opens, press BOOT
 (cd cli && go build -o tentacle ./cmd/tentacle)
 #   double-press BOOT, then:

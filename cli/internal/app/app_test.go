@@ -53,6 +53,10 @@ func TestOutputFormat(t *testing.T) {
 	if o := run(t, a, "io", "tap", "12"); o.Status != "error" || !strings.Contains(o.Error, "2 comma-separated") {
 		t.Fatalf("%+v", o)
 	}
+	// a setting without its value is refused here, before the daemon is asked
+	if o := run(t, a, "device", "set", "abs"); o.Status != "error" || !strings.Contains(o.Error, "usage: tentacle device set KEY VALUE") {
+		t.Fatalf("device set abs: %+v", o)
+	}
 }
 
 func TestFlagsAnywhere(t *testing.T) {

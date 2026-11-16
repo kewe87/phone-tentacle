@@ -165,7 +165,7 @@ Input (the board is the phone's USB mouse and keyboard):
 | `pace` | `ok <n>`: the version of how moves are paced (the CLI recalibrates when it changes). |
 | `home` | Slams the pointer into the top-left corner (left first, then up). |
 | `move DX DY [SPEED]` | Relative move, paced; SPEED 1-40 mouse units per report (default 10). |
-| `abs X Y [STEP]` | Only in `flash.sh --abs` builds (status has `"abs":1`): absolute position, 0-32767 across the screen; while the button is held it glides (STEP per report). |
+| `abs X Y [STEP]` | With the absolute pointer (the setting `abs`, on by default since 0.4.0; before, `flash.sh --abs` builds; the status has `"abs":1`): absolute position, 0-32767 across the screen; while the button is held it glides (STEP per report). With the relative pointer: `err the absolute pointer is off (config abs on, then restart the board)`. |
 | `press`, `release`, `click` | The left button. |
 | `press_for MS` | Holds the left button; it comes up by itself after MS (1-60000), or at `release`, `click` or `reset`. Moves in between drag. |
 | `flick DX DY [SPEED]` | Press, move, release with no pause between: a fast swipe. |
@@ -196,6 +196,7 @@ Board:
 | `bench KB` | Sends KB kilobytes (1-4096) of filler chunks (flag BENCH), then `ok <ms>`. |
 | `res W H`, `fps N` | The mirroring format (default 480 1040, 15 fps since 0.3.2; 30 in 0.2.2, 5 before, and a stored 5 is dropped once), stored on the board; it applies to the next mirroring session. `tentacle video fps N`, `tentacle video res W H`. |
 | `kbd layout [us\|de]` | The phone's hardware keyboard layout `type` and `key` use (Settings > General > Keyboard > Hardware Keyboard on the iPhone), stored on the board, `us` until set; `en-US`, `de-DE` are taken too. `ok <layout>`; without a layout only the answer. Unknown: `err unknown layout (us de)`. `tentacle keyboard layout [us\|de]`. |
+| `config [KEY VALUE]` | From 0.4.0: the board's settings, kept in NVS. `ok {json}`, after a change with the new values: `{"display":"auto","oled":1,"abs":"on","abs_active":1,"battery":"none","battery_div":"2.00","lang":"auto","name":"Tentacle","restart":0}`. Keys: `display auto\|on\|off` (the status OLED: `auto` looks for one on I2C, `on` draws whether one answers or not, `off` leaves the bus alone; applies at once), `abs on\|off` (the absolute or the relative pointer; after a restart, as it changes the USB descriptor), `battery none\|GPIO` (the LiPo voltage pin, an ADC pin 1-10 except 5 and 6, the OLED's), `battery_div 1.00-10.00` (battery volts per pin volt, 2.00 for a 2:1 divider), `lang auto\|en\|de` (the OLED's texts; `auto` follows the web interface's language, else English), `name NAME` (as the web interface: 1-20 of `A-Z a-z 0-9 space . _ -`; after a restart). Read only: `oled` 1 while a display is in use, `abs_active` the pointer this boot runs with, `restart` 1 while a stored `abs` or `name` waits for a restart, `bat` the battery in % with a pin set. Wrong: `err unknown setting …`, `err bad value for KEY: …`, `err usage: …`. A paired session only (on USB serial: `err needs the computer's session …`). `tentacle device settings`, `tentacle device set KEY VALUE`. |
 | `listen raw on\|off` | Phone audio records on stream `A`. Off again with every new session. |
 | `net`, `net {…}` | The board's Wi-Fi, see "Wi-Fi link". |
 | `result ID` | `ok <the reply>` the board gave to request ID, from this boot's last 8 replies; `err unknown id …` otherwise. Read only: ask it when a reply is late instead of sending the command again. |
@@ -214,7 +215,7 @@ Anything else: `err unknown command`. A line without a numeric id: `err missing 
 ### USB serial
 The board's USB serial port (115200) takes the same `<id> <command>` lines, for debugging and recovery without a
 paired computer; replies come back on the port. `stream`, `snap`, `bench`, `listen`, `result`, `update`, `dbg`,
-`dbgout` and `logs follow` need a session
+`dbgout`, `logs follow` and `config` need a session
 (`err needs the computer's session …`). Besides those lines:
 - `0 setup`: `wifi-setup {…}`, the setup hotspot's name and password, or the stored Wi-Fi and the board's address
   (flash.sh / flash.ps1 read it after flashing).
@@ -232,7 +233,8 @@ Once a second on stream `B`, one JSON object:
 ```
 - `fw` firmware version, `up` ms since boot, `rst` reset reason of this boot
   (`power-on|brownout|watchdog|crash|software|usb|other`), `heap` / `psram` free bytes.
-- `usb`: `ok`, `asleep` (the phone suspended USB) or `off` (not plugged into a host). `abs` 1 in `--abs` builds.
+- `usb`: `ok`, `asleep` (the phone suspended USB) or `off` (not plugged into a host). `abs` 1 while the board runs with the absolute pointer (the setting `abs`; missing with the relative one).
+  `bat` (0.4.0, full status only): the battery in %, with a battery pin set.
 - `net`: `sta` (on a Wi-Fi), `none` (a Wi-Fi is stored but not connected) or `ap` (setup hotspot); `ip`; `sta`:
   stations on the hotspot, or 1/0 connected.
 - `ap`: the AirPlay receiver, `idle|connected|streaming`. `w`, `h`: the mirroring format. `kbps`, `fps`: video

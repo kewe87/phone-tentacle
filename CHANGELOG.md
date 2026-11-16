@@ -15,6 +15,25 @@ Not run on hardware yet.
   the firmware's USB port, checks chip, flash size and PSRAM, and keeps the stored Wi-Fi and the pairing.
 - Checks the image's Ed25519 signature with the release key; unsigned images get a warning.
 
+## 0.4.0 (firmware) – unreleased
+
+Not run on hardware yet.
+
+- **One release image for every board.** What used to be a build option is a setting on the board, kept in NVS
+  across restarts and updates: `tentacle device settings`, `tentacle device set KEY VALUE`, the web interface's
+  Settings › Hardware, and the session command `config` (paired computers only; docs/cli-protocol.md).
+  - `display auto|on|off`: the status OLED is found on I²C by itself (0x3C/0x3D); a board without one runs the same.
+  - `abs on|off`: the absolute pointer is the default now; `off` is the relative mouse the CLI calibrates. Takes
+    effect after a restart (it changes the USB descriptor). The status says `"abs":1` as the board runs.
+  - `battery none|GPIO`, `battery_div`: the LiPo gauge; the full status has `"bat"` with a pin set.
+  - `lang auto|en|de`: the OLED's texts in English or German (`auto` follows the web interface).
+  - `name`: as before.
+  An NVS without these keys keeps today's release behaviour: absolute pointer, OLED found automatically.
+- `flash.sh --abs`, `--display` and `--battery-pin` are accepted and ignored; the U8g2 library is always needed.
+  `SAFETY_CONTROLS` (`--no-safety`) stays a build switch on purpose, `TENTACLE_DEBUG` builds the separate debug image.
+- The OLED now uses GPIO5 (SDA) / GPIO6 (SCL), as documented; the generic ESP32-S3 build had used GPIO8/9.
+- OLED: `no Wi-Fi: BOOT 10s=new` was one character too wide and is `no Wi-Fi: BOOT 10s` now.
+
 ## 0.3.0 (firmware) – unreleased
 
 Not run on hardware yet.
