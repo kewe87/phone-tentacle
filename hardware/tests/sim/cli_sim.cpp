@@ -21,6 +21,7 @@
 #include "link.h"
 #include "button.h"
 #include "cli_link.h"
+#include "ota.h"
 #include "cli_tcp.h"
 #include "src/video/gop.h"
 #include "src/log/logring.h"
@@ -158,6 +159,8 @@ void cli_tcp_drop() {
   cli_reset();
 }
 static std::vector<std::string> cmds;
+void ota_chunk(const uint8_t *, size_t) {}  // ota.cpp on the board: the simulated board takes no firmware
+void ota_link_down() {}
 void link_push_cmd(const char *line, size_t n) { cmds.push_back(std::string(line, n)); }  // link.cpp on the board
 
 // The mirrored screen: the file's access units, a config record first, about 5 per second.

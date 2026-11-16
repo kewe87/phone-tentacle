@@ -6,7 +6,7 @@ link is authenticated and encrypted here, in the application layer; pairing is c
 with its BOOT button.
 
 Open ports: 7202 (this protocol), the AirPlay receiver's, mDNS, and port 80 only while
-the setup hotspot is up. Firmware updates go over USB.
+the setup hotspot is up. Firmware updates go over this protocol too (see "Firmware update"), or over USB.
 
 ## Discovery
 The board announces itself by **mDNS / DNS-SD** on whatever network it is on (its Wi-Fi, or its own setup
@@ -147,9 +147,10 @@ Each stream's `ctr` starts at 1 and must grow by exactly 1; anything else is dro
 handled like a video seq gap (wait for the next IDR/CONFIG), one in `A` loses that much sound; a gap in `C` or `B` ends the session (reconnect).
 
 Plaintext:
-- `C`: `'c'` + one command line `<id> <command>` (see "Commands"), at most 511 bytes.
-- `B`: `'r'` + reply line `<id> ok…|<id> err…`, or `'s'` + status JSON (once a second, see "Status"). At most 514
-  bytes each.
+- `C`: `'c'` + one command line `<id> <command>` (see "Commands"), at most 511 bytes; or `'u'` + offset (u32 LE) +
+  up to 4096 bytes of a firmware image (see "Firmware update"). Both share the stream's counter.
+- `B`: `'r'` + reply line `<id> ok…|<id> err…`, `'s'` + status JSON (once a second, see "Status"), or `'l'` + new
+  lines of the board's log (`logs follow on`, debug builds; `\n` escaped as in `logs`). At most 514 bytes each.
 - `V`: one video chunk (see "Video").
 - `A`: one phone audio record (see "Phone audio").
 
@@ -193,6 +194,9 @@ Board:
 | `log TEXT` | Writes a marker line into that log and to USB serial. |
 | `crash` | `ok rst <reset reason>, last dump: <task, pc, backtrace of the last crash \| none>`. |
 | `vdbg` | The video stream's state in short form, for a frozen screen. |
+| `update begin\|state\|end\|abort` | A firmware update, see "Firmware update". |
+| `logs follow on\|off` | Debug builds: every new line of the board's log comes as `'l'` on stream `B` (about every 0.1 s), until `off` or the session ends. Other builds: `err debug build only`. |
+| `dbg ARGS` | Debug builds: the serial debug command `dbg ARGS` (`state`, `nvs`, `wifi [scan]`, `reboot`); its output is kept (4 KB at most) and comes back as a page like `logs`: `ok <next> <end> <text>`, the rest with `dbgout <next>`. `dbg btn` and `dbg forget` stay on USB serial (pressing BOOT from the network would skip the person at the board). Other builds: `err debug build only`. |
 | `txpower 8-84` | The Wi-Fi's TX power in 0.25 dBm steps; an A/B knob, not stored. |
 | `unpair` | The board answers `<id> ok` on the session that asked, then forgets **every** paired computer (all keys in NVS) and closes the connection. A computer's stored key is now useless (`0xE0 "not paired"`): it has to `pair` again, with the BOOT button. `tentacle unpair --board` sends it and forgets the board on the computer too; plain `tentacle unpair` only forgets it on the computer. |
 
@@ -200,7 +204,8 @@ Anything else: `err unknown command`. A line without a numeric id: `err missing 
 
 ### USB serial
 The board's USB serial port (115200) takes the same `<id> <command>` lines, for debugging and recovery without a
-paired computer; replies come back on the port. `stream`, `snap`, `bench`, `listen` and `result` need a session
+paired computer; replies come back on the port. `stream`, `snap`, `bench`, `listen`, `result`, `update`, `dbg`,
+`dbgout` and `logs follow` need a session
 (`err needs the computer's session …`). Besides those lines:
 - `0 setup`: `wifi-setup {…}`, the setup hotspot's name and password, or the stored Wi-Fi and the board's address
   (flash.sh / flash.ps1 read it after flashing).
@@ -210,7 +215,7 @@ paired computer; replies come back on the port. `stream`, `snap`, `bench`, `list
 ## Status
 Once a second on stream `B`, one JSON object:
 ```json
-{"fw":"0.1.0","up":123456,"rst":"power-on","heap":81234,"psram":6200000,"usb":"ok",
+{"fw":"0.2.0","up":123456,"rst":"power-on","heap":81234,"psram":6200000,"usb":"ok",
  "net":"sta","ip":"192.168.1.50","sta":1,
  "ap":"streaming","w":480,"h":1040,"kbps":180,"fps":4.8,"idr":2000,"gop":42000,"vage":120,"ovf":0,"fz":0,
  "link":{"kbps":350},"aud":{"pk":0,"seg":0,"snd":0,"vol":0,"drop":0,"raw":0},"lost":0}
@@ -282,6 +287,46 @@ stream `A` (frame `0x12`), and the CLI transcribes them (`tentacle listen`, whis
     there; the CLI reaches a board on its hotspot too (join it, the board is at 192.168.4.1).
   - `pass` is the setup hotspot's password in mode `ap` and empty in mode `sta`: a stored Wi-Fi password never
     leaves the board.
+
+## Firmware update
+`tentacle update FILE.bin` sends a new firmware (the sketch's `.ino.bin`, not the merged image) over the session;
+the board writes it into its other OTA slot, checks it and restarts into it.
+
+1. `update begin SIZE SHA256 SIG [VERSION]`: SIZE bytes, SHA256 the image's SHA-256 (64 hex digits), SIG its
+   signature (128 hex digits) or `-` for none, VERSION what the CLI found in the image (`tentacle-fw:0.2.0;`,
+   version.h's `FW_MARKER`). The board checks the signature **before it takes a byte** and answers `ok ready`, or
+   `err …`: `unsigned firmware: …`, `bad signature: …`, `busy: an update is already running`, `image too big …`.
+2. The image in `'u'` records on stream `C`, in order, 4096 bytes each (the last one less). The board writes each to
+   flash on the task that reads the socket, so TCP's flow control paces the sender; video and status keep going in
+   between. A chunk out of order, too large or past SIZE ends the update.
+3. `update state`: `ok ready <got> <size>` while receiving, `ok done`, `ok idle`, or `err <why the last one
+   stopped>`. The CLI asks every 256 KB.
+4. `update end`: the board checks that it got SIZE bytes with that SHA-256, the signature once more, and the image
+   itself (`esp_ota_end`: header, chip, segments, checksum), then sets the boot partition, answers
+   `ok restarting into <VERSION>` and restarts 0.3 s later. Any failure: `err …`, and the board keeps running the
+   old firmware.
+
+`update abort`, the session ending, the link dropping or 15 s without a chunk stop an update (`esp_ota_abort`); the
+old firmware stays. Only one update at a time.
+
+**Signature.** A release build takes only images signed with the Tentacle release key, Ed25519:
+```
+message   = "tentacle-fw-v1" || SHA-256(image)          # 14 + 32 bytes
+signature = Ed25519(release private key, message)       # 64 bytes, raw, in FILE.bin.sig
+```
+The public key is compiled into the firmware (`hardware/hid_bridge/ota_pubkey.h`). `tentacle keygen DIR` makes a key
+pair (`DIR/tentacle-release.key`, the 32-byte seed as hex: keep it out of any repository; `.pub` and the C array
+for ota_pubkey.h are printed), `tentacle sign FILE.bin --key KEYFILE` (or `TENTACLE_RELEASE_KEY`) writes
+`FILE.bin.sig`, and `tentacle update FILE.bin` sends `FILE.bin.sig` when it is there. A **debug build**
+(`TENTACLE_DEBUG`) takes unsigned images too (`SIG` = `-`); a signature that is there but wrong is refused by every
+build. The status of `dbg state` has `ota.unsigned_ok`.
+
+**Rollback.** The Arduino core's bootloader has `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`. The new firmware starts on
+trial (`ESP_OTA_IMG_PENDING_VERIFY`): it is kept (`esp_ota_mark_app_valid_cancel_rollback`) once a computer's
+session comes up, or after 30 s without a restart. A restart before that (a crash, the watchdog, a hang reset by
+hand) boots the previous firmware again. The CLI waits up to 90 s for the board to come back and compares the `fw`
+of its first status with the version it sent: the same → `updated: OLD -> NEW`; the old one → the new firmware did
+not start properly and the board went back. `dbg state` shows `ota.rolled_back` (the slot that was given up).
 
 Test vectors: `cli/testdata/vectors.json` (checked by `hardware/tests` and `go test ./cli/...`): `pair_nonce`,
 `pair_commit` and `pair_code` are `n_c`, `SHA-256(n_c)` and the code for the vectors' `K`.

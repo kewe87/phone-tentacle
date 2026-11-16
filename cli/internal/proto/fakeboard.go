@@ -21,6 +21,8 @@ type FakeBoard struct {
 	PairErr string
 	// Handle answers one command (without the id), e.g. "ok" or "err unknown command".
 	Handle func(cmd string) string
+	// Upload takes a firmware piece ('u' record: offset, bytes); nil: dropped.
+	Upload func(off uint32, data []byte)
 
 	mu       sync.Mutex
 	keys     map[string][]byte // client_id hex → K
@@ -163,7 +165,7 @@ func (c *fakeConn) Write(f []byte) error {
 			return nil
 		}
 		ctr, plain, err := c.c2b.Open(StreamC, f)
-		if err != nil || ctr <= c.ctrC || len(plain) < 2 || plain[0] != 'c' {
+		if err != nil || ctr <= c.ctrC || len(plain) < 2 || (plain[0] != 'c' && plain[0] != 'u') {
 			return nil // forged or replayed: dropped
 		}
 		if ctr != c.ctrC+1 {
@@ -171,6 +173,12 @@ func (c *fakeConn) Write(f []byte) error {
 			return nil
 		}
 		c.ctrC, c.authed = ctr, true
+		if plain[0] == 'u' {
+			if b.Upload != nil && len(plain) >= 5 {
+				b.Upload(uint32(plain[1])|uint32(plain[2])<<8|uint32(plain[3])<<16|uint32(plain[4])<<24, plain[5:])
+			}
+			return nil
+		}
 		id, cmd, _ := strings.Cut(string(plain[1:]), " ")
 		b.Commands = append(b.Commands, cmd)
 		if reply := b.Handle(cmd); reply != "" {
@@ -252,6 +260,25 @@ func (b *FakeBoard) SentFrames() [][]byte {
 		return nil
 	}
 	return append([][]byte{}, b.conn.Sent...)
+}
+
+// Drop ends the current connection (the board restarts, say).
+func (b *FakeBoard) Drop() {
+	b.mu.Lock()
+	c := b.conn
+	b.mu.Unlock()
+	if c != nil {
+		c.Close()
+	}
+}
+
+// Log sends log text ('l', `logs follow on`) to an authenticated client.
+func (b *FakeBoard) Log(text string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if c := b.conn; c != nil && c.authed {
+		c.sealB('l', text)
+	}
 }
 
 // SkipB makes the next control frame jump its counter (a lost frame).

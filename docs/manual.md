@@ -113,6 +113,30 @@ open `arduino-cli monitor -p COM5 -c baudrate=115200` and send `0 setup`. The bo
 `wifi-setup {"setup":1,"ssid":"Tentacle-1A2B","pass":"…","url":"http://192.168.4.1/","qr":"…"}`
 (`qr` is the Wi-Fi QR code, one hex string per row).
 
+### Later updates over Wi-Fi
+
+Once the board is paired (step 5), a newer firmware goes over Wi-Fi, without the USB cable:
+
+```sh
+tentacle update hardware/build/hid_bridge.ino.bin
+```
+
+Use the `.ino.bin` file (not `.merged.bin` or the bootloader). The CLI shows the progress, waits for the board
+to restart and prints `updated: 0.1.0 -> 0.2.0`. A 1.4 MB image takes well under a minute.
+
+- **Only signed firmware.** The board takes only images signed with the Tentacle release key; the signature is
+  `FILE.bin.sig` next to the image, and `tentacle update` sends it along. An unsigned or wrongly signed image is
+  refused before a byte is written. A `--debug` build also takes unsigned images, so you can update your own
+  builds of it over Wi-Fi; a normal build you made yourself goes over USB.
+- **Nothing breaks halfway.** The image goes into the board's second firmware slot. If the link drops, you press
+  Ctrl+C, or the image is damaged, the board keeps the firmware it has.
+- **Automatic rollback.** The new firmware is on trial until a computer has connected to it, or for 30 s. If it
+  crashes or restarts before that, the board starts the previous firmware again, and `tentacle update` says so.
+- The first firmware that can do this (0.2.0) has to be flashed over USB once.
+
+With a `--debug` build, `tentacle logs --board --follow` shows the board's log as it is written, and
+`tentacle debug state` (or `nvs`, `wifi`, `wifi scan`, `reboot`) runs its serial debug commands over Wi-Fi.
+
 ## 3. Put the board on your Wi-Fi
 
 A board without a stored Wi-Fi opens its own: `Tentacle-XXXX`, WPA2, with a random 12-character password made
@@ -372,6 +396,11 @@ tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
   mcp                              MCP server on stdio
   skill install                    agent skill for Claude Code / Codex
   logs [--board] [--save]          the CLI's log; --board the board's; --save both in one file (e.g. for an issue)
+  logs --board --follow            the board's new log lines as they come, until Ctrl+C (debug firmware only)
+  update FILE.bin [--force]        new firmware over Wi-Fi: FILE.bin.sig next to it is sent too. The board takes
+                                   only images signed for it (a debug build unsigned ones too), restarts into it
+                                   and goes back to the old one if the new one does not start properly
+  debug [dbg] CMD                  a debug build's serial dbg command over Wi-Fi: state, nvs, wifi [scan], reboot
   daemon [stop]                    the background process (started automatically)
   version
 
@@ -388,6 +417,8 @@ How the CLI works inside (the background daemon, history, intents, memory, limit
 - **Pairing and Wi-Fi setup need a person at the board.** Nothing on the network can make the board ask for its
   button: outside the 60 s after a double press, a pairing request gets an error and nothing else.
 - **The stop button** works at the board only; the computer cannot switch it off.
+- **Firmware updates over Wi-Fi** come only from a paired computer, and the board takes only images signed with
+  the Tentacle release key. A `--debug` build takes unsigned ones too: never hand one out.
 - **Open on your network:** the AirPlay receiver, port 7202 and mDNS. Anyone on the same Wi-Fi can start
   mirroring to the board or try to crash it; only a paired computer sees the screen or sends input.
 - **Without the OLED** the pairing code cannot be compared. The presses then only say "a computer may pair now".

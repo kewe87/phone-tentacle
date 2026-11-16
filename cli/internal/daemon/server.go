@@ -38,6 +38,7 @@ type Request struct {
 	Count   int       `json:"count,omitempty"`   // taps in a row at one point (2: double tap)
 	Host    string    `json:"host,omitempty"`    // --host: the board's address by hand, from now on ("auto": find it again)
 	Verbose bool      `json:"verbose,omitempty"` // --verbose: trace discovery, frames and timings, also to this client
+	Force   bool      `json:"force,omitempty"`   // update: send an image without a version marker
 }
 
 // Response is the CLI's JSON output, as mobilecli's: {"status":"ok","data":…} or {"status":"error","error":"…"}.
@@ -160,6 +161,10 @@ func (s *Server) handle(nc net.Conn) {
 		s.screencapture(ctx, req, nc)
 		return
 	}
+	if req.Cmd == "logfollow" {
+		s.logFollow(ctx, req, nc)
+		return
+	}
 	var wmu sync.Mutex // progress lines and the response share the connection
 	progress := func(data any) {
 		wmu.Lock()
@@ -276,6 +281,10 @@ func (s *Server) Do(ctx context.Context, req Request) Response {
 		return s.net(ctx, c, req.Text)
 	case "listen":
 		return s.listen(ctx, c, req.Text)
+	case "update":
+		return s.update(ctx, c, req)
+	case "debug":
+		return s.debug(ctx, c, req.Text)
 	}
 	return fail(fmt.Errorf("unknown command %q", req.Cmd))
 }

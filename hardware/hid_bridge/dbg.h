@@ -16,6 +16,13 @@ void dbg_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void dbg_begin(const char *reset, const char *crash);
 void dbg_poll();
 bool dbg_command(const char *line);  // true: it was a dbg line (answered on serial)
+// The same from the computer's session: `dbg ARGS` runs it and answers "ok <next> <end> <text>" (the first page
+// of what it printed, '\n' escaped, as `logs`), `dbgout NEXT` the following pages. dbg_take_reboot(): `dbg reboot`
+// was asked; the caller replies, then restarts.
+#include <Arduino.h>
+String dbg_session(const String &args);
+String dbg_page(const String &arg);
+bool dbg_take_reboot();
 #define DBG(...) dbg_log(__VA_ARGS__)
 #else
 #define DBG(...) ((void)0)

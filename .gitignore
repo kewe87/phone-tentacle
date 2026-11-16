@@ -26,3 +26,7 @@ hardware/tests/sim/cli_sim
 hardware/tests/sim/cli_sim.dSYM/
 hardware/tests/sim/*.o
 hardware/tests/sim/screen.h264
+
+# Firmware signing keys (tentacle keygen): never in the repository
+*.key
+tentacle-release.*

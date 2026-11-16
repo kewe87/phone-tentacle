@@ -5,6 +5,7 @@
 #include <atomic>
 #include <esp_heap_caps.h>
 #include "cli_link.h"
+#include "logbuf.h"
 
 const size_t CMD_MAX = 512;
 const size_t TEXT_MAX = 514;               // one reply or status (cli_link.cpp's TEXT_CAP leaves room for it)
@@ -21,6 +22,24 @@ static SemaphoreHandle_t statusLock;
 static Text statusText;
 static bool statusDirty;
 static std::atomic<int> pending;  // replies queued or sending + a status waiting
+// `logs follow on` (debug builds): new log lines go out as 'l' records, for this session only.
+static volatile bool follow;
+static uint32_t followFrom, followGen;
+const uint32_t FOLLOW_MS = 100;
+const size_t FOLLOW_MAX = 480;  // escaped text per record, under TEXT_MAX
+
+static void followLog() {
+  static uint32_t last;
+  static char page[FOLLOW_MAX + 1];
+  if (!follow) return;
+  if (!cli_up() || cli_gen() != followGen) { follow = false; return; }
+  uint32_t now = millis();
+  if (now - last < FOLLOW_MS) return;
+  last = now;
+  uint32_t next = board_log_read(followFrom, page, sizeof page);
+  if (next == followFrom) return;
+  if (cli_send_ctrl('l', page, strlen(page), REPLY_TIMEOUT_MS)) followFrom = next;
+}
 
 static void txTask(void *) {
   static Text t;
@@ -38,6 +57,7 @@ static void txTask(void *) {
       cli_send_ctrl('s', t.s, t.len, STATUS_TIMEOUT_MS);
       pending--;
     }
+    followLog();
   }
 }
 
@@ -96,4 +116,10 @@ void link_status(const String &full, const String &compact) {
 
 void link_flush() {
   for (int i = 0; i < 100 && pending > 0; i++) vTaskDelay(pdMS_TO_TICKS(10));
+}
+
+void link_follow(bool on) {
+  followFrom = board_log_end();  // from now on
+  followGen = cli_gen();
+  follow = on;
 }

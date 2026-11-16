@@ -62,6 +62,11 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
   mcp                              MCP server on stdio
   skill install                    agent skill for Claude Code / Codex
   logs [--board] [--save]          the CLI's log; --board the board's; --save both in one file (e.g. for an issue)
+  logs --board --follow            the board's new log lines as they come, until Ctrl+C (debug firmware only)
+  update FILE.bin [--force]        new firmware over Wi-Fi: FILE.bin.sig next to it is sent too. The board takes
+                                   only images signed for it (a debug build unsigned ones too), restarts into it
+                                   and goes back to the old one if the new one does not start properly
+  debug [dbg] CMD                  a debug build's serial dbg command over Wi-Fi: state, nvs, wifi [scan], reboot
   daemon [stop]                    the background process (started automatically)
   version
 
@@ -159,6 +164,14 @@ func (a *App) Run(args []string) int {
 		return a.memory(rest)
 	case "logs":
 		return a.logs(rest)
+	case "update":
+		return a.update(rest)
+	case "debug":
+		return a.debugCmd(rest)
+	case "keygen":
+		return a.keygen(rest)
+	case "sign":
+		return a.sign(rest)
 	case "skill":
 		if len(rest) == 0 || rest[0] != "install" {
 			return a.fail(errors.New("usage: tentacle skill install"))
@@ -270,6 +283,13 @@ func (a *App) global(args []string) []string {
 
 // progress shows what the daemon sends ahead of its response: the --verbose trace, and pairing's code.
 func (a *App) progress(line []byte) {
+	var raw struct {
+		Data map[string]any `json:"data"`
+	}
+	if json.Unmarshal(line, &raw) == nil && raw.Data["update"] != nil {
+		a.updateProgress(raw.Data)
+		return
+	}
 	var p struct {
 		Data struct {
 			Log     string `json:"log"`

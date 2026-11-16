@@ -60,6 +60,8 @@ type Conn struct {
 
 	hear      *hearing    // phone audio transcribed here (listen.go); nil: never
 	rawWanted func() bool // ask each session for the raw audio
+
+	logSubs map[chan string]bool // `logs --board --follow` clients (update.go); each session is asked again
 }
 
 // KeyGap separates key and type commands: sent back to back, iOS dropped a backspace (2026-10-21).
@@ -67,7 +69,8 @@ const KeyGap = 80 * time.Millisecond
 
 func newConn(id, name, ffmpeg string) *Conn {
 	return &Conn{ID: id, Name: name, ffmpeg: ffmpeg, pending: map[string]chan string{}, status: map[string]any{},
-		subs: map[chan video.AU]bool{}, frameSubs: map[chan image.Image]bool{}, wake: make(chan struct{})}
+		subs: map[chan video.AU]bool{}, frameSubs: map[chan image.Image]bool{}, wake: make(chan struct{}),
+		logSubs: map[chan string]bool{}}
 }
 
 func (c *Conn) connected() bool {
@@ -107,6 +110,12 @@ func (c *Conn) start() error {
 	_, err := c.Send(ctx, "stream on")
 	if err == nil && c.rawWanted != nil && c.rawWanted() {
 		c.Send(ctx, "listen raw on") // the board forgets it with every session
+	}
+	c.mu.Lock()
+	following := len(c.logSubs) > 0
+	c.mu.Unlock()
+	if err == nil && following {
+		c.Send(ctx, "logs follow on") // this too
 	}
 	return err
 }
@@ -170,6 +179,8 @@ func (c *Conn) read(s *proto.Session, quit chan struct{}) {
 			c.mu.Unlock()
 		case 's':
 			c.onStatus(m.Data)
+		case 'l':
+			c.onLog(m.Data)
 		case 'v':
 			c.onVideo(m.Data, m.Gap)
 		case 'a':

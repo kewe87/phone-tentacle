@@ -8,3 +8,7 @@ void board_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void board_log_keep(const char *line);
 // `logs <offset> [max chars]`: "ok <next> <end> <text>", '\n' escaped as \n; read until next == end.
 String board_log_page(const String &arg);
+// `logs follow` (debug builds, link.cpp): the escaped text from offset from on, at most max - 1 chars; returns
+// where to read next (from itself when nothing new came). board_log_end(): where the next line will start.
+uint32_t board_log_read(uint32_t from, char *out, size_t max);
+uint32_t board_log_end();

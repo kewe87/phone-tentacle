@@ -19,6 +19,8 @@ plus history, intent_list, intent_show, intent_save, memory_recall and memory_ad
   retry in a loop (the board locks pairing for a while after a request that was not confirmed).
 - Screen Mirroring on the iPhone: Control Center > Screen Mirroring > Tentacle XXXX (the board's name with its 4-character suffix).
 - `tentacle calibrate` (also runs by itself on the first tap). It needs the mouse pointer visible on screen.
+- `tentacle update FILE.bin` puts new firmware on the board over Wi-Fi (only images signed for it, `FILE.bin.sig`
+  beside the file). Only when the user asks for it.
 
 ## The loop
 1. `tentacle screenshot` (writes a PNG in the current directory and prints its `filePath`; read the image).

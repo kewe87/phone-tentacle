@@ -34,6 +34,7 @@
 #include "logbuf.h"
 #include "button.h"
 #include "dbg.h"
+#include "ota.h"
 
 const int STEP = 10;      // pointer speed per report while moving (any direction, see pace.h)
 const int ABS_STEP = 245;      // of 32767, per STEP_MS while dragging with `abs`: the relative mouse's speed
@@ -375,8 +376,33 @@ String board(const String &line, const String &id, char who) {
   String arg = sp < 0 ? "" : line.substring(sp + 1);
   long a = 0, b = 0;
   int n = sscanf(arg.c_str(), "%ld %ld", &a, &b);
-  if (who != FROM_CLI && (cmd == "stream" || cmd == "snap" || cmd == "bench" || cmd == "listen" || cmd == "result"))
+  if (who != FROM_CLI && (cmd == "stream" || cmd == "snap" || cmd == "bench" || cmd == "listen" || cmd == "result" ||
+                         cmd == "update" || cmd == "dbg" || cmd == "dbgout" ||
+                         (cmd == "logs" && arg.startsWith("follow"))))
     return NEEDS_SESSION;
+  // Firmware update over the session (ota.h): signed releases only (unsigned too in a debug build).
+  if (cmd == "update") return ota_command(arg, id);
+  // Debugging over Wi-Fi, debug builds only: the serial `dbg` commands, and the log as it is written.
+  if (cmd == "dbg" || cmd == "dbgout" || (cmd == "logs" && arg.startsWith("follow"))) {
+#if TENTACLE_DEBUG
+    if (cmd == "dbgout") return dbg_page(arg);
+    if (cmd == "logs") {
+      if (arg != "follow on" && arg != "follow off") return "err usage: logs follow on|off";
+      link_follow(arg == "follow on");
+      return "ok";
+    }
+    String reply = dbg_session(arg);
+    if (dbg_take_reboot()) {
+      link_reply(id + " " + reply);
+      link_flush();
+      vTaskDelay(pdMS_TO_TICKS(300));
+      ESP.restart();
+    }
+    return reply;
+#else
+    return "err debug build only";
+#endif
+  }
   if (cmd == "stream") {
     if (arg != "on" && arg != "off") return "err usage: stream on|off";
     video_stream(arg == "on");
@@ -580,6 +606,7 @@ void setup() {
   if (!cli_tcp_begin()) board_log("cli: Wi-Fi link failed to start");
   startAirplay();
   advertiseCli();  // after AirPlay: it starts the mDNS responder
+  ota_setup();     // after the log is up: says whether this firmware is new and on trial
   xTaskCreatePinnedToCore(statusTask, "status", 4096, NULL, 1, NULL, 1);
   board_log("boot %s fw %s: free internal heap %u (largest %u), PSRAM %u, reset %s\n", receiverName.c_str(), FW_VERSION,
                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
@@ -595,6 +622,7 @@ void loop() {
 #endif
   net_poll();
   advertiseState();
+  ota_poll();
 #if TENTACLE_DEBUG
   dbg_poll();
 #endif
@@ -655,5 +683,14 @@ void loop() {
   // A Wi-Fi password never goes to the serial log: `net {...}` is shown without its argument.
   Serial.printf("[%lu.%03lu] C %s -> %s (%lu ms)\n", started / 1000, started % 1000,
                 rest.startsWith("net ") ? (id + " net {...}").c_str() : line.c_str(), reply.c_str(), millis() - started);
+#endif
+#if TENTACLE_DEBUG
+  // ... and into the RAM log, for `tentacle logs --board --follow`; not the log's own reads, nor typed text
+  if (!rest.startsWith("logs") && !rest.startsWith("dbgout")) {
+    char kept[200];
+    String shown = rest.startsWith("net ") ? id + " net {...}" : rest.startsWith("type ") ? id + " type ..." : line;
+    snprintf(kept, sizeof kept, "C %s -> %.80s (%lu ms)", shown.c_str(), reply.c_str(), millis() - started);
+    board_log_keep(kept);
+  }
 #endif
 }

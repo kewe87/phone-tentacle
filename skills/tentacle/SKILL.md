@@ -87,6 +87,8 @@ Every command prints JSON: `{"status":"ok","data":...}` or `{"status":"error","e
 | `intent list`, `intent show NAME`, `intent save ...`, `intent delete NAME` | Saved tasks |
 | `memory search TEXT`, `memory add TEXT` | What the user asked to remember |
 | `mcp` | Run the MCP server on stdio |
+| `update FILE.bin` | New board firmware over Wi-Fi (signed images only; `FILE.bin.sig` beside it). Only when the user asks |
+| `logs --board [--follow]` | The board's log; `--follow` streams new lines (debug firmware) |
 
 With several boards pass `--device <id>` or set `TENTACLE_DEVICE`. A board that is not found by itself:
 `--host IP` (the address is on the board's display).

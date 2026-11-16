@@ -45,3 +45,18 @@ String board_log_page(const String &arg) {
   portEXIT_CRITICAL(&mux);
   return String("ok ") + next + " " + end + " " + page;
 }
+
+uint32_t board_log_read(uint32_t from, char *out, size_t max) {
+  portENTER_CRITICAL(&mux);
+  uint32_t next = from == ring.end ? from : logring_read(&ring, from, out, max);
+  portEXIT_CRITICAL(&mux);
+  if (next == from) out[0] = 0;
+  return next;
+}
+
+uint32_t board_log_end() {
+  portENTER_CRITICAL(&mux);
+  uint32_t end = ring.end;
+  portEXIT_CRITICAL(&mux);
+  return end;
+}

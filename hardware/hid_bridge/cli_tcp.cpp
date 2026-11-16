@@ -10,7 +10,7 @@
 
 const int SEND_TIMEOUT_MS = 2000;
 const int IDLE_TIMEOUT_MS = 6000;  // the CLI sends a keepalive every 2 s; a computer gone off Wi-Fi sends no FIN
-const size_t FRAME_MAX = 600;      // largest frame from the computer (cli_link.cpp's TEXT_CAP + seal)
+const size_t FRAME_MAX = 4200 + 17; // largest frame from the computer: a firmware chunk (cli_link.cpp's RX_CAP) + seal
 const int POLL_MS = 200;           // how often the reader looks at the pairing and the deadlines below
 // One computer at a time: a connection that has neither a session nor an open pairing request by then is closed,
 // so a stranger on the Wi-Fi cannot hold the board's only link with keepalives.

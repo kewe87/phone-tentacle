@@ -10,6 +10,8 @@
 #include "dbg.h"
 #include "src/cli/cli_proto.h"
 #include "src/cli/pair_gate.h"
+#include "src/ota/ota_gate.h"
+#include "ota.h"
 #include "logbuf.h"
 
 const int MAX_CLIENTS = 4;
@@ -34,12 +36,14 @@ static uint8_t boardId[6];
 static volatile uint32_t gen;  // sessions authenticated since boot
 static SemaphoreHandle_t clientsLock;   // clients[] and its copy in NVS: cli_tcp's task pairs, loop() forgets
 static volatile uint32_t lastFrameMs;   // an authenticated session's last frame (0: none since boot or unpair)
-// Frame buffers in PSRAM (~4.5 KB): one for frames from the computer (cli_tcp's task), one per sending task.
+// Frame buffers in PSRAM (~9 KB): one for frames from the computer (cli_tcp's task: a command line, or a chunk of a
+// firmware image, ota.h), one per sending task.
 static uint8_t *rxText, *ctrlBuf, *ctrlOut, *videoOut, *audioOut;
 static volatile bool audioOn;
 const size_t TEXT_CAP = 520, OUT_CAP = 520 + CLI_OVERHEAD, VIDEO_CAP = CLI_TCP_MTU;
 const size_t AUDIO_CAP = 1400 + CLI_OVERHEAD;  // one record: header, times, an AAC-ELD frame
-const size_t BUF_SIZE = TEXT_CAP * 2 + OUT_CAP + VIDEO_CAP + AUDIO_CAP;
+const size_t RX_CAP = 1 + 4 + OTA_CHUNK_MAX;  // 'u', offset, image bytes (a command line is shorter)
+const size_t BUF_SIZE = RX_CAP + TEXT_CAP + OUT_CAP + VIDEO_CAP + AUDIO_CAP;
 
 extern "C" void cli_random(uint8_t *p, size_t n) { esp_fill_random(p, n); }
 
@@ -61,9 +65,9 @@ void cli_begin() {
   if (!p) p = (uint8_t *)malloc(BUF_SIZE);
   if (!p) return;
   rxText = p;
-  ctrlBuf = p + TEXT_CAP;
-  ctrlOut = p + TEXT_CAP * 2;
-  videoOut = p + TEXT_CAP * 2 + OUT_CAP;
+  ctrlBuf = p + RX_CAP;
+  ctrlOut = ctrlBuf + TEXT_CAP;
+  videoOut = ctrlOut + OUT_CAP;
   audioOut = videoOut + VIDEO_CAP;
   // The board's id: one of the addresses esp_read_mac derives from the base MAC in the eFuse (the type is only a
   // name: no radio and no Bluetooth stack is involved). Earlier firmware used the same one, so the name's suffix
@@ -252,7 +256,7 @@ static void data(const uint8_t *p, size_t n) {
   Session &s = sess;
   uint8_t *text = rxText;
   uint32_t ctr;
-  if (!s.welcomed || !text || n > TEXT_CAP + CLI_OVERHEAD) return;
+  if (!s.welcomed || !text || n > RX_CAP + CLI_OVERHEAD) return;
   int len = cli_open(s.c2b, 'C', p, n, &ctr, text);
   if (len < 0) return;  // forged or for another session: ignore
   if (ctr != s.rx + 1) { drop(); return; }  // a replay, or a lost frame: start over
@@ -266,6 +270,7 @@ static void data(const uint8_t *p, size_t n) {
     board_log("cli: session up");
   }
   if (len > 1 && text[0] == 'c') link_push_cmd((const char *)text + 1, len - 1);
+  else if (len > 1 && text[0] == 'u') ota_chunk(text + 1, len - 1);  // a piece of a firmware image (`update`)
 }
 
 void cli_on_frame(const uint8_t *p, size_t n) {
@@ -283,6 +288,7 @@ void cli_reset() {
     board_log("cli: pairing request withdrawn (link down)");
     pairEnd(false);
   }
+  ota_link_down();  // an update that was coming in on this link stops; the old firmware keeps running
   sess.authed = sess.welcomed = false;
 }
 

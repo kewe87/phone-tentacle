@@ -8,7 +8,7 @@ the latest `main` (fetch and rebase, or merge it in).
 Before sending a change, run the checks for what you touched:
 
 ```bash
-# firmware (arduino-cli with the esp32 core 3.3.x; host tests need mbedtls 3: apt libmbedtls-dev / brew mbedtls@3)
+# firmware (arduino-cli with the esp32 core 3.3.x; host tests need mbedtls 3 and libsodium: apt libmbedtls-dev libsodium-dev / brew mbedtls@3 libsodium)
 hardware/flash.sh --build-only && make -C hardware/tests
 # simulated board and its protocol test (needs ffmpeg and uv)
 make -C hardware/tests/sim cli_sim screen.h264 && uv run hardware/tests/sim/test_cli_sim.py

@@ -12,3 +12,4 @@ bool link_pop_cmd(String &line, uint32_t wait_ms);    // next command, oldest fi
 void link_reply(const String &line);                  // queued; dropped without a session
 void link_status(const String &full, const String &compact);  // latest wins; compact if full is too long
 void link_flush();                                    // waits (at most 1 s) until what is queued went out
+void link_follow(bool on);                            // `logs follow on|off`: new log lines as 'l' records (this session)

@@ -21,6 +21,7 @@ func (a *App) logs(args []string) int {
 	save := fs.Bool("save", false, "write the CLI log, the board's log and state to one file")
 	output := fs.String("output", "", "file for --save (default: tentacle-logs-<time>.txt here)")
 	lines := fs.Int("lines", 50, "last lines of the CLI log to show")
+	follow := fs.Bool("follow", false, "with --board: new lines as they come, until Ctrl+C (debug firmware)")
 	if _, err := parse(fs, args); err != nil {
 		return a.fail(err)
 	}
@@ -28,6 +29,8 @@ func (a *App) logs(args []string) int {
 	switch {
 	case *save:
 		return a.saveLogs(*dev, *output)
+	case *board && *follow:
+		return a.followBoardLog(*dev)
 	case *board:
 		data, err := a.boardLog(*dev)
 		if err != nil {

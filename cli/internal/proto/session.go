@@ -182,9 +182,22 @@ func (s *Session) Send(line string) error {
 	return s.l.Write(s.c2b.Seal(StreamC, TData, s.ctrC, append([]byte{'c'}, line...)))
 }
 
+// SendUpload writes one piece of a firmware image on stream C: 'u', the offset (u32 LE), the bytes
+// (docs/cli-protocol.md, "Firmware update"). It shares the counter with the command lines.
+func (s *Session) SendUpload(off uint32, data []byte) error {
+	plain := make([]byte, 5, 5+len(data))
+	plain[0] = 'u'
+	plain[1], plain[2], plain[3], plain[4] = byte(off), byte(off>>8), byte(off>>16), byte(off>>24)
+	plain = append(plain, data...)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ctrC++
+	return s.l.Write(s.c2b.Seal(StreamC, TData, s.ctrC, plain))
+}
+
 // Msg is one decrypted board message.
 type Msg struct {
-	Kind byte   // 'r' reply line, 's' status JSON, 'v' video chunk, 'a' audio record
+	Kind byte   // 'r' reply line, 's' status JSON, 'l' log text (`logs follow on`), 'v' video chunk, 'a' audio record
 	Data []byte // without the kind byte (a video chunk as is)
 	Gap  bool   // video, audio: frames were lost before this one
 }

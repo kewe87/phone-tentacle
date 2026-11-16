@@ -116,6 +116,34 @@ antwortet mit einer Zeile:
 `wifi-setup {"setup":1,"ssid":"Tentacle-1A2B","pass":"…","url":"http://192.168.4.1/","qr":"…"}`
 (`qr` ist der WLAN-QR-Code, eine Hex-Zeichenkette pro Zeile).
 
+### Spätere Updates über WLAN
+
+Ist das Board gekoppelt (Schritt 5), kommt eine neuere Firmware über WLAN, ohne USB-Kabel:
+
+```sh
+tentacle update hardware/build/hid_bridge.ino.bin
+```
+
+Gemeint ist die Datei `.ino.bin` (nicht `.merged.bin` oder der Bootloader). Die CLI zeigt den Fortschritt, wartet
+auf den Neustart des Boards und meldet `updated: 0.1.0 -> 0.2.0`. Ein Image von 1,4 MB dauert deutlich unter einer
+Minute.
+
+- **Nur signierte Firmware.** Das Board nimmt nur Images, die mit dem Tentacle-Release-Schlüssel signiert sind; die
+  Signatur liegt als `FILE.bin.sig` neben dem Image, und `tentacle update` schickt sie mit. Ein unsigniertes oder
+  falsch signiertes Image wird abgelehnt, bevor ein Byte geschrieben ist. Ein `--debug`-Build nimmt auch
+  unsignierte Images, so lassen sich eigene Builds davon über WLAN aufspielen; einen selbst gebauten normalen Build
+  per USB flashen.
+- **Nichts geht halb kaputt.** Das Image landet im zweiten Firmware-Slot des Boards. Bricht die Verbindung ab, drückst
+  du Strg+C oder ist das Image beschädigt, behält das Board seine bisherige Firmware.
+- **Automatischer Rückfall.** Die neue Firmware ist auf Probe, bis sich ein Computer mit ihr verbunden hat, oder
+  30 s lang. Stürzt sie vorher ab oder startet neu, startet das Board wieder die vorige Firmware, und
+  `tentacle update` meldet das.
+- Die erste Firmware, die das kann (0.2.0), muss einmal per USB geflasht werden.
+
+Mit einem `--debug`-Build zeigt `tentacle logs --board --follow` das Log des Boards, während es geschrieben wird,
+und `tentacle debug state` (oder `nvs`, `wifi`, `wifi scan`, `reboot`) führt seine seriellen Debug-Befehle über
+WLAN aus.
+
 ## 3. Das Board ins eigene WLAN bringen
 
 Ein Board ohne gespeichertes WLAN öffnet ein eigenes: `Tentacle-XXXX`, WPA2, mit einem zufälligen
@@ -380,6 +408,11 @@ tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
   mcp                              MCP server on stdio
   skill install                    agent skill for Claude Code / Codex
   logs [--board] [--save]          the CLI's log; --board the board's; --save both in one file (e.g. for an issue)
+  logs --board --follow            the board's new log lines as they come, until Ctrl+C (debug firmware only)
+  update FILE.bin [--force]        new firmware over Wi-Fi: FILE.bin.sig next to it is sent too. The board takes
+                                   only images signed for it (a debug build unsigned ones too), restarts into it
+                                   and goes back to the old one if the new one does not start properly
+  debug [dbg] CMD                  a debug build's serial dbg command over Wi-Fi: state, nvs, wifi [scan], reboot
   daemon [stop]                    the background process (started automatically)
   version
 
@@ -399,6 +432,8 @@ Das Innenleben der CLI (der Hintergrundprozess, Verlauf, Intents, Gedächtnis, G
   seiner Taste zu fragen: Außerhalb der 60 s nach einem Doppeldruck bekommt eine Koppel-Anfrage einen Fehler,
   sonst geschieht nichts.
 - **Der Stopp-Taster** wirkt nur am Board; der Computer kann ihn nicht aufheben.
+- **Firmware-Updates über WLAN** kommen nur von einem gekoppelten Computer, und das Board nimmt nur Images, die mit
+  dem Tentacle-Release-Schlüssel signiert sind. Ein `--debug`-Build nimmt auch unsignierte: nie weitergeben.
 - **Offen im eigenen Netz:** der AirPlay-Empfänger, Port 7202 und mDNS. Jeder im selben WLAN kann eine
   Spiegelung zum Board starten oder versuchen, es zum Absturz zu bringen; den Bildschirm sehen oder Eingaben
   schicken kann nur ein gekoppelter Computer.

@@ -1,0 +1,138 @@
+// Package fwsign signs Tentacle firmware images and reads what `tentacle update` needs from them
+// (docs/cli-protocol.md, "Firmware update"). The board takes over the network only images signed with the release
+// key whose public half is compiled into it (hardware/hid_bridge/ota_pubkey.h); a debug build takes unsigned ones too.
+//
+//	signed message = "tentacle-fw-v1" || SHA-256(image)
+//	signature      = Ed25519(release key, signed message), 64 bytes in FILE.bin.sig
+package fwsign
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+const label = "tentacle-fw-v1"
+
+// SigExt is the signature file next to an image: FILE.bin.sig.
+const SigExt = ".sig"
+
+// Message is what the signature covers.
+func Message(sha [32]byte) []byte { return append([]byte(label), sha[:]...) }
+
+// Sign signs an image with a private key.
+func Sign(key ed25519.PrivateKey, image []byte) []byte {
+	return ed25519.Sign(key, Message(sha256.Sum256(image)))
+}
+
+// Verify checks an image's signature against a public key.
+func Verify(pub ed25519.PublicKey, image, sig []byte) bool {
+	return len(pub) == ed25519.PublicKeySize && len(sig) == ed25519.SignatureSize &&
+		ed25519.Verify(pub, Message(sha256.Sum256(image)), sig)
+}
+
+// Keygen writes a new key pair into dir: tentacle-release.key (the private seed as hex, mode 0600: keep it out of
+// any repository) and tentacle-release.pub (hex). It returns the public key.
+func Keygen(dir string) (ed25519.PublicKey, string, error) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, "", err
+	}
+	keyPath := filepath.Join(dir, "tentacle-release.key")
+	if _, err := os.Stat(keyPath); err == nil {
+		return nil, "", fmt.Errorf("%s exists: not overwritten", keyPath)
+	}
+	if err := os.WriteFile(keyPath, []byte(hex.EncodeToString(priv.Seed())+"\n"), 0o600); err != nil {
+		return nil, "", err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tentacle-release.pub"), []byte(hex.EncodeToString(pub)+"\n"), 0o644); err != nil {
+		return nil, "", err
+	}
+	return pub, keyPath, nil
+}
+
+// LoadKey reads a private key file written by Keygen.
+func LoadKey(path string) (ed25519.PrivateKey, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	seed, err := hex.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil || len(seed) != ed25519.SeedSize {
+		return nil, fmt.Errorf("%s is not a tentacle release key (64 hex digits)", path)
+	}
+	return ed25519.NewKeyFromSeed(seed), nil
+}
+
+// CArray is a public key as the C initializer ota_pubkey.h takes.
+func CArray(pub []byte) string {
+	var b strings.Builder
+	for i, c := range pub {
+		switch {
+		case i > 0 && i%8 == 0:
+			b.WriteString(",\n    ")
+		case i > 0:
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "0x%02x", c)
+	}
+	return b.String()
+}
+
+// ReadSig reads FILE.bin.sig next to an image: nil, nil when there is none.
+func ReadSig(image string) ([]byte, error) {
+	sig, err := os.ReadFile(image + SigExt)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(sig) != ed25519.SignatureSize {
+		return nil, fmt.Errorf("%s%s is not a signature (64 bytes)", image, SigExt)
+	}
+	return sig, nil
+}
+
+// Version finds the firmware version a Tentacle image carries ("tentacle-fw:0.2.0;", version.h's FW_MARKER);
+// "" if it has none.
+func Version(image []byte) string {
+	const marker = "tentacle-fw:"
+	i := bytes.Index(image, []byte(marker))
+	if i < 0 {
+		return ""
+	}
+	rest := image[i+len(marker):]
+	j := bytes.IndexByte(rest, ';')
+	if j <= 0 || j > 24 {
+		return ""
+	}
+	v := string(rest[:j])
+	for _, r := range v {
+		if r <= ' ' || r >= 0x7f {
+			return ""
+		}
+	}
+	return v
+}
+
+// CheckImage says whether data looks like an ESP32 app image (magic byte, ESP32-S3 chip id in its extended header).
+func CheckImage(data []byte) error {
+	if len(data) < 24 || data[0] != 0xE9 {
+		return errors.New("not an ESP32 firmware image (use the .ino.bin, not the merged or bootloader file)")
+	}
+	if chip := uint16(data[12]) | uint16(data[13])<<8; chip != 9 { // ESP_CHIP_ID_ESP32S3
+		return fmt.Errorf("firmware for another chip (id %d), the board is an ESP32-S3", chip)
+	}
+	return nil
+}

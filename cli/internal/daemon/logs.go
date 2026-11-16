@@ -58,25 +58,30 @@ func parseLogPage(reply string) (next, end int, text string, err error) {
 		return 0, 0, "", fmt.Errorf("bad log page %q", reply)
 	}
 	if len(parts) == 3 {
-		var b strings.Builder
-		escaped := false
-		for _, r := range parts[2] {
-			switch {
-			case escaped && r == 'n':
-				b.WriteByte('\n')
-				escaped = false
-			case escaped:
-				b.WriteRune(r)
-				escaped = false
-			case r == '\\':
-				escaped = true
-			default:
-				b.WriteRune(r)
-			}
-		}
-		text = b.String()
+		text = unescapeLog(parts[2])
 	}
 	return next, end, text, nil
+}
+
+// unescapeLog undoes the board's escaping of '\n' and '\\' in log text.
+func unescapeLog(s string) string {
+	var b strings.Builder
+	escaped := false
+	for _, r := range s {
+		switch {
+		case escaped && r == 'n':
+			b.WriteByte('\n')
+			escaped = false
+		case escaped:
+			b.WriteRune(r)
+			escaped = false
+		case r == '\\':
+			escaped = true
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // rotateLog keeps daemon.log under max bytes: daemon.log -> daemon.1.log -> ... -> daemon.<keep>.log.
