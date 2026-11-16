@@ -37,6 +37,8 @@ static bool shaOn;
 static bool onTrial;                      // this boot runs an image that is not marked good yet
 static const char *rolledBack;            // the slot of an update that did not start properly ("" if none)
 static uint8_t lastQuarter;
+static bool fromWeb;                      // the running update came from the web interface (web_server.cpp), not
+                                          // the computer's session: each side's chunks only go into its own update
 
 // Arduino's initArduino() would mark a new image good before setup(); it is marked in ota_poll() instead, once it
 // has shown that it works.
@@ -115,6 +117,7 @@ static String state() {
   switch (gate.state) {
     case OG_RECEIVING: return "ok ready " + String(gate.got) + " " + String(gate.size);
     case OG_DONE: return "ok done";
+    default: break;
   }
   if (gate.why[0]) return String("err ") + gate.why;
   return "ok idle";
@@ -157,19 +160,40 @@ static const char *finish() {
   return nullptr;
 }
 
+// One `update ...` for either side. The other side's running update is left alone (busy).
+static String command(const String &arg, bool web) {
+  bool busy = og_busy(&gate);
+  if (busy && web != fromWeb) return "err busy: an update is already running";
+  if (arg.startsWith("begin ")) {
+    String r = begin(arg.substring(6));
+    if (r.startsWith("ok")) fromWeb = web;
+    return r;
+  }
+  if (arg == "state") return state();
+  if (arg == "abort") {
+    if (busy) stop(web ? "stopped from the web interface" : "stopped by the computer");
+    return "ok";
+  }
+  if (arg == "end") {
+    const char *why = finish();
+    return why ? String("err ") + why : String("ok restarting into ") + gate.version;
+  }
+  return "err usage: update begin SIZE SHA256HEX SIGHEX|- [VERSION] | state | end | abort";
+}
+
+String ota_web(const String &arg) {
+  if (!lock) return "err not ready";
+  xSemaphoreTake(lock, portMAX_DELAY);
+  String reply = command(arg, true);
+  xSemaphoreGive(lock);
+  return reply;
+}
+
 String ota_command(const String &arg, const String &id) {
   String reply;
   xSemaphoreTake(lock, portMAX_DELAY);
-  if (arg.startsWith("begin ")) reply = begin(arg.substring(6));
-  else if (arg == "state") reply = state();
-  else if (arg == "abort") {
-    if (og_busy(&gate)) stop("stopped by the computer");
-    reply = "ok";
-  } else if (arg == "end") {
-    const char *why = finish();
-    reply = why ? String("err ") + why : String("ok restarting into ") + gate.version;
-  } else reply = "err usage: update begin SIZE SHA256HEX SIGHEX|- [VERSION] | state | end | abort";
-  bool restart = gate.state == OG_DONE && arg == "end";
+  reply = command(arg, false);
+  bool restart = gate.state == OG_DONE && arg == "end" && !fromWeb;
   xSemaphoreGive(lock);
   if (!restart) return reply;
   link_reply(id + " " + reply);
@@ -182,10 +206,13 @@ String ota_command(const String &arg, const String &id) {
 void ota_poll() {
   if (onTrial) {
     bool net = net_up() || net_setup_active();
+    uint32_t now = millis();
+    // netSince is never in the future: `now | 1` was one ms ahead for an even now, and now - netSince wrapped
+    // around, so a new firmware was kept the moment its network came up (0.3.0, 2026-11-16).
     if (!net) netSince = 0;
-    else if (!netSince) netSince = millis() | 1;
+    else if (!netSince) netSince = now ? now : 1;
     if (cli_up()) keep("a session came up");
-    else if (netSince && millis() - netSince >= TRIAL_NET_MS) keep("the network has been up for 30 s");
+    else if (netSince && (int32_t)(now - netSince) >= (int32_t)TRIAL_NET_MS) keep("the network has been up for 30 s");
     else if (millis() >= TRIAL_GIVEUP_MS) {
       board_log("ota: firmware %s found no network and no session in 2 min: back to the previous one", FW_VERSION);
       link_flush();
@@ -197,16 +224,20 @@ void ota_poll() {
   if (!lock) return;
   xSemaphoreTake(lock, portMAX_DELAY);
   if (gate.state == OG_RECEIVING) {
-    if (!cli_up()) stop("the session ended");
+    if (!fromWeb && !cli_up()) stop("the session ended");
     else if (og_stalled(&gate, millis())) stop("no data for 15 s");
   }
   xSemaphoreGive(lock);
 }
 
-void ota_chunk(const uint8_t *p, size_t n) {
+static void chunk(const uint8_t *p, size_t n, bool web) {
   if (!lock || n < 4) return;
   uint32_t off = p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24;
   xSemaphoreTake(lock, portMAX_DELAY);
+  if (web != fromWeb) {  // not this side's update
+    xSemaphoreGive(lock);
+    return;
+  }
   bool busy = og_busy(&gate);
   if (!og_chunk(&gate, off, n - 4, millis())) {
     if (busy) {  // it failed just now: og_chunk() said why
@@ -229,10 +260,13 @@ void ota_chunk(const uint8_t *p, size_t n) {
   xSemaphoreGive(lock);
 }
 
+void ota_chunk(const uint8_t *p, size_t n) { chunk(p, n, false); }
+void ota_web_chunk(const uint8_t *p, size_t n) { chunk(p, n, true); }
+
 void ota_link_down() {
   if (!lock) return;
   xSemaphoreTake(lock, portMAX_DELAY);
-  if (og_busy(&gate)) stop("the link to the computer dropped");
+  if (og_busy(&gate) && !fromWeb) stop("the link to the computer dropped");
   xSemaphoreGive(lock);
 }
 

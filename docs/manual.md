@@ -26,6 +26,7 @@ From a bare board to the first tap on the phone, and what the button, the LED an
 13. [Troubleshooting](#13-troubleshooting)
 14. [Command overview](#14-command-overview)
 15. [Security in short](#15-security-in-short)
+16. [The web interface](#16-the-web-interface)
 
 <p align="center"><img src="images/setup-steps.svg" alt="Setup in six steps: flash, Wi-Fi, open pairing, pair, iPhone, go" width="820"></p>
 
@@ -153,6 +154,7 @@ on that board. One device can be on it at a time.
 2. The setup page opens by itself. If not, open `http://192.168.4.1/`. The page is German if your browser
    prefers German, otherwise English.
 3. Choose your Wi-Fi from the list (the dots show the signal strength) or type its name, and enter its password.
+   Optional: a password for the board's [web interface](#16-the-web-interface), twice.
 4. **Press BOOT on the board within 30 seconds.** The page counts down, the LED blinks fast, the OLED says
    `PRESS BOOT TO CONFIRM` with the network's name. Nothing is stored before that press.
 
@@ -401,7 +403,7 @@ tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
   device info                      board status
   keyboard layout [us|de]          the iPhone's hardware keyboard layout the board types for (default us); must
                                    match Settings > General > Keyboard > Hardware Keyboard on the iPhone
-  video fps N | video res W H      what the board asks the iPhone for (30 fps, 480x1040), from the next
+  video fps N | video res W H      what the board asks the iPhone for (15 fps, 480x1040), from the next
                                    Screen Mirroring session on
   net                              the board's Wi-Fi
   net join                         the board moves to another Wi-Fi: asks for its name and password and sends them
@@ -450,8 +452,9 @@ How the CLI works inside (the background daemon, history, intents, memory, limit
 - **The stop button** works at the board only; the computer cannot switch it off.
 - **Firmware updates over Wi-Fi** come only from a paired computer, and the board takes only images signed with
   the Tentacle release key. A `--debug` build takes unsigned ones too: never hand one out.
-- **Open on your network:** the AirPlay receiver, port 7202 and mDNS. Anyone on the same Wi-Fi can start
-  mirroring to the board or try to crash it; only a paired computer sees the screen or sends input.
+- **Open on your network:** the AirPlay receiver, port 7202, mDNS and the web interface (443, 80 forwards).
+  Anyone on the same Wi-Fi can start mirroring to the board or try to crash it; only a paired computer, or a
+  browser with the web password, sees the screen or sends input.
 - **Without the OLED** the pairing code cannot be compared. The presses then only say "a computer may pair now".
 - **Whoever holds the board owns it:** BOOT held 10 s opens the setup Wi-Fi, and USB serial takes commands
   without pairing. Unplug the board when nothing should drive the phone.
@@ -459,6 +462,63 @@ How the CLI works inside (the background daemon, history, intents, memory, limit
 All of it, with what is left open: [hardening.md](hardening.md). Reporting a problem: [SECURITY.md](../SECURITY.md).
 
 Only automate devices and accounts that are yours or that you are allowed to use.
+
+## 16. The web interface
+
+With firmware 0.3.0 the board serves a web page: the phone's mirrored screen, live, and the phone under your mouse
+and keyboard. Nothing to install; any current Chrome, Edge, Safari or Firefox on the same Wi-Fi.
+
+**Set a password first.** The page needs one, and it is set only on the setup page, by someone at the board:
+fill in "Password for the web interface" twice in [step 3](#3-put-the-board-on-your-wi-fi) (8 to 64 characters).
+A board that is already on your Wi-Fi: hold BOOT for 10 s and do step 3 again with the password. Until a password
+is set, the page only explains this. The board stores the password as a salted PBKDF2-SHA256 hash, never as text.
+
+**Open it** at `https://tentacle.local/` or `https://<the board's address>/` (the setup page and the OLED show the
+address; `http://` forwards to `https://`). The board made its own certificate, so the browser warns the first
+time: accept it for this page. To be sure it is your board, compare the certificate's SHA-256 fingerprint in the
+browser with the one under Settings > Network (also in the board's log).
+
+| On the page | Does |
+|---|---|
+| Click on the picture | A tap there |
+| Drag | A swipe (the finger follows the mouse) |
+| Right click | A long press |
+| Wheel | Scrolls the list under the pointer |
+| Home, App switcher, Control Center, Notifications | The phone's system gestures |
+| On-screen keyboard | Shows or hides the phone's keyboard (`key eject`) |
+| Text field + Type | Types the text (ASCII; other characters are skipped) |
+| Capture keys | Every key you press goes to the phone, with Cmd / Ctrl / Alt / Shift, until you click "Stop capturing" |
+
+Clicks on the picture need the absolute pointer (`flash.sh --abs`); the page says so when the firmware has none.
+The picture comes as H.264, decoded by the browser (WebCodecs); a page that joins starts at the last keyframe. The
+corner shows how old the frame is. A slow browser skips frames until the next keyframe; the phone's mirroring
+never waits for it.
+
+**One browser and the computer.** One page at a time: signing in elsewhere, or opening a second tab, ends the
+older one. The page and the CLI share the phone:
+
+- When no computer has sent input for 60 s, the page takes control as it connects; otherwise it watches until you
+  click "Take control".
+- While the page has control, the computer's input commands get `err busy: the web interface has control …`
+  (`ping`, video, status and everything else go on). Control goes back when you click "Release control", close
+  the page, or 5 minutes after the page's last input.
+- The stop toggle (BOOT, short press) stops the page's input too, and lets go of a held button.
+
+**Settings** (gear button): the board's name (Screen Mirroring and the CLI show it with its id; it applies after
+a restart), the phone's keyboard layout (`us`, `de`), the page's language (default: the browser's), the Wi-Fi,
+the certificate's fingerprint and the firmware.
+
+- **Change the password:** the current one, the new one twice, then press BOOT on the board within 30 s. Without
+  that press nothing changes. Forgot it: hold BOOT 10 s and set a new one on the setup page.
+- **Firmware update:** choose the `.ino.bin` and its `.sig`, as for `tentacle update`; the same checks apply (only
+  signed images, unless it is a `--debug` build). The board restarts into it: then start Screen Mirroring on the
+  iPhone again. "Check for updates" cannot look anywhere yet, because the project's repository is private; get
+  new releases from the maintainer.
+
+Sign-in: after 5 wrong passwords the board locks it for 30 s, doubling up to 15 minutes. The cookie is
+`HttpOnly; Secure; SameSite=Strict`, ends after 12 hours unused, and the board takes requests and the
+WebSocket only from its own page (`Origin`). Port 443 (and 80, which forwards) is open on your Wi-Fi only while
+the board is on it; the setup hotspot keeps its plain-`http` page.
 
 ---
 

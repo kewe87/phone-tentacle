@@ -44,7 +44,9 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
   device info                      board status
   keyboard layout [us|de]          the iPhone's hardware keyboard layout the board types for (default us); must
                                    match Settings > General > Keyboard > Hardware Keyboard on the iPhone
-  video fps N | video res W H      what the board asks the iPhone for (30 fps, 480x1040), from the next
+  web password                     a new password for the board's web interface (asked twice, not shown); counts
+                                   once BOOT on the board is pressed within 30 s
+  video fps N | video res W H      what the board asks the iPhone for (15 fps, 480x1040), from the next
                                    Screen Mirroring session on
   net                              the board's Wi-Fi
   net join                         the board moves to another Wi-Fi: asks for its name and password and sends them
@@ -238,6 +240,15 @@ func (a *App) Run(args []string) int {
 			text = "join " + pos[1] + "\x00" + strings.Join(pos[2:], " ")
 		}
 		return a.call(daemon.Request{Cmd: "net", Device: *dev, Text: text})
+	case "web":
+		pos, err := parse(fs, rest)
+		if err != nil {
+			return a.fail(err)
+		}
+		if len(pos) != 1 || pos[0] != "password" {
+			return a.fail(errors.New("usage: tentacle web password"))
+		}
+		return a.webPassword(*dev)
 	case "listen", "keyboard", "video":
 		pos, err := parse(fs, rest)
 		if err != nil {

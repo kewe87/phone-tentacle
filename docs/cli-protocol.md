@@ -179,6 +179,13 @@ All but `ping` and `pace` answer `err stopped (safety button)` while the stop to
 `err phone usb asleep (unlock the phone)` when the phone suspended USB and does not wake. When the session ends,
 the board lets go of a button the session held.
 
+While the board's web interface has control of the phone (firmware 0.3.0, docs/manual.md "The web interface"),
+every command of this session except `ping` and `pace` that reaches the HID code answers
+`err busy: the web interface has control of the phone (release it there, or it lapses 5 min after the page's last
+input)`. Control goes back when the page releases it, closes, or sends no input for 5 minutes; the page takes it by
+itself only after 60 s without input from the session. Board commands (`stream`, `snap`, `net`, `update`, …) are
+not affected.
+
 Board:
 
 | Command | Behavior |
@@ -187,7 +194,7 @@ Board:
 | `stream on at IDR_TS N` | From 0.2.3: the same, but the computer's decoder already has the first N units of the GOP whose IDR is stamped IDR_TS (it kept them across a reconnect): the stream goes on with unit N, without config and IDR. `ok resumed`; `ok` when that GOP is gone (a newer IDR, a reboot, the GOP is frozen, or it has fewer units): then it starts from the config and the IDR as `stream on`. Older boards answer `err usage`; send `stream on` then. |
 | `snap` | Sends the config and the current GOP once (chunks flagged SNAP), then replies `ok`. `err no video (start screen mirroring)`, `err waiting for keyframe` (mirroring is up, no IDR yet), `err video frozen (restart screen mirroring)`. |
 | `bench KB` | Sends KB kilobytes (1-4096) of filler chunks (flag BENCH), then `ok <ms>`. |
-| `res W H`, `fps N` | The mirroring format (default 480 1040, 30 fps; 5 fps before 0.2.2, and a stored 5 becomes 30 once), stored on the board; it applies to the next mirroring session. `tentacle video fps N`, `tentacle video res W H`. |
+| `res W H`, `fps N` | The mirroring format (default 480 1040, 15 fps since 0.3.2; 30 in 0.2.2, 5 before, and a stored 5 is dropped once), stored on the board; it applies to the next mirroring session. `tentacle video fps N`, `tentacle video res W H`. |
 | `kbd layout [us\|de]` | The phone's hardware keyboard layout `type` and `key` use (Settings > General > Keyboard > Hardware Keyboard on the iPhone), stored on the board, `us` until set; `en-US`, `de-DE` are taken too. `ok <layout>`; without a layout only the answer. Unknown: `err unknown layout (us de)`. `tentacle keyboard layout [us\|de]`. |
 | `listen raw on\|off` | Phone audio records on stream `A`. Off again with every new session. |
 | `net`, `net {…}` | The board's Wi-Fi, see "Wi-Fi link". |
@@ -304,7 +311,7 @@ stream `A` (frame `0x12`), and the CLI transcribes them (`tentacle listen`, whis
     is not reachable meanwhile: hold BOOT 10 s for the setup hotspot.
   - `ap`: forgets the stored Wi-Fi and opens the **setup hotspot** (mode `ap`; the same as holding BOOT 10 s):
     WPA2, the board's own random password, and on it a setup page (port 80, captive portal) where a network is
-    chosen and then confirmed with the BOOT button. Port 80 is closed in every other mode. A new board is set up
+    chosen and then confirmed with the BOOT button. In mode `sta` port 80 only forwards to the web interface on `https://` (443), once the board has an address. A new board is set up
     there; the CLI reaches a board on its hotspot too (join it, the board is at 192.168.4.1).
   - `pass` is the setup hotspot's password in mode `ap` and empty in mode `sta`: a stored Wi-Fi password never
     leaves the board.

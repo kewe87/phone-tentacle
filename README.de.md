@@ -32,6 +32,7 @@ Ein daumennagelgroßes ESP32-S3-Board am USB-C-Anschluss des iPhones. Dein Compu
 - **Hände:** Das Board ist USB-Maus und -Tastatur; mit AssistiveTouch tippt der Zeiger wie ein Finger
 - **Augen:** Es empfängt die Bildschirmsynchronisierung (AirPlay) und reicht das Bild weiter
 - **Vom Computer aus:** die Kommandozeile `tentacle`, für dich oder einen KI-Assistenten
+- **Im Browser:** die eigene Webseite des Boards zeigt das Handy live und nimmt Maus und Tastatur an
 - **Nur WLAN:** Der Computer findet das Board von selbst und spricht über einen verschlüsselten Port mit ihm
 - **Jemand muss am Board stehen:** Einrichtung und Koppeln bestätigt die BOOT-Taste
 - **Ein Stopp-Taster:** einmal kurz drücken, und das Board schickt keine Eingaben mehr
@@ -122,7 +123,6 @@ Jeder Schritt im Einzelnen, Verdrahtung und Fehlersuche: **[das Handbuch](docs/m
 ## Roadmap
 
 - **Erster Lauf auf Hardware**, danach Korrekturen
-- **Web-Fernbedienung auf dem Board:** Live-Bild, Maus und Tastatur im Browser
 - **Android:** dasselbe Board als Hände, Screenshots über ADB ([docs/android.de.md](docs/android.de.md))
 
 Mehr: [ROADMAP.de.md](ROADMAP.de.md).

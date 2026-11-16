@@ -13,6 +13,8 @@
 #include "setup_portal.h"
 #include "wifi_qr.h"
 #include "src/setup/setup_text.h"
+#include "src/web/web_auth.h"
+#include "version.h"
 
 #ifndef AP_MAX_CLIENTS
 #define AP_MAX_CLIENTS 1  // default: one station on the setup hotspot (flash --multi-client sets 4)
@@ -91,6 +93,8 @@ static SemaphoreHandle_t suLock = xSemaphoreCreateMutex();  // su, suLast, trySs
 static int su = SU_OFF;
 static int suLast = NS_IDLE;  // how the last attempt ended: NS_IDLE, NS_EXPIRED, NS_FAILED or NS_NOT_FOUND
 static String trySsid, tryPass, suIp;
+static uint8_t tryWeb[WA_REC_LEN];  // the web interface's password (web_auth.h), if the page set one
+static bool tryWebSet;
 static uint32_t suAt, tryAt;
 static bool tryNotFound;
 static NetScan scanList[SCAN_MAX];
@@ -106,6 +110,7 @@ static void suSet(int state, int last) {
   if (state == SU_IDLE || state == SU_OFF) {  // the candidate is done with
     trySsid = "";
     tryPass = "";
+    tryWebSet = false;
   }
   xSemaphoreGive(suLock);
 }
@@ -236,6 +241,7 @@ static void pollSetup() {
       if (su == SU_IDLE) {  // not pressed in time: nothing was stored
         trySsid = "";
         tryPass = "";
+        tryWebSet = false;
       }
     }
     xSemaphoreGive(suLock);
@@ -250,6 +256,7 @@ static void pollSetup() {
       staPass = tryPass;
       prefs.putString("sta_ssid", staSsid);
       prefs.putString("sta_pass", staPass);
+      if (tryWebSet) prefs.putBytes("web_pw", tryWeb, WA_REC_LEN);  // left empty on the page: the old one stays
       prefs.putString("mode", "sta");  // last: without it the board still counts as not set up
       xSemaphoreTake(suLock, portMAX_DELAY);
       suIp = WiFi.localIP().toString();
@@ -419,7 +426,7 @@ int net_setup_scan(NetScan *out, int cap, bool *running) {
   return n;
 }
 
-bool net_setup_submit(const char *ssid, const char *pass) {
+bool net_setup_submit(const char *ssid, const char *pass, const uint8_t *webPw) {
   if (setup_check(ssid, pass) != SETUP_OK) return false;
   char shown[CF_TEXT];  // for the display, whose font is ASCII
   size_t n = 0;
@@ -430,6 +437,8 @@ bool net_setup_submit(const char *ssid, const char *pass) {
   if ((su == SU_IDLE || su == SU_WAIT) && confirm_request(CONFIRM_WIFI, "Join this Wi-Fi?", shown, CONFIRM_MS)) {
     trySsid = ssid;
     tryPass = pass;
+    tryWebSet = webPw != nullptr;
+    if (webPw) memcpy(tryWeb, webPw, WA_REC_LEN);
     su = SU_WAIT;
     ok = true;
   }
@@ -458,9 +467,11 @@ void net_setup_status(NetSetup *s) {
 
 uint16_t cfg_width() { return prefs.getUShort("w", 480); }
 uint16_t cfg_height() { return prefs.getUShort("h", 1040); }
+// 15 fps since 0.3.2 (30 in 0.2.2, 5 before): iOS sends a frame when the screen changes, at most this often; 5 made
+// every change wait, 30 let a blinking cursor grow the GOP ~315 KB a minute, too much to replay over a weak link. Was:
 // 30 fps since 0.2.2 (5 before): iOS sends a frame when the screen changes, at most this often, and 5 made every
 // change wait. A stored 5 from before 0.2.2 goes to 30 once (cfg_migrate()); `fps N` sets it after that.
-uint8_t cfg_fps() { return prefs.getUChar("fps", 30); }
+uint8_t cfg_fps() { return prefs.getUChar("fps", 15); }
 
 static void cfg_migrate() {
   if (prefs.getUChar("cfgv", 0) >= 1) return;
@@ -480,3 +491,32 @@ void cfg_ed25519_seed(uint8_t seed[32]) {
   esp_fill_random(seed, 32);
   prefs.putBytes("ed_seed", seed, 32);
 }
+
+// ---- The board's name and the web interface's settings (NVS "agent" too) ----------------------------------------
+static bool nameOk(const String &n) {
+  if (n.length() < 1 || n.length() > 20 || n[0] == ' ' || n[n.length() - 1] == ' ') return false;
+  for (char c : n)
+    if (!isalnum((unsigned char)c) && c != ' ' && c != '-' && c != '_' && c != '.') return false;
+  return true;
+}
+
+String board_name() {  // read once: a new name takes effect on the next boot (and the display asks often)
+  static String name;
+  if (!name.length()) {
+    String n = prefs.getString("name", "");
+    name = nameOk(n) ? n : String(BOARD_NAME_TEXT);
+  }
+  return name;
+}
+
+bool board_set_name(const String &name) {
+  if (!nameOk(name)) return false;
+  if (name == BOARD_NAME_TEXT) prefs.remove("name");
+  else prefs.putString("name", name);
+  return true;
+}
+
+bool web_pw_get(uint8_t rec[WA_REC_LEN]) { return prefs.getBytes("web_pw", rec, WA_REC_LEN) == WA_REC_LEN; }
+void web_pw_set(const uint8_t rec[WA_REC_LEN]) { prefs.putBytes("web_pw", rec, WA_REC_LEN); }
+String web_lang() { return prefs.getString("web_lang", ""); }
+void web_set_lang(const String &lang) { prefs.putString("web_lang", lang); }

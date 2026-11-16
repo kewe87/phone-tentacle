@@ -5,6 +5,7 @@
 #include "cli_link.h"
 #include "src/video/gop.h"
 #include "src/airplay/airplay.h"
+#include "src/web/web_ctl.h"
 #include "logbuf.h"
 
 // GOP since the latest IDR. A still screen gets an IDR only every few minutes (iOS 26: maybe once per mirroring
@@ -25,9 +26,16 @@ struct Req {
   bool bench;
 };
 
-// The receiver of the video: the computer's session (cli_link.cpp). It keeps its place in the GOP and its chunk
-// numbering, and runs on its own task with its own buffers.
+// A receiver of the video: the computer's session (cli_link.cpp), or the web interface's page (web_server.cpp). Each
+// keeps its place in the GOP and its chunk numbering, and runs on its own task with its own buffers: a slow one never
+// holds up the AirPlay receiver or the other.
 struct Sink {
+  size_t (*room)();                          // chunk payload it takes now; 0: nobody to send to
+  bool (*send)(const uint8_t *p, size_t n);  // one chunk
+  uint32_t (*sessGen)();                     // bumps with every new receiver (session, page): it starts over
+  uint32_t maxLag;                           // 0: never skips; else see wv_gate (web_ctl.h)
+  wv_gate gate;
+  uint8_t *chunk;                            // VCHUNK_HDR + its largest payload
   uint8_t *scratch;  // the AU being sent
   uint8_t cfg[GOP_CFG_MAX];
   QueueHandle_t reqs;
@@ -50,9 +58,10 @@ struct Sink {
 static gop_buf gop, tail;
 static volatile bool tailLive;  // the tail holds every AU since the GOP froze (sent ones may be dropped)
 static bool tailTrimmed;        // its oldest AUs were dropped (vdbg)
-static Sink sink;
+static Sink sink, webSink;  // the session's, the web's (webSink.task stays NULL until a page first asks)
+static Sink *const sinks[] = {&sink, &webSink};
 static SemaphoreHandle_t lock;
-static uint8_t chunk[VCHUNK_HDR + VIDEO_PAYLOAD];
+static uint8_t cliChunk[VCHUNK_HDR + VIDEO_PAYLOAD];
 static uint32_t winStart, winBytes, winFrames, lastIdr;
 static volatile uint32_t lastAu;
 static volatile uint32_t statKbps, statIdrMs, statAt;
@@ -60,19 +69,18 @@ static volatile float statFps;
 
 static void unfollow(Sink &s, char why);
 
-// Chunk room (0: no session to send to) and send.
-static size_t videoRoom() { return min(cli_video_room(), VIDEO_PAYLOAD); }
-static bool videoSend(const uint8_t *p, size_t n) { return cli_send_video(p, n); }
+// The session's chunk room (0: no session to send to).
+static size_t cliRoom() { return min(cli_video_room(), VIDEO_PAYLOAD); }
 
 // One access unit as chunks. A failed chunk still consumes its seq, so the receiver sees a gap.
 static bool sendAu(Sink &s, const uint8_t *p, size_t n, uint8_t flags, uint32_t ts) {
-  size_t room = videoRoom();
+  size_t room = s.room();
   if (room < 5) return false;
   vchunk c;
   vchunk_begin(&c, p, n, flags, ts);
   uint16_t &seq = s.seq;
-  for (size_t len; (len = vchunk_next(&c, chunk, room, seq)) > 0;) {
-    bool ok = videoSend(chunk, len);
+  for (size_t len; (len = vchunk_next(&c, s.chunk, room, seq)) > 0;) {
+    bool ok = s.send(s.chunk, len);
     seq++;
     if (!ok) return false;
   }
@@ -130,7 +138,7 @@ static uint32_t lastWhyAt, tailBreaks;
 
 // The sink fell out of order: its frozen GOP can't go on, the next IDR has to come.
 static void unfollow(Sink &s, char why) {
-  if (s.followGen != UINT32_MAX) lastWhy = why, lastWhyAt = millis();
+  if (&s == &sink && s.followGen != UINT32_MAX) lastWhy = why, lastWhyAt = millis();  // vdbg is the session's
   s.followGen = UINT32_MAX;
   s.onTail = false;
 }
@@ -156,7 +164,7 @@ static bool snapshot(uint32_t *gen, int *n, uint8_t *cfg, size_t *cfg_len, uint3
 
 static String doSnap(Sink &s) {
   uint8_t *cfg = s.cfg;
-  if (!videoRoom()) return "err video not subscribed";
+  if (!s.room()) return "err video not subscribed";
   for (int attempt = 0; attempt < 3; attempt++) {
     uint32_t gen, cfg_ts;
     size_t cfg_len;
@@ -182,17 +190,18 @@ static String doSnap(Sink &s) {
 }
 
 static String doBench(Sink &s, uint32_t kb) {
-  size_t room = videoRoom();
+  size_t room = s.room();
   if (!room) return "err video not subscribed";
   uint32_t start = millis();
   uint16_t &seq = s.seq;
+  uint8_t *chunk = s.chunk;
   memset(chunk + VCHUNK_HDR, 0xA5, room);
   for (size_t left = kb * 1024; left;) {
     size_t n = min(left, room);
     chunk[0] = (uint8_t)seq;
     chunk[1] = (uint8_t)(seq >> 8);
     chunk[2] = VF_BENCH;
-    bool ok = videoSend(chunk, VCHUNK_HDR + n);
+    bool ok = s.send(chunk, VCHUNK_HDR + n);
     seq++;
     if (!ok) return "err video send failed";
     left -= n;
@@ -202,15 +211,16 @@ static String doBench(Sink &s, uint32_t kb) {
 
 // Continuous mode: send every AU once, catching up from the GOP's IDR when streaming starts (P-frames
 // can't be skipped: each needs the one before, and the next IDR may be minutes away). After a failed
-// send, start over from the GOP's IDR. Past a frozen GOP, go on with the tail.
+// send, start over from the GOP's IDR. Past a frozen GOP, go on with the tail. A sink with maxLag (the web's) that
+// falls that far behind once in step skips to the next IDR instead (wv_gate).
 static void streamStep(Sink &s) {
   uint8_t *cfg = s.cfg;
-  if (s.cliGen != cli_gen()) {  // a new session: resend config + whole GOP
-    s.cliGen = cli_gen();
+  if (s.cliGen != s.sessGen()) {  // a new session: resend config + whole GOP
+    s.cliGen = s.sessGen();
     s.txGen = UINT32_MAX;
   }
   if (s.txGen == UINT32_MAX) unfollow(s, 'r');
-  if (!s.streaming || !videoRoom()) {
+  if (!s.streaming || !s.room()) {
     s.txGen = UINT32_MAX;  // resend config + whole GOP when streaming resumes
     unfollow(s, 'n');
     return;
@@ -235,20 +245,25 @@ static void streamStep(Sink &s) {
     if (!sendAu(s, cfg, cfg_len, VF_CONFIG, cfg_ts)) { s.txGen = UINT32_MAX; unfollow(s, 'c'); return; }
     s.followGen = gen;
   }
+  if (wv_waiting(&s.gate, gen)) return;  // fell behind: nothing until the next IDR
   bool more;
-  for (gop_au au; s.next < n && copyAu(s, gen, s.next, &au, &more); s.next++)
+  for (gop_au au; s.next < n && copyAu(s, gen, s.next, &au, &more); s.next++) {
+    if (!wv_send(&s.gate, gen, au.ts, s.catchingUp, millis(), s.maxLag)) { unfollow(s, 'l'); return; }
     if (!sendAu(s, s.scratch, au.len, (au.idr ? VF_IDR : 0) | (more ? VF_BEHIND : 0), au.ts)) { s.txGen = UINT32_MAX; unfollow(s, 'g'); return; }
+  }
   if (s.next < n) return;
   s.catchingUp = false;
-  for (gop_au au; copyTail(s, gen, s.tailNext, &au, &more); s.tailNext++)
+  for (gop_au au; copyTail(s, gen, s.tailNext, &au, &more); s.tailNext++) {
+    if (!wv_send(&s.gate, gen, au.ts, false, millis(), s.maxLag)) { unfollow(s, 'l'); return; }
     if (!sendAu(s, s.scratch, au.len, more ? VF_BEHIND : 0, au.ts)) { s.txGen = UINT32_MAX; unfollow(s, 't'); return; }
+  }
 }
 
 static void videoTask(void *arg) {
   Sink &s = *(Sink *)arg;
   for (;;) {
     Req r;
-    if (xQueueReceive(s.reqs, &r, 0) == pdTRUE) {
+    if (s.reqs && xQueueReceive(s.reqs, &r, 0) == pdTRUE) {
       String reply = String(r.id) + " " + (r.bench ? doBench(s, r.kb) : doSnap(s));
       board_log("video: %s", reply.c_str());  // the reply only goes to the session; mirror it in the log
       link_reply(reply);
@@ -265,6 +280,11 @@ bool video_begin() {
   gop_au *tailAus = (gop_au *)heap_caps_malloc(TAIL_AUS * sizeof(gop_au), MALLOC_CAP_SPIRAM);
   sink.scratch = (uint8_t *)heap_caps_malloc(SCRATCH_CAP, MALLOC_CAP_SPIRAM);
   sink.reqs = xQueueCreate(4, sizeof(Req));
+  sink.room = cliRoom;
+  sink.send = cli_send_video;
+  sink.sessGen = cli_gen;
+  sink.chunk = cliChunk;
+  wv_init(&sink.gate);
   if (!arena || !aus || !tailArena || !tailAus || !sink.scratch || !sink.reqs) return false;
   gop_init(&gop, arena, GOP_CAP, aus, MAX_AUS);
   gop_init(&tail, tailArena, TAIL_CAP, tailAus, TAIL_AUS);
@@ -301,8 +321,10 @@ void video_on_au(const uint8_t *au, size_t len, bool idr) {
   bool froze = gop.frozen && !wasFrozen;
   if (froze) {  // the tail takes over: a stream in step goes on from it
     gop_clear(&tail);
-    sink.onTail = sink.followGen == gop.gen;
-    sink.tailNext = 0;
+    for (Sink *k : sinks) {
+      k->onTail = k->followGen == gop.gen;
+      k->tailNext = 0;
+    }
     tailLive = true;
     tailTrimmed = false;
   }
@@ -313,11 +335,12 @@ void video_on_au(const uint8_t *au, size_t len, bool idr) {
   if (dropped < 0) tailLive = false;  // one AU larger than the whole tail
   if (dropped > 0) {
     tailTrimmed = true;
-    if (sink.onTail && (sink.tailNext -= dropped) < 0) {  // it fell a whole ring behind: AUs it never sent are gone
-      sink.tailNext = 0;
-      sink.onTail = false;
-      lastWhy = 'b', lastWhyAt = now;
-    }
+    for (Sink *k : sinks)
+      if (k->onTail && (k->tailNext -= dropped) < 0) {  // it fell a whole ring behind: AUs it never sent are gone
+        k->tailNext = 0;
+        k->onTail = false;
+        if (k == &sink) lastWhy = 'b', lastWhyAt = now;
+      }
   }
   bool tailBroke = gop.frozen && !froze && wasLive && !tailLive;
   int aus = gop.n;
@@ -327,7 +350,8 @@ void video_on_au(const uint8_t *au, size_t len, bool idr) {
                            (unsigned long)kb);
   if (tailBroke) tailBreaks++;
   if (tailBroke) board_log("video: a stream fell behind the tail; frozen until the next IDR");
-  if (sink.task) xTaskNotifyGive(sink.task);
+  for (Sink *k : sinks)
+    if (k->task) xTaskNotifyGive(k->task);
 }
 
 static volatile uint32_t lostPackets;
@@ -390,4 +414,45 @@ String video_debug() {
            (unsigned long)tailBreaks);
   xSemaphoreGive(lock);
   return b;
+}
+
+// ---- The web interface's stream ----------------------------------------------------------------------------------
+bool video_web_begin(size_t (*room)(), bool (*send)(const uint8_t *p, size_t n), uint32_t (*gen)(), size_t payload,
+                     uint32_t maxLagMs) {
+  if (webSink.task) return true;
+  if (!lock) return false;  // video_begin() failed: no PSRAM
+  if (!webSink.scratch) webSink.scratch = (uint8_t *)heap_caps_malloc(SCRATCH_CAP, MALLOC_CAP_SPIRAM);
+  if (!webSink.chunk) webSink.chunk = (uint8_t *)heap_caps_malloc(VCHUNK_HDR + payload, MALLOC_CAP_SPIRAM);
+  if (!webSink.scratch || !webSink.chunk) return false;
+  webSink.room = room;
+  webSink.send = send;
+  webSink.sessGen = gen;
+  webSink.maxLag = maxLagMs;
+  webSink.cliGen = gen();
+  wv_init(&webSink.gate);
+  // Below the session's video task (2): the computer's stream comes first. Core 1, next to it.
+  return xTaskCreatePinnedToCore(videoTask, "video_web", 4096, &webSink, 1, &webSink.task, 1) == pdPASS;
+}
+
+void video_web_stream(bool on) {
+  webSink.streaming = on;
+  if (webSink.task) xTaskNotifyGive(webSink.task);
+}
+
+int video_web_state(uint32_t *waitedMs) {
+  *waitedMs = 0;
+  if (!lock) return VW_KEYFRAME;
+  xSemaphoreTake(lock, portMAX_DELAY);
+  bool frozen = gop.frozen && !(tailLive && webSink.onTail);
+  bool waitIdr = gop.wait_idr && !gop.frozen;
+  uint32_t gen = gop.gen;
+  xSemaphoreGive(lock);
+  if (frozen) return VW_FROZEN;
+  if (waitIdr) return VW_KEYFRAME;
+  wv_gate g = webSink.gate;  // a copy: the web's video task changes it
+  if (g.skipping && g.skip_gen == gen) {
+    *waitedMs = wv_waited(&g, millis());
+    return VW_KEYFRAME;
+  }
+  return VW_OK;
 }

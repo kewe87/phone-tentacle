@@ -33,8 +33,9 @@ struct NetScan {
 int net_setup_scan(NetScan *out, int cap, bool *running);  // the last scan, strongest first
 void net_setup_rescan();
 // A network from the page: held in RAM until BOOT is pressed (30 s), then tried, stored only if it works.
-// false: bad lengths, an attempt is running, or another confirmation is open.
-bool net_setup_submit(const char *ssid, const char *pass);
+// webPw: the web interface's password (a record of src/web/web_auth.h, 53 bytes), stored with the network; NULL
+// keeps the one stored before. false: bad lengths, an attempt is running, or another confirmation is open.
+bool net_setup_submit(const char *ssid, const char *pass, const uint8_t *webPw = nullptr);
 
 enum { NS_OFF, NS_IDLE, NS_WAIT, NS_TRYING, NS_OK, NS_EXPIRED, NS_FAILED, NS_NOT_FOUND };
 struct NetSetup {
@@ -53,3 +54,14 @@ void cfg_set_res(uint16_t w, uint16_t h);
 void cfg_set_fps(uint8_t fps);
 void cfg_ed25519_seed(uint8_t seed[32]);  // created once, stable across boots
 String board_suffix();                    // "1A2B": the board id's last two bytes (cli_link.h, cli_board_id)
+
+// The board's name (AirPlay receiver, CLI discovery, display): BOARD_NAME_TEXT unless set. 1-20 characters of
+// A-Z a-z 0-9 space . _ -, no space at either end. Takes effect on the next boot.
+String board_name();
+bool board_set_name(const String &name);
+// The web interface (web_server.cpp): its password as a record of src/web/web_auth.h (53 bytes; false: none set),
+// and the page's language ("de", "en"; "": from the browser).
+bool web_pw_get(uint8_t rec[53]);
+void web_pw_set(const uint8_t rec[53]);
+String web_lang();
+void web_set_lang(const String &lang);
