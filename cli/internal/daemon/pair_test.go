@@ -104,10 +104,16 @@ func TestPairFailsAtOnceWhenPairingIsClosed(t *testing.T) {
 	b := fakeBoard()
 	b.PairErr = "pairing closed: double-press BOOT on the board, then pair within 60 s"
 	c, s := start(t, fakeTransport{b})
+	var p progressLines
+	c.Progress = p.add
 	t0 := time.Now()
 	r, _ := call(t, c, Request{Cmd: "pair"})
-	if r.Status != "error" || !strings.Contains(r.Error, "Double-press its BOOT button") {
+	if r.Status != "error" || !strings.Contains(r.Error, "the pairing window is closed. Double-press BOOT on the board") ||
+		!strings.Contains(r.Error, "run tentacle pair again") {
 		t.Fatalf("pair on a closed board: %+v", r)
+	}
+	if len(p.lines) != 0 {
+		t.Fatalf("pair asked again: %+v", p.lines)
 	}
 	if d := time.Since(t0); d > 2*time.Second {
 		t.Fatalf("pair took %v on a closed board", d)

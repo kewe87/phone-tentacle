@@ -52,7 +52,7 @@ overrides it), mode 0600.
 | `io keys COMBO` | `enter`, `esc`, `tab`, `backspace`, `space`, arrows, `cmd+a`, `shift+tab` ... |
 | `io button HOME` | the only button |
 | `screencapture --format h264\|mjpeg` | live video to stdout, e.g. `\| ffplay -` |
-| `device info` | board status: `ap` (mirroring), `fz` (video frozen), `usb`, `net`, `ip`, `fw` |
+| `device info` | board status: `ap` (mirroring), `fz` (video frozen), `usb`, `net`, `ip`, `fw`, `rssi`; always from the current session (right after a reconnect it waits up to 3 s for one; none: `"stale": true`, the last values under `previous`) |
 | `calibrate` | measure the pointer (runs by itself on the first tap; needs the pointer visible) |
 | `net` | the board's Wi-Fi |
 | `net join [SSID [PASSWORD]]` | the board moves to another Wi-Fi; without arguments it asks for name and password (not echoed). Sent over the encrypted session. The iPhone has to mirror over that Wi-Fi too |
@@ -64,7 +64,7 @@ overrides it), mode 0600.
 | `intent list`, `intent show NAME\|ID` | saved intents |
 | `intent save --name N --prompt P [--hint H ...] [--from-run RUN [--steps 1,3,4]]` | save an intent; steps are the run's replayable moves (all, or the numbers from `history show`) |
 | `intent delete NAME\|ID` | |
-| `intent export NAME\|ID... [--screenshots] [--output FILE]`, `intent import FILE` | one `.esp32intent` file, to move intents to another computer; reference screens only with `--screenshots` |
+| `intent export NAME\|ID... [--screenshots] [--output FILE]`, `intent import FILE` | one `.tentacle-intent` file, to move intents to another computer; reference screens only with `--screenshots` |
 | `memory list`, `memory search TEXT [--limit N]` | what the agent remembers, the most related first |
 | `memory add TEXT [--kind preference\|fact\|app] [--topic APP]` | remember one line; passwords, codes and card or ID numbers are refused |
 | `memory rm ID` | |
@@ -117,8 +117,9 @@ swipe, type, key, home).
 What the user told the agent (preferences, facts, how an app works) is kept in `memory/MEMORY.md` in the config
 dir, one entry per line under a dated header. Nothing is synced anywhere.
 
-The file formats of runs, intents (`.esp32intent`) and `MEMORY.md` are those of the original project's iPhone
-app, which Tentacle does not have; they are kept as they were.
+The file formats of runs, intents (`.tentacle-intent`) and `MEMORY.md` are those of the original project's iPhone
+app, which Tentacle does not have; they are kept as they were (only the intent file is named for Tentacle now;
+older exports import the same).
 
 ## Limits
 

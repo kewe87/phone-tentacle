@@ -295,6 +295,13 @@ func (c *Conn) onStatus(b []byte) {
 	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	up, hasUp := m["up"].(float64)
+	rebooted := hasUp && uint32(up) < c.boardUp
+	// The first status of a session, or one after a restart, starts over: nothing of the last session (the old
+	// firmware version after an update, "mirroring off" from before) is merged into it as if it were current.
+	if c.statusAt.Before(c.linked) || rebooted {
+		c.status = map[string]any{}
+	}
 	for k, v := range m {
 		if sub, ok := v.(map[string]any); ok {
 			if old, ok := c.status[k].(map[string]any); ok {
@@ -312,8 +319,8 @@ func (c *Conn) onStatus(b []byte) {
 		}
 	}
 	c.statusAt = now
-	if up, ok := m["up"].(float64); ok {
-		if uint32(up) < c.boardUp { // rebooted: its clock started over, and the shown frame is of the last boot
+	if hasUp {
+		if rebooted { // its clock started over, and the shown frame is of the last boot
 			c.offset, c.frameTS = nil, 0
 		}
 		c.boardUp = uint32(up)
@@ -474,6 +481,19 @@ func (c *Conn) StatusNow(ctx context.Context, timeout time.Duration) (st map[str
 	}
 }
 
+// current is the status the board sent on the current session; empty while none came yet (right after a reconnect
+// the merged one still holds the last session's).
+func (c *Conn) current() map[string]any {
+	c.mu.Lock()
+	fresh := !c.statusAt.IsZero() && !c.statusAt.Before(c.linked)
+	c.mu.Unlock()
+	if !fresh {
+		return map[string]any{}
+	}
+	st, _ := c.Status()
+	return st
+}
+
 // streaming: video arrived on the current session within the last 2 s.
 func (c *Conn) streaming() bool {
 	c.mu.Lock()
@@ -490,8 +510,7 @@ func (c *Conn) Abs(ctx context.Context) bool {
 // Screen (pointer.Screen).
 
 func (c *Conn) Live() bool {
-	st, _ := c.Status()
-	return st["ap"] == "streaming" && c.Frame() != nil
+	return c.current()["ap"] == "streaming" && c.Frame() != nil
 }
 
 func (c *Conn) Frame() image.Image {

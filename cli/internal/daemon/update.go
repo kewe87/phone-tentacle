@@ -48,7 +48,7 @@ func (s *Server) update(ctx context.Context, c *Conn, req Request) Response {
 	if err != nil {
 		return fail(err)
 	}
-	st, _ := c.Status()
+	st, _ := c.StatusNow(ctx, 3*time.Second) // this session's: right after a restart the merged one was the last boot's
 	oldVer, _ := st["fw"].(string)
 	sum := sha256.Sum256(img)
 	sigText := "-"

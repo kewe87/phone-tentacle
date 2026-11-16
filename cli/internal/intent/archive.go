@@ -12,10 +12,11 @@ import (
 	"strings"
 )
 
-// The .esp32intent file (IntentArchive.swift). Fields are in key order: the upstream app writes sorted keys.
+// The .tentacle-intent file: the format of the original project's IntentArchive.swift (older exports are named
+// with the upstream extension; they import the same). Fields are in key order: the upstream app writes sorted keys.
 const (
 	Format    = 1
-	Extension = "esp32intent"
+	Extension = "tentacle-intent"
 	MaxBytes  = 25_000_000
 )
 

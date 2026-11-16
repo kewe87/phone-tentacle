@@ -35,6 +35,7 @@ From a bare board to the first tap on the phone, and what the button, the LED an
 | Part | Notes |
 |---|---|
 | **Seeed Studio XIAO ESP32S3** (the plain one, 8 MB PSRAM) | Not the Sense, not the Plus. Classic ESP32 boards (ESP32-WROOM with a CH340 chip) do not work: no native USB, so they cannot be a mouse or keyboard. |
+| **The Wi-Fi antenna** that comes with the XIAO ESP32S3 | **Required.** The board has no antenna of its own; see below. |
 | **USB-C to USB-C data cable**, short | A charge-only cable does not work. |
 | **iPhone with USB-C**, iOS 18 or later | Lightning iPhones through a Lightning to USB Camera Adapter: taken over from the original project, not tried here. |
 | **0.96″ OLED, 128×64, SSD1306, I²C** (4 pins), recommended | Shows the setup Wi-Fi and its password, the board's address and the pairing code. Without it the code cannot be compared at the board. |
@@ -48,6 +49,15 @@ OLED wiring: VCC→3V3, GND→GND, SDA→D4 (GPIO5), SCL→D5 (GPIO6).
 
 The board's Wi-Fi is 2.4 GHz only (ESP32-S3). The computer, the iPhone and the board have to be on the same
 network, and that network must let its devices talk to each other (many guest networks do not).
+
+> **Plug in the Wi-Fi antenna before you power the board.** The XIAO ESP32S3 has no antenna on the board, only a
+> tiny snap-on socket (U.FL/IPEX) for the flat antenna in the box: press its plug straight on until it clicks.
+> Without it the setup Wi-Fi `Tentacle-XXXX` does not show up at all, or only right next to the board, and the
+> link to your network is very weak (dropouts, slow screenshots). Put the antenna away from the iPhone and from
+> metal (not under the phone, not on or in a metal case or desk).
+> `tentacle device info` shows the signal as `rssi` (dBm): about -70 or better is good. **Below about -80 dBm
+> firmware updates over Wi-Fi fail**; then update over USB with `tentacle-flash` ([step 2](#2-flash-the-firmware))
+> and fix the antenna or move the board closer to the router.
 
 > Photo follows after the first hardware test: the board with the OLED wired.
 
@@ -194,6 +204,9 @@ Mirroring first). Until then screenshots fail or show an old picture.
   has worked for 30 s. If it crashes or restarts before that, or finds no Wi-Fi within 2 minutes, the board starts
   the previous firmware again, and `tentacle update` says so.
 - The first firmware that can do this (0.2.0) has to be flashed over USB once.
+- **A weak Wi-Fi signal makes the update fail.** Below about -80 dBm (`rssi` in `tentacle device info`) the image
+  does not get through; the board keeps its firmware. Check the antenna ([step 1](#1-what-you-need)) or update
+  over USB with `tentacle-flash`.
 
 With a `--debug` build, `tentacle logs --board --follow` shows the board's log as it is written, and
 `tentacle debug state` (or `nvs`, `wifi`, `wifi scan`, `reboot`) runs its serial debug commands over Wi-Fi.
@@ -333,7 +346,17 @@ your phone go to whatever model your assistant uses.
 
 ## 9. Button and LED
 
-The board has one button, BOOT, and one LED.
+The XIAO ESP32S3 has two tiny push buttons right next to its USB-C socket, marked **B** and **R** on the board,
+and one small LED. Press them with a fingernail or a pen tip; they move very little.
+
+- **B is BOOT**, the board's only button for Tentacle: everything in the table below (stop, confirm, open
+  pairing, forget the Wi-Fi) is this button.
+- **R is RESET**: it restarts the board at once, like pulling the cable. Stored things stay (the Wi-Fi, the paired
+  computers, the web password, the keyboard layout); the stop is off again and an open pairing window is closed.
+  The computer's session drops; the next `tentacle` command connects again once the board is back (a few
+  seconds). Screen Mirroring ends and has to be started again on the iPhone. R is never needed in normal use.
+- **B held while pressing R** (or while plugging in the cable) starts the chip's download mode for flashing over
+  USB ([step 2](#2-flash-the-firmware)). Tentacle does not run then; press R alone to leave it.
 
 <p align="center"><img src="images/button-led.svg" alt="What the BOOT button does and what the LED patterns mean" width="820"></p>
 
@@ -405,7 +428,9 @@ writes the CLI's log and the board's log into one file; nothing is sent anywhere
 | `not found on the network …` | Is the board powered and on the same Wi-Fi as the computer (OLED: `net sta` and an address)? The CLI finds it by mDNS (multicast, UDP 5353) and, failing that, by trying TCP 7202 on the local network. A firewall on the computer or a guest network that separates devices blocks both. Give the address by hand: `tentacle --host 192.168.1.50 devices`. The address is kept from then on; `--host auto` searches again |
 | Windows Firewall asks about `tentacle` | Allow it on private networks |
 | Several boards | `--device ID` or `TENTACLE_DEVICE` (the 12-hex id, or the 4 hex digits of the name) |
-| `pairing is closed on the board …` | The double press was not seen or the 60 s are over. Double-press again (two clear, quick presses); `tentacle pair` keeps waiting up to 60 s |
+| `not paired: the pairing window is closed …` | The double press was not seen or the 60 s are over; `tentacle pair` stops at once. Double-press BOOT again (two clear, quick presses: the LED flashes twice a second), then run `tentacle pair` again |
+| The setup Wi-Fi `Tentacle-XXXX` does not show up, the board drops off the network, or `tentacle update` fails | Is the Wi-Fi antenna plugged in ([step 1](#1-what-you-need))? `tentacle device info` shows the signal as `rssi`: below about -80 dBm updates over Wi-Fi fail; update over USB with `tentacle-flash` instead |
+| `device info` says `"stale": true` | The board sent no status since the link came back (it may be restarting, e.g. after an update or R). The values under `previous` are from before; ask again in a few seconds |
 | `not paired: the BOOT button on the board was not pressed in time` | Start over: double press, `tentacle pair`, one press |
 | `busy: pairing locked for N s` | A request ended without the button. The board locks pairing for 5 s, then 10, 20 … up to 5 minutes. Wait |
 | `busy: another pairing request is open` | Another computer is asking right now. Check the name on the OLED |
@@ -474,7 +499,7 @@ tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
   intent list | show NAME          saved intents (tasks that worked, with their steps)
   intent save --name N --prompt P [--hint H ...] [--from-run RUN [--steps 1,3,4]]
   intent delete NAME
-  intent export NAME... [--screenshots] [--output FILE]   one .esp32intent file, to move intents to another computer
+  intent export NAME... [--screenshots] [--output FILE]   one .tentacle-intent file, to move intents to another computer
   intent import FILE
   memory list | search TEXT        what the agent remembers (MEMORY.md in the config directory)
   memory add TEXT [--kind preference|fact|app] [--topic APP]
