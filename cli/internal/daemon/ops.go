@@ -24,6 +24,9 @@ import (
 var (
 	errMirroring = errors.New("screen mirroring is off: on the iPhone open Control Center > Screen Mirroring > Tentacle")
 	errFrozen    = errors.New("video frozen: restart Screen Mirroring on the iPhone (Control Center > Screen Mirroring > Stop Mirroring, then Tentacle)")
+	// errNoStatus: no video and no status since the link came back, so whether the phone mirrors is not known.
+	errNoStatus = errors.New("no picture, and the board sent no status since the link came back (it may be restarting): " +
+		"try again in a few seconds; if it persists, check that Screen Mirroring is on (Control Center > Screen Mirroring > Tentacle)")
 	// errNoFrame: coordinates are pixels of a screenshot, and without a frame its size is unknown. The AirPlay size
 	// in the status is not it (480x1040 asked, 718x1560 sent: a tap at x 700 landed on the right edge, 2026-11-16).
 	errNoFrame = errors.New("no screen picture yet, so the coordinates cannot be placed: take a screenshot first " +
@@ -37,14 +40,20 @@ func num(v any) float64 { f, _ := v.(float64); return f }
 
 // videoState explains why there is no usable screen, nil when mirroring streams.
 func (s *Server) videoState(ctx context.Context, c *Conn) error {
-	st, _ := c.StatusNow(ctx, 3*time.Second) // the board sends one a second; one from before a reconnect may be stale
+	// The board sends a status a second. Only one sent on this session counts: the last session's said "mirroring
+	// off" right after a reconnect while the phone mirrored (2026-11-16).
+	c.StatusNow(ctx, 3*time.Second)
+	st := c.current()
 	if num(st["fz"]) == 1 {
 		return errFrozen
 	}
 	// Not streaming by the status: the board may have computed it just before this session, or AirPlay just
 	// started. Video coming in on this session, or the next status, says otherwise.
-	for t := time.Now(); !videoAlive(st, c); st, _ = c.Status() {
+	for t := time.Now(); !videoAlive(st, c); st = c.current() {
 		if time.Since(t) > 1500*time.Millisecond || sleepCtx(ctx, 100*time.Millisecond) != nil {
+			if len(st) == 0 {
+				return errNoStatus
+			}
 			return errMirroring
 		}
 	}
@@ -181,7 +190,7 @@ func (s *Server) frame(ctx context.Context, c *Conn, wait time.Duration) (shot, 
 	c.lastShot = time.Now()
 	out.img, out.captured = c.frame, c.captured
 	c.mu.Unlock()
-	st, _ := c.Status()
+	st := c.current() // not the last session's flags
 	if num(st["fz"]) == 1 {
 		return shot{}, errFrozen
 	}

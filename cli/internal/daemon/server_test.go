@@ -35,7 +35,7 @@ func shortTmp() string {
 
 // start runs a daemon in process on a short temp dir (unix socket paths are limited to ~100 bytes).
 func start(t *testing.T, tr link.Transport) (*Client, *Server) {
-	dir, err := os.MkdirTemp(shortTmp(), "e32a")
+	dir, err := os.MkdirTemp(shortTmp(), "tnta")
 	if err != nil {
 		t.Fatal(err)
 	}

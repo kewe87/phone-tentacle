@@ -255,11 +255,22 @@ func (s *Server) Do(ctx context.Context, req Request) Response {
 	}
 	switch req.Cmd {
 	case "info":
-		st, age := c.Status()
+		// Only a status sent on this session: right after the board restarted (an update, a replug) the merged one
+		// still named the old firmware version (2026-11-16). The board sends one a second.
+		st, fresh := c.StatusNow(ctx, infoWait)
+		_, age := c.Status()
+		if !fresh {
+			old := st
+			st = map[string]any{"stale": true, "warning": "the board sent no status since the link came back " +
+				"(it may be restarting): try again in a few seconds"}
+			if len(old) > 0 {
+				st["previous"] = old // from the last session: not the board's current state
+			}
+		}
 		st["id"], st["name"] = c.ID, c.Name
 		l := s.Config.GetListen()
 		st["listen"] = map[string]any{"on": l.On}
-		if age >= 0 {
+		if fresh && age >= 0 {
 			st["age_ms"] = age.Milliseconds()
 		}
 		return ok(st)
@@ -295,6 +306,9 @@ func (s *Server) Do(ctx context.Context, req Request) Response {
 	}
 	return fail(fmt.Errorf("unknown command %q", req.Cmd))
 }
+
+// infoWait is how long device info waits for the first status of a fresh session.
+var infoWait = 3 * time.Second
 
 type deviceInfo struct {
 	ID        string `json:"id"`
@@ -598,8 +612,9 @@ func explainPair(err error) error {
 	}
 	switch msg := string(be); {
 	case strings.HasPrefix(msg, "pairing closed"):
-		return errors.New("not paired: pairing was not opened at the board. Double-press its BOOT button (two quick presses), " +
-			"then run tentacle pair within 60 s. While a paired computer drives the phone a double press opens nothing: end that session first")
+		return errors.New("not paired: the pairing window is closed. Double-press BOOT on the board (two quick presses; " +
+			"the LED then flashes twice a second), then run tentacle pair again within 60 s. While a paired computer " +
+			"drives the phone a double press opens nothing: end that session first")
 	case strings.HasPrefix(msg, "pairing not confirmed"):
 		return errors.New("not paired: the BOOT button on the board was not pressed in time. Nothing was stored; run tentacle pair again")
 	case strings.HasPrefix(msg, "busy: pairing locked"):

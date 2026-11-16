@@ -62,7 +62,7 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
   intent list | show NAME          saved intents (tasks that worked, with their steps)
   intent save --name N --prompt P [--hint H ...] [--from-run RUN [--steps 1,3,4]]
   intent delete NAME
-  intent export NAME... [--screenshots] [--output FILE]   one .esp32intent file, to move intents to another computer
+  intent export NAME... [--screenshots] [--output FILE]   one .tentacle-intent file, to move intents to another computer
   intent import FILE
   memory list | search TEXT        what the agent remembers (MEMORY.md in the config directory)
   memory add TEXT [--kind preference|fact|app] [--topic APP]
@@ -102,8 +102,26 @@ func Main(args []string) int {
 	if err != nil {
 		return a.print(daemon.Response{Status: "error", Error: err.Error()})
 	}
-	a.Client = &daemon.Client{Dir: dir, Version: Version}
+	a.Client = &daemon.Client{Dir: dir, Version: daemonVersion()}
 	return a.Run(args)
+}
+
+// daemonVersion tells a running daemon whether it is this binary's. Version alone is "dev" in every build without
+// -ldflags, so a daemon of an older dev build stayed in use after a rebuild (pair still asked a closed board again
+// for a minute, 2026-11-16): such builds add the executable's size and time.
+func daemonVersion() string {
+	if Version != "dev" {
+		return Version
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return Version
+	}
+	st, err := os.Stat(exe)
+	if err != nil {
+		return Version
+	}
+	return fmt.Sprintf("%s+%d.%d", Version, st.Size(), st.ModTime().UnixNano())
 }
 
 func (a *App) print(r daemon.Response) int {
@@ -140,7 +158,7 @@ func (a *App) call(req daemon.Request) int {
 }
 
 func (a *App) Run(args []string) int {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" && len(args) == 1 {
 		fmt.Fprint(a.Err, usage)
 		return 0
 	}
@@ -153,6 +171,10 @@ func (a *App) Run(args []string) int {
 		return 0
 	}
 	cmd, rest := args[0], args[1:]
+	if cmd == "help" && len(rest) > 0 { // tentacle help pair
+		a.help(rest[0])
+		return 0
+	}
 	if wantsHelp(rest) {
 		a.help(cmd)
 		return 0
@@ -293,6 +315,14 @@ func wantsHelp(args []string) bool {
 
 // help prints the usage lines of cmd (with their continuation lines), or all of it for an unknown command.
 func (a *App) help(cmd string) {
+	switch cmd {
+	case "intents":
+		cmd = "intent"
+	case "keygen", "sign": // not in the usage: for whoever builds releases
+		fmt.Fprintln(a.Err, "usage: tentacle keygen DIR                  writes DIR/tentacle-release.key (keep it out of any repository)\n"+
+			"       tentacle sign FILE.bin --key KEYFILE   writes FILE.bin.sig (or TENTACLE_RELEASE_KEY for --key)")
+		return
+	}
 	var out []string
 	in := false
 	for _, line := range strings.Split(usage, "\n") {
@@ -531,7 +561,7 @@ func (a *App) daemon(idle time.Duration) int {
 	}
 	log.SetFlags(log.LstdFlags)
 	log.Printf("tentacle %s daemon on %s", Version, daemon.SocketPath(a.Dir))
-	s := &daemon.Server{Transport: link.Default(a.Dir), Config: cfg, Dir: a.Dir, Version: Version, Idle: idle}
+	s := &daemon.Server{Transport: link.Default(a.Dir), Config: cfg, Dir: a.Dir, Version: daemonVersion(), Idle: idle}
 	if err := s.Serve(l); err != nil {
 		log.Print(err)
 		return 1
