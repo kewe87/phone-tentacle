@@ -112,19 +112,21 @@ If it goes wrong:
   **macOS** opens downloaded programs only after a confirmation: right-click › Open, or
   `xattr -d com.apple.quarantine tentacle-flash_darwin_universal` and `chmod +x` it first.
 
-The firmware in `tentacle-flash` is the standard build. For options such as `--name`, `--abs` or
-`--battery-pin`, build it yourself as below; you can then install your `.merged.bin` with `tentacle-flash`
-(Advanced, or `--image`) or with the script.
+The firmware in `tentacle-flash` is the one release image for every board (from 0.4.0). The status OLED, the
+absolute or relative pointer, the battery pin and the OLED's language are settings on the board, not build
+options: see [Board settings](#board-settings). Build it yourself only to change the code, or for `--name`,
+`--no-safety` or `--multi-client`; you can then install your `.merged.bin` with `tentacle-flash` (Advanced, or
+`--image`) or with the script.
 
 ### Building it yourself with arduino-cli
 
-Install the ESP32 core once, and the U8g2 library if you use the OLED:
+Install the ESP32 core and the U8g2 library (the OLED's) once:
 
 ```bash
 git clone https://github.com/kewe87/phone-tentacle.git
 cd phone-tentacle
 arduino-cli core install esp32:esp32@3.3.12
-arduino-cli lib install U8g2                 # only for --display
+arduino-cli lib install U8g2
 ```
 
 #### Linux and macOS
@@ -132,8 +134,7 @@ arduino-cli lib install U8g2                 # only for --display
 Plug the board into the computer, then:
 
 ```bash
-hardware/flash.sh --display                  # with the OLED
-hardware/flash.sh                            # without
+hardware/flash.sh
 ```
 
 The script builds the firmware, puts a running board into its bootloader, uploads, and then asks the board for
@@ -144,16 +145,29 @@ If the upload fails, put the board into download mode (hold BOOT while plugging 
 
 | Option | |
 |---|---|
-| `--display` | status on the OLED |
-| `--battery-pin N` | battery percentage on the OLED, read on GPIO N ([hardware-addons.md](hardware-addons.md)) |
-| `--name NAME` | the board's name in Screen Mirroring and for the CLI (one word; default `Tentacle`). The setup Wi-Fi is always `Tentacle-XXXX` |
-| `--abs` | absolute mouse instead of the relative one (needs AssistiveTouch; the CLI skips calibration) |
+| `--name NAME` | the board's name in Screen Mirroring and for the CLI until another is set (one word; default `Tentacle`). The setup Wi-Fi is always `Tentacle-XXXX` |
 | `--no-safety` | no stop button and no status light (BOOT still confirms requests and forgets the Wi-Fi) |
 | `--multi-client` | up to 4 devices may join the setup Wi-Fi instead of 1 |
 | `--build-only` | compile only |
 | `--debug` | bring-up build with a debug interface on USB serial. It can press BOOT from the serial port: never hand out such a build |
 
-All options are listed in the header of [`hardware/flash.sh`](../hardware/flash.sh).
+All options are listed in the header of [`hardware/flash.sh`](../hardware/flash.sh). The old `--display`,
+`--abs` and `--battery-pin` are accepted and ignored.
+
+#### Board settings
+
+The board keeps these settings across restarts and firmware updates. Change them from a paired computer with
+`tentacle device set KEY VALUE` (`tentacle device settings` shows them), or on the web interface (Settings ›
+Hardware):
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `display` | `auto`, `on`, `off` | `auto` | the status OLED ([hardware-addons.md](hardware-addons.md)): `auto` uses it when one answers on I2C (GPIO5 SDA, GPIO6 SCL, address 0x3C or 0x3D) at boot or when the setting changes; `on` draws even when none answers; `off` leaves the I2C pins alone |
+| `abs` | `on`, `off` | `on` | `on`: the absolute pointer (needs AssistiveTouch; no calibration, clicks on the web page's picture work). `off`: the classic relative mouse, which the CLI calibrates. Takes effect after a restart (unplug the board, or Restart on the web interface) |
+| `battery` | `none`, a GPIO (1-4, 7-10) | `none` | the LiPo voltage pin: the OLED and the status show the charge in % |
+| `battery_div` | `1.00` to `10.00` | `2.00` | battery volts per pin volt (2.00 for a 2:1 divider) |
+| `lang` | `auto`, `en`, `de` | `auto` | the OLED's language; `auto` is the web interface's language when one is set, else English |
+| `name` | 1-20 of `A-Z a-z 0-9 space . _ -` | `Tentacle` | as on the web interface; takes effect after a restart |
 
 #### Windows
 
@@ -164,7 +178,7 @@ arduino-cli calls the script makes yourself, in PowerShell from the repository's
 
 ```powershell
 $fqbn = "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB"
-$defs = "-DSTATUS_DISPLAY=1 -include C:/src/phone-tentacle/hardware/hid_bridge/build_cfg.h"   # without OLED: leave out -DSTATUS_DISPLAY=1
+$defs = "-include C:/src/phone-tentacle/hardware/hid_bridge/build_cfg.h"
 
 arduino-cli compile -b $fqbn --build-property "compiler.cpp.extra_flags=$defs" --build-property "compiler.c.extra_flags=$defs" --output-dir hardware\build hardware\hid_bridge
 arduino-cli upload  -b $fqbn -p COM5 --input-dir hardware\build hardware\hid_bridge
@@ -172,9 +186,9 @@ arduino-cli upload  -b $fqbn -p COM5 --input-dir hardware\build hardware\hid_bri
 
 `COM5` is the board's port (Device Manager › Ports). If the upload fails, hold BOOT while plugging the board in
 and upload again; the port number can change. The other options of `flash.sh` are `-D` switches in the same
-string (`-DBOARD_NAME=Desk`, `-DABS_POINTER=1`, `-DSAFETY_CONTROLS=0`, `-DAP_MAX_CLIENTS=4`, `-DBATTERY_PIN=1`).
+string, before `-include` (`-DBOARD_NAME=Desk`, `-DSAFETY_CONTROLS=0`, `-DAP_MAX_CLIENTS=4`).
 
-The setup Wi-Fi's name and password are then on the OLED. Without an OLED, ask the board on its serial port:
+The setup Wi-Fi's name and password are then on the OLED, if the board has one. Without an OLED, ask the board on its serial port:
 open `arduino-cli monitor -p COM5 -c baudrate=115200` and send `0 setup`. The board answers with one line:
 `wifi-setup {"setup":1,"ssid":"Tentacle-1A2B","pass":"…","url":"http://192.168.4.1/","qr":"…"}`
 (`qr` is the Wi-Fi QR code, one hex string per row).
@@ -382,7 +396,10 @@ the two flashes.
 
 ## 10. The display
 
-A `--display` build shows four lines on the OLED and updates them twice a second.
+A board with an OLED ([hardware-addons.md](hardware-addons.md)) shows four lines on it and updates them twice a
+second. The firmware looks for the display by itself (setting `display`, see [Board settings](#board-settings));
+a board without one runs the same. The texts are English or German (setting `lang`; the German ones without
+umlauts, which the font lacks):
 
 | When | Line 1 | Line 2 | Line 3 | Line 4 |
 |---|---|---|---|---|
@@ -390,11 +407,16 @@ A `--display` build shows four lines on the OLED and updates them twice a second
 | A request waits for BOOT (Wi-Fi) | `PRESS BOOT TO CONFIRM` | `Join this Wi-Fi?` | the network's name | `27 s left` |
 | Pairing is open | `PAIRING OPEN` | `On the computer run:` | `tentacle pair` | `55 s left` |
 | No Wi-Fi stored (setup) | `Wi-Fi setup: join` | `Tentacle-1A2B` | `PW ` and the password | `http://192.168.4.1` |
-| Otherwise | `Tentacle 0.1.0` | `net sta 192.168.1.50` | `peers 1  cli 1` | `running` or `STOPPED` |
+| Otherwise | `Tentacle 0.4.0` | `net sta 192.168.1.50` | `peers 1  cli 1` | `running` or `STOPPED` |
 
 In the last row, `net` is `sta` (on your Wi-Fi), `ap` (setup Wi-Fi) or `none` (your Wi-Fi is out of reach; line
-3 then reads `no Wi-Fi: BOOT 10s=new`). `cli 1` means a computer's session is up. With `--battery-pin`, line 4
-also shows `bat 87%`.
+3 then reads `no Wi-Fi: BOOT 10s`: hold BOOT 10 s for a new one). `cli 1` means a computer's session is up. With
+a battery pin set (setting `battery`), line 4 also shows `bat 87%`. While the setup Wi-Fi is open, the display
+shows its QR code on the left, with its name, password and address next to it.
+
+In German: `ZUM BESTAETIGEN: BOOT`, `WLAN beitreten?`, `noch 27 s`, `KOPPELN OFFEN`, `Am Computer eingeben:`,
+`Setup-WLAN beitreten:`, `WLAN sta 192.168.1.50`, `Peers 1  CLI 1`, `kein WLAN: BOOT 10s`, `laeuft` or
+`GESTOPPT`, `Akku 87%`.
 
 > Photo follows after the first hardware test: the four views of the OLED.
 
@@ -408,7 +430,7 @@ also shows `bat 87%`.
 | Start over at the board | Hold BOOT for 10 s, then repeat [step 3](#3-put-the-board-on-your-wi-fi) |
 
 The setup Wi-Fi does not come back by itself when your Wi-Fi is down. A board that cannot join keeps trying;
-the OLED then reads `no Wi-Fi: BOOT 10s=new`.
+the OLED then reads `no Wi-Fi: BOOT 10s`.
 
 ## 12. Unpair
 
@@ -482,6 +504,10 @@ tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
   io button HOME
   screencapture --format h264|mjpeg   video to stdout
   device info                      board status
+  device settings                  the board's settings: name, display, abs, battery, battery_div, lang
+  device set KEY VALUE             one of them, kept on the board: display auto|on|off (status OLED), abs on|off
+                                   (absolute pointer, after a restart), battery none|GPIO, battery_div 1.00-10.00,
+                                   lang auto|en|de (the OLED's texts), name NAME (after a restart)
   keyboard layout [us|de]          the iPhone's hardware keyboard layout the board types for (default us); must
                                    match Settings > General > Keyboard > Hardware Keyboard on the iPhone
   video fps N | video res W H      what the board asks the iPhone for (15 fps, 480x1040), from the next
@@ -491,7 +517,7 @@ tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
                                    over the current link (sealed). A new board is set up on its own hotspot's page.
   net join SSID [PASSWORD]         the same, non-interactive
   net hotspot                      the board forgets its Wi-Fi and opens its setup hotspot again
-  calibrate                        measure the pointer (automatic on the first tap; an --abs board needs none)
+  calibrate                        measure the pointer (automatic on the first tap; none with the absolute pointer)
   listen                           what the iPhone played in the last 30 s, as words (or why it can't be heard)
   listen on|off                    hear the phone's sound while it mirrors (off by default); the words are made
                                    by whisper.cpp on this computer (install whisper-cpp, plus a model)
@@ -569,7 +595,7 @@ browser with the one under Settings > Network (also in the board's log).
 | On-screen keyboard | Shows or hides the phone's keyboard (`key eject`) |
 | Click into the picture, then type | Typing live, like a VNC viewer: every key goes to the phone as you press it, in the board's keyboard layout (on German also ä ö ü ß €, accents from dead keys), with Enter, Backspace, Delete, Tab, Esc, arrows, Home/End, Page up/down. Off a Mac, Ctrl works as ⌘ (Ctrl+C, Ctrl+Z, Ctrl+A); Ctrl+V types this computer's clipboard. A click next to the picture stops it; "Type live" switches it on and off too |
 
-Clicks on the picture need the absolute pointer (`flash.sh --abs`); the page says so when the firmware has none.
+Clicks on the picture need the absolute pointer (setting `abs`, on by default); the page says so when the board runs with the relative one.
 The picture comes as H.264, decoded by the browser (WebCodecs); a page that joins starts at the last keyframe. The
 corner shows how old the frame is. A slow browser skips frames until the next keyframe; the phone's mirroring
 never waits for it.

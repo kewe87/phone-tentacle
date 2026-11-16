@@ -22,6 +22,8 @@
 #include "ota.h"
 #include "version.h"
 #include "video_link.h"
+#include "board_settings.h"
+#include "status_display.h"
 #include "src/airplay/airplay.h"
 #include "src/setup/setup_text.h"
 #include "src/web/web_auth.h"
@@ -33,11 +35,8 @@
 String run(const String &line);  // hid_bridge.ino: the firmware's HID commands
 const char *usbState();          // hid_bridge.ino: "ok" | "asleep" | "off"
 
-#if ABS_POINTER
-const bool HAS_ABS = true;  // `abs X Y`: the page can point at the screen
-#else
-const bool HAS_ABS = false;
-#endif
+// `abs X Y`: the page can point at the screen (the setting `abs`, as this boot runs).
+static bool hasAbs() { return cfg_abs_active(); }
 
 const uint16_t HTTPS_PORT = 443, HTTP_PORT = 80;
 const char *const HOST_NAME = "tentacle.local";   // the mDNS name (src/airplay/mdns.c)
@@ -175,7 +174,7 @@ static void pushStatus() {
            "\"fps\":%.1f,\"kbps\":%lu,\"vw\":%d,\"vwait\":%lu,\"q\":%d,\"pw\":%d,\"usb\":\"%s\",\"abs\":%d}",
            (unsigned long)now, control, watching, cliActive, stop_active(), ap[st >= 0 && st <= 2 ? st : 0],
            (unsigned long)v.age_ms, v.fps, (unsigned long)v.kbps, vw, (unsigned long)waited, queued, pw, usbState(),
-           HAS_ABS);
+           hasAbs());
   sendText(s);
 }
 
@@ -316,7 +315,7 @@ static esp_err_t onState(httpd_req_t *r) {
   unlock();
   String j = "{\"pw\":" + String(hasPassword()) + ",\"auth\":" + String(in) + ",\"lang\":\"" + (langDe(r) ? "de" : "en") +
              "\",\"name\":" + jsonStr((board_name() + " " + board_suffix()).c_str()) + ",\"fw\":\"" FW_VERSION "\",\"lock\":" +
-             String((wait + 999) / 1000) + ",\"abs\":" + String(HAS_ABS) + "}";
+             String((wait + 999) / 1000) + ",\"abs\":" + String(hasAbs()) + "}";
   return replyStr(r, j);
 }
 
@@ -380,11 +379,12 @@ static esp_err_t onSettingsGet(httpd_req_t *r) {
              "\",\"fw\":\"" FW_VERSION "\",\"fp\":\"" + certFp + "\",\"heap\":" +
              String(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)) + ",\"psram\":" +
              String(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)) + ",\"up\":" + String(millis() / 1000) +
-             ",\"ota\":" + ota_json() + "}";
+             ",\"ota\":" + ota_json() + ",\"hw\":" + settings_json() + "}";
   return replyStr(r, j);
 }
 
-// POST /api/settings: lines key=value (name, kbd, lang). The name takes effect on the next boot.
+// POST /api/settings: lines key=value (name, kbd, lang; display, abs, battery, battery_div, oled_lang: the board's
+// hardware settings, board_settings.h, with oled_lang for its `lang`). The name and abs take effect on the next boot.
 static esp_err_t onSettingsPost(httpd_req_t *r) {
   if (!postOk(r)) return ESP_OK;
   char b[BODY_MAX];
@@ -406,8 +406,18 @@ static esp_err_t onSettingsPost(httpd_req_t *r) {
     } else if (!strcmp(k, "lang")) {
       if (strcmp(v, "de") && strcmp(v, "en") && *v) return reply(r, "400 Bad Request", "{\"err\":\"lang\"}");
       web_set_lang(v);
+      display_reconfigure();  // the OLED's language may follow the page's
+    } else if (!strcmp(k, "display") || !strcmp(k, "abs") || !strcmp(k, "battery") || !strcmp(k, "battery_div") ||
+               !strcmp(k, "oled_lang")) {
+      if (settings_set(strcmp(k, "oled_lang") ? k : "lang", v).length()) {
+        String e = String("{\"err\":\"") + k + "\"}";
+        return reply(r, "400 Bad Request", e.c_str());
+      }
     }
   }
+  board_opts o;
+  cfg_opts(&o);
+  renamed |= o.abs != (cfg_abs_active() ? 1 : 0);  // the pointer changes with a restart too
   return reply(r, "200 OK", renamed ? "{\"ok\":true,\"restart\":true}" : "{\"ok\":true}");
 }
 

@@ -38,10 +38,16 @@ const T = {
     usbOk: 'connected', usbAsleep: 'asleep (locked?)', usbOff: 'not connected',
     idle: 'idle', connected: 'connected', streaming: 'mirroring',
     errControl: 'You do not have control.', errStopped: 'Stopped with the BOOT button.', errBusy: 'Too much input at once.',
-    noAbs: 'This firmware has no absolute pointer: clicks on the picture do not work (build with ABS_POINTER).',
+    noAbs: 'The board runs with the relative pointer: clicks on the picture do not work (Settings > Hardware > Pointer: absolute, then restart).',
     board: 'Board', boardName: 'Name (Screen Mirroring and the command line show it with its id)',
     kbdLayout: 'Keyboard layout of the phone', language: 'Language', langAuto: 'Like the browser', save: 'Save',
     saved: 'Saved.', savedRestart: 'Saved. The new name is used after a restart.', badName: '1 to 20 letters, digits, spaces, . _ -',
+    hardware: 'Hardware', hwDisplay: 'Status display (OLED, I2C on GPIO5/6)', hwAuto: 'Automatic (if one answers)', hwOn: 'On',
+    hwOff: 'Off', hwFound: 'found', hwMissing: 'none found', hwLang: 'Language of the display', hwLangAuto: 'Like this page',
+    hwPointer: 'Pointer', hwAbs: 'Absolute (taps on the picture, no calibration)', hwRel: 'Relative (classic mouse)',
+    hwBattery: 'Battery voltage pin (GPIO)', hwNone: 'None', hwBatPct: 'now {p} %',
+    hwDivider: 'Voltage divider (battery volts per pin volt, 1.00 to 10.00)', hwBadDiv: 'Divider: 1.00 to 10.00',
+    hwRestart: 'Saved. The pointer changes after a restart.',
     network: 'Network', ssid: 'Wi-Fi', ip: 'Address', rssi: 'Signal', host: 'Name', fp: 'Certificate SHA-256',
     memory: 'Free memory', uptime: 'Running for',
     certHint: 'The board made its own certificate, so the browser warned the first time. To be sure it is this board, compare the fingerprint above with the one the browser shows for the page.',
@@ -92,10 +98,16 @@ const T = {
     usbOk: 'verbunden', usbAsleep: 'schläft (gesperrt?)', usbOff: 'nicht verbunden',
     idle: 'aus', connected: 'verbunden', streaming: 'spiegelt',
     errControl: 'Du hast nicht die Steuerung.', errStopped: 'Mit dem BOOT-Taster gestoppt.', errBusy: 'Zu viele Eingaben auf einmal.',
-    noAbs: 'Diese Firmware hat keinen absoluten Zeiger: Klicks ins Bild wirken nicht (mit ABS_POINTER bauen).',
+    noAbs: 'Das Board läuft mit dem relativen Zeiger: Klicks ins Bild wirken nicht (Einstellungen > Hardware > Zeiger: absolut, dann neu starten).',
     board: 'Board', boardName: 'Name (Bildschirmsynchronisierung und Kommandozeile zeigen ihn mit seiner Kennung)',
     kbdLayout: 'Tastaturbelegung des iPhones', language: 'Sprache', langAuto: 'Wie der Browser', save: 'Speichern',
     saved: 'Gespeichert.', savedRestart: 'Gespeichert. Der neue Name gilt nach einem Neustart.', badName: '1 bis 20 Buchstaben, Ziffern, Leerzeichen, . _ -',
+    hardware: 'Hardware', hwDisplay: 'Statusanzeige (OLED, I2C an GPIO5/6)', hwAuto: 'Automatisch (wenn eine antwortet)', hwOn: 'An',
+    hwOff: 'Aus', hwFound: 'gefunden', hwMissing: 'keine gefunden', hwLang: 'Sprache der Anzeige', hwLangAuto: 'Wie diese Seite',
+    hwPointer: 'Zeiger', hwAbs: 'Absolut (Tippen ins Bild, keine Kalibrierung)', hwRel: 'Relativ (klassische Maus)',
+    hwBattery: 'Pin der Akkuspannung (GPIO)', hwNone: 'Keiner', hwBatPct: 'jetzt {p} %',
+    hwDivider: 'Spannungsteiler (Akku-Volt je Pin-Volt, 1.00 bis 10.00)', hwBadDiv: 'Teiler: 1.00 bis 10.00',
+    hwRestart: 'Gespeichert. Der Zeiger wechselt nach einem Neustart.',
     network: 'Netzwerk', ssid: 'WLAN', ip: 'Adresse', rssi: 'Signal', host: 'Name', fp: 'Zertifikat SHA-256',
     memory: 'Freier Speicher', uptime: 'Läuft seit',
     certHint: 'Das Board hat sein eigenes Zertifikat erstellt, deshalb hat der Browser beim ersten Mal gewarnt. Um sicherzugehen, dass es dieses Board ist: den Fingerabdruck oben mit dem vergleichen, den der Browser für die Seite anzeigt.',
@@ -491,7 +503,26 @@ async function loadSettings() {
   dd.append(code);
   net.append(dt, dd);
   $('fw-now').textContent = t('fwNow', { fw: s.fw });
+  const hw = s.hw;  // the board's hardware settings (firmware 0.4.0)
+  if (hw) {
+    $('h-display').value = hw.display;
+    $('h-oled').textContent = hw.display === 'off' ? '' : t(hw.oled ? 'hwFound' : 'hwMissing');
+    $('h-lang').value = hw.lang;
+    $('h-abs').value = hw.abs;
+    $('h-bat').value = hw.battery;
+    $('h-batpct').textContent = hw.bat === undefined ? '' : t('hwBatPct', { p: hw.bat });
+    $('h-div').value = hw.battery_div;
+  }
 }
+
+$('b-hw').onclick = async () => {
+  const div = $('h-div').value.trim(), msg = $('hw-msg');
+  if (!/^\d{1,2}(\.\d{1,2})?$/.test(div) || +div < 1 || +div > 10) { msg.textContent = t('hwBadDiv'); return; }
+  const j = await api('/api/settings', 'display=' + $('h-display').value + '\noled_lang=' + $('h-lang').value + '\nabs=' +
+    $('h-abs').value + '\nbattery=' + $('h-bat').value + '\nbattery_div=' + div);
+  msg.textContent = j.ok ? t(j.restart ? 'hwRestart' : 'saved') : t('failed');
+  if (j.ok) setTimeout(loadSettings, 1500);  // the display is looked for again from the board's loop
+};
 
 $('b-save').onclick = async () => {
   const name = $('s-name').value.trim(), msg = $('save-msg');

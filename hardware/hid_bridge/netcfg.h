@@ -2,9 +2,10 @@
 // (random credentials made once) with the setup page (setup_portal.h). Once a Wi-Fi is stored (from the page plus a
 // press of BOOT, or `net` from a paired computer) it is only a client there; holding BOOT 10 s forgets it.
 // A build with -DSTA_FROM_SECRETS=1 boots in station mode with WIFI_SSID / WIFI_PASS from the git-ignored secrets.h.
-// NVS ("agent"): mode ("ap" = setup | "sta"), sta_ssid, sta_pass, ap_ssid, ap_pass.
+// NVS ("agent"): mode ("ap" = setup | "sta"), sta_ssid, sta_pass, ap_ssid, ap_pass; the hardware settings below.
 #pragma once
 #include <Arduino.h>
+#include "src/setup/board_opts.h"
 
 void net_begin();
 void net_poll();                         // call from loop(): setup mode, STA retries, a pending `net` write
@@ -58,7 +59,17 @@ String board_suffix();                    // "1A2B": the board id's last two byt
 // The board's name (AirPlay receiver, CLI discovery, display): BOARD_NAME_TEXT unless set. 1-20 characters of
 // A-Z a-z 0-9 space . _ -, no space at either end. Takes effect on the next boot.
 String board_name();
+String board_name_saved();  // the one the next boot takes
 bool board_set_name(const String &name);
+
+// The hardware settings (src/setup/board_opts.h), build switches before 0.4.0. NVS "agent": disp, abs, bat, bat_div,
+// oled_lang; a key that is not there is the default (OLED auto, absolute pointer, no battery gauge). net_begin()
+// reads them; safe from any task after that.
+void cfg_opts(board_opts *o);
+int cfg_set_opt(const char *key, const char *value);  // BO_OK (stored), BO_UNKNOWN_KEY or BO_BAD_VALUE
+// The pointer this boot runs with (the stored `abs`, read once; any task, also before setup()). A new `abs` takes
+// effect after a restart: it changes the USB report descriptor.
+bool cfg_abs_active();
 // The web interface (web_server.cpp): its password as a record of src/web/web_auth.h (53 bytes; false: none set),
 // and the page's language ("de", "en"; "": from the browser).
 bool web_pw_get(uint8_t rec[53]);

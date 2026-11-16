@@ -301,6 +301,8 @@ func (s *Server) Do(ctx context.Context, req Request) Response {
 		return s.web(ctx, c, req.Text)
 	case "keyboard":
 		return s.keyboard(ctx, c, req.Text)
+	case "settings":
+		return s.settings(ctx, c, req.Text)
 	case "video":
 		return s.video(ctx, c, req.Text)
 	}

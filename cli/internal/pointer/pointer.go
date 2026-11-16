@@ -34,7 +34,7 @@ const (
 	FreshWait = 3 * time.Second
 )
 
-// An absolute pointer (firmware ABS_POINTER, status "abs":1): `abs X Y` puts it at X/AbsFull, Y/AbsFull of the
+// An absolute pointer (the board setting `abs`, status "abs":1): `abs X Y` puts it at X/AbsFull, Y/AbsFull of the
 // phone screen. Without the button held the board moves in one report and waits before it answers (iOS ignores
 // X/Y in a report that changes a button); with the button held it glides there, `step` units per report. A big
 // step is a flick: system gestures need it (a glided home swipe opened the app switcher, 2026-11-07).

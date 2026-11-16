@@ -14,7 +14,7 @@ Computer zu seinen **Augen** (dem Bildschirm) kommt:
 |---|---|---|
 | Augen (Bildschirm) | AirPlay-Bildschirmsynchronisierung zum Board, von dort zum Computer | **ADB-Screenshots** über WLAN (Kabelloses Debugging, ab Android 11); keine App, kein Root |
 | Hände (Eingabe) | USB-HID vom Board | USB-HID vom selben Board |
-| Zeiger | relative Maus + AssistiveTouch + Kalibrierung | absoluter Zeiger (die Firmware hat ihn als `flash.sh --abs`) |
+| Zeiger | absoluter Zeiger + AssistiveTouch (Standard ab 0.4.0; die relative Maus mit Kalibrierung als Einstellung `abs off`) | absoluter Zeiger (der Standard) |
 
 Der USB-Anschluss des Handys ist vom Board belegt, deshalb muss ADB über WLAN laufen.
 

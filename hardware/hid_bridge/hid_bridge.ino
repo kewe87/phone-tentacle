@@ -5,7 +5,8 @@
 //
 // HID commands (the board answers "ok" or "err <why>"):
 //   ping | pace | home | move <dx> <dy> [speed] | press | release | click
-//   abs <x> <y> [step] (flash.sh --abs builds: 0-32767 across the screen; `home` and `move` still work)
+//   abs <x> <y> [step] (with the absolute pointer, setting `abs`: 0-32767 across the screen; `home` and `move`
+//   still work)
 //   scroll <v> <h> | type <text, UTF-8> | key <combo, e.g. cmd+h, enter> (both by the phone's keyboard layout:
 //   kbd layout [us|de], kbd_layout.h)
 //   homescreen (the consumer-control Home key, "AC Home": iOS goes to the Home Screen, like a keyboard's home key)
@@ -16,8 +17,7 @@
 #include <esp_core_dump.h>
 #include <esp_app_desc.h>
 #include "USB.h"
-#include "USBHIDMouse.h"
-#include "abs_mouse.h"
+#include "hid_pointer.h"
 #include "USBHIDKeyboard.h"
 #include "USBHIDConsumerControl.h"
 #include "tusb.h"
@@ -38,6 +38,8 @@
 #include "ota.h"
 #include "kbd_layout.h"
 #include "web_server.h"
+#include "status_display.h"
+#include "board_settings.h"
 
 const int STEP = 10;      // pointer speed per report while moving (any direction, see pace.h)
 const int ABS_STEP = 245;      // of 32767, per STEP_MS while dragging with `abs`: the relative mouse's speed
@@ -50,11 +52,7 @@ const int HOME_REPORTS = 25;  // per axis
 
 const int WATCHDOG_MS = 8000;  // a hung loop (e.g. blocked USB) reboots the board instead of staying offline
 
-#if ABS_POINTER
-AbsMouse mouse;  // flash.sh --abs: same calls as USBHIDMouse, plus `abs`
-#else
-USBHIDMouse mouse;
-#endif
+HidPointer mouse;  // absolute or relative by the setting `abs` (hid_pointer.h); first, as the mouse always was
 USBHIDKeyboard keyboard;
 USBHIDConsumerControl consumer;
 const uint16_t AC_HOME = 0x0223;  // HID consumer page: AC Home
@@ -134,99 +132,7 @@ const long HOLD_MAX_MS = 60000;
 // and type nothing), and the LED shows it: 0.5 Hz heartbeat = running, solid = stopped. The button, the LED and
 // the button's other jobs (confirming a request, forgetting the Wi-Fi) are in button.h: stop_active().
 
-// ---- Optional 128x64 SSD1306 status display + battery gauge (flash --display) ---------------------
-// Shows name/firmware, net mode + IP, peers, and RUNNING/STOPPED on a cheap I2C OLED. Off by default;
-// needs the OLED wired to the board's I2C pins. Battery needs BATTERY_PIN. See docs/hardware-addons.md.
-#ifndef STATUS_DISPLAY
-#define STATUS_DISPLAY 0
-#endif
-#if STATUS_DISPLAY
-#include <Wire.h>
-#include <U8g2lib.h>
-static U8G2_SSD1306_128X64_NONAME_F_HW_I2C g_oled(U8G2_R0, U8X8_PIN_NONE);
-#ifdef BATTERY_PIN
-#ifndef BATTERY_DIVIDER
-#define BATTERY_DIVIDER 2.0f  // LiPo-to-ADC divider ratio (two equal resistors = 2.0)
-#endif
-static int battery_pct() {
-  float v = analogReadMilliVolts(BATTERY_PIN) / 1000.0f * BATTERY_DIVIDER;  // battery volts
-  int p = (int)((v - 3.3f) / (4.2f - 3.3f) * 100.0f);  // rough LiPo curve: 3.3 V = 0%, 4.2 V = 100%
-  return p < 0 ? 0 : (p > 100 ? 100 : p);
-}
-#endif
-#include "wifi_qr.h"
-// The setup hotspot while it is up: its QR code on the left (dark modules on a lit square, as scanners expect, 2 px
-// per module when it fits), its name, password and address on the right. false: no code to show.
-static bool display_setup_qr() {
-  int n = wifi_qr_size(), s = n && n * 2 <= 60 ? 2 : 1;  // keep at least 2 px of quiet zone on each side
-  if (!n || n * s > 60) return false;
-  int o = (64 - n * s) / 2;
-  g_oled.clearBuffer();
-  g_oled.drawBox(0, 0, 64, 64);
-  g_oled.setDrawColor(0);
-  for (int y = 0; y < n; y++)
-    for (int x = 0; x < n; x++)
-      if (wifi_qr_dark(x, y)) g_oled.drawBox(o + x * s, o + y * s, s, s);
-  g_oled.setDrawColor(1);
-  String ssid = net_ap_ssid(), pass = net_ap_pass(), ip = net_ip();
-  const char *lines[] = {"Wi-Fi setup", ssid.c_str(), "Password:", pass.c_str(), ip.c_str()};
-  const int ys[] = {8, 20, 34, 46, 61};
-  for (int i = 0; i < 5; i++) {  // 5x7 where it fits, else 4x6 (Tentacle-1A2B is 13 characters)
-    g_oled.setFont(u8g2_font_5x7_tr);
-    if (g_oled.getStrWidth(lines[i]) > 128 - 66) g_oled.setFont(u8g2_font_4x6_tr);
-    g_oled.drawStr(66, ys[i], lines[i]);
-  }
-  g_oled.sendBuffer();
-  return true;
-}
-static void display_begin() {
-  Wire.begin();
-  g_oled.begin();
-}
-static void display_poll() {  // ~2 Hz from loop()
-  static uint32_t last = 0;
-  if (millis() - last < 500) return;
-  last = millis();
-  char l1[32], l2[32], l3[32], l4[32];
-  char c1[CF_TEXT], c2[CF_TEXT];
-  uint32_t left = 0;
-  const char *state = stop_active() ? "STOPPED" : "running";
-  if (confirm_open(c1, c2, &left)) {  // a request waits for the BOOT button: what, and how long still
-    snprintf(l1, sizeof l1, "PRESS BOOT TO CONFIRM");
-    snprintf(l2, sizeof l2, "%s", c1);
-    snprintf(l3, sizeof l3, "%s", c2);
-    snprintf(l4, sizeof l4, "%lu s left", (unsigned long)((left + 999) / 1000));
-  } else if (pair_window_open(&left)) {  // BOOT was double-pressed: a computer may ask to pair now
-    snprintf(l1, sizeof l1, "PAIRING OPEN");
-    snprintf(l2, sizeof l2, "On the computer run:");
-    snprintf(l3, sizeof l3, "tentacle pair");
-    snprintf(l4, sizeof l4, "%lu s left", (unsigned long)((left + 999) / 1000));
-  } else if (net_setup_active()) {  // no Wi-Fi stored: how to reach the setup page
-    if (display_setup_qr()) return;
-    snprintf(l1, sizeof l1, "Wi-Fi setup: join");
-    snprintf(l2, sizeof l2, "%s", net_ap_ssid().c_str());
-    snprintf(l3, sizeof l3, "PW %s", net_ap_pass().c_str());
-    snprintf(l4, sizeof l4, "http://%s", net_ip().c_str());
-  } else {
-    snprintf(l1, sizeof l1, "%s %s", board_name().c_str(), FW_VERSION);
-    snprintf(l2, sizeof l2, "net %s %s", net_mode(), net_ip().c_str());
-    if (!net_up()) snprintf(l3, sizeof l3, "no Wi-Fi: BOOT 10s=new");  // the stored network is out of reach, or its password changed
-    else snprintf(l3, sizeof l3, "peers %d  cli %d", net_peers(), (int)cli_up());
-#ifdef BATTERY_PIN
-    snprintf(l4, sizeof l4, "%s  bat %d%%", state, battery_pct());
-#else
-    snprintf(l4, sizeof l4, "%s", state);
-#endif
-  }
-  g_oled.clearBuffer();
-  g_oled.setFont(u8g2_font_6x12_tr);
-  g_oled.drawStr(0, 12, l1);
-  g_oled.drawStr(0, 28, l2);
-  g_oled.drawStr(0, 44, l3);
-  g_oled.drawStr(0, 60, l4);
-  g_oled.sendBuffer();
-}
-#endif
+// ---- Status OLED and battery gauge: status_display.h (settings `display`, `battery`, `lang`) ---------------------
 
 String run(const String &line) {
   int sp = line.indexOf(' ');
@@ -236,12 +142,10 @@ String run(const String &line) {
   sscanf(arg.c_str(), "%ld %ld %ld", &a, &b, &c);
 
   if (cmd == "ping") return "ok";
-#if ABS_POINTER
-  if (cmd == "move" || cmd == "flick") {  // emulated on the absolute mouse; never further than across the screen
-    a = constrain(a, -AbsMouse::MAX_MOVE, AbsMouse::MAX_MOVE);
-    b = constrain(b, -AbsMouse::MAX_MOVE, AbsMouse::MAX_MOVE);
+  if ((cmd == "move" || cmd == "flick") && mouse.absolute()) {  // emulated: never further than across the screen
+    a = constrain(a, -HidPointer::MAX_MOVE, HidPointer::MAX_MOVE);
+    b = constrain(b, -HidPointer::MAX_MOVE, HidPointer::MAX_MOVE);
   }
-#endif
   if (cmd == "pace") return "ok " + String(PACE_VERSION);  // how moves are paced: the CLI recalibrates on a change
   if (stop_active()) return "err stopped (safety button)";  // ping/pace still answer, all input is suppressed
   if (!usbReady()) return "err phone usb asleep (unlock the phone)";
@@ -261,12 +165,12 @@ String run(const String &line) {
     return "ok";
   }
   if (cmd == "move") { movePaced(a, b, constrain(c, 1, 40)); return "ok"; }  // c: speed per report (calibration)
-#if ABS_POINTER
   if (cmd == "abs") {  // absolute position, 0-32767 across the screen; [step]: per report while dragging
+    if (!mouse.absolute()) return "err the absolute pointer is off (config abs on, then restart the board)";
     if (mouse.held()) {
       // Lists need the glide (a jump is a flick, and they fly); system gestures need a flick: a glided home swipe
       // took ~1 s and opened the app switcher instead (2026-11-07). The caller sends a big step for those.
-      long step = sscanf(arg.c_str(), "%*ld %*ld %ld", &c) == 1 ? constrain(c, AbsMouse::MIN_STEP, AbsMouse::FULL) : ABS_STEP;
+      long step = sscanf(arg.c_str(), "%*ld %*ld %ld", &c) == 1 ? constrain(c, HidPointer::MIN_STEP, HidPointer::FULL) : ABS_STEP;
       mouse.glideTo(a, b, step, STEP_MS);
     } else {
       mouse.moveTo(a, b);
@@ -274,7 +178,6 @@ String run(const String &line) {
     }
     return "ok";
   }
-#endif
   if (cmd == "press") { mouse.press(MOUSE_LEFT); holdUntil = 0; return "ok"; }
   if (cmd == "press_for") {  // cy41 #103: a held long press (a 30 s hold used to come up after 5 s)
     if (a < 1 || a > HOLD_MAX_MS) return "err usage: press_for MS (1-60000)";
@@ -453,6 +356,12 @@ String board(const String &line, const String &id, char who) {
     if (who != FROM_CLI) return NEEDS_SESSION;
     return web_pw_request(arg.c_str());
   }
+  // The board's settings (board_settings.h): OLED, pointer, battery, the OLED's language, the name. Only from a
+  // paired computer: USB serial reaches the board without one.
+  if (cmd == "config") {
+    if (who != FROM_CLI) return NEEDS_SESSION;
+    return settings_command(arg);
+  }
   if (cmd == "kbd") {  // the phone's hardware keyboard layout (kbd_layout.h), kept in NVS
     if (arg == "layout") return String("ok ") + kbd_layout_get();
     if (!arg.startsWith("layout ")) return String("err usage: kbd layout [") + kbd_layout_codes() + "]";
@@ -503,11 +412,9 @@ String board(const String &line, const String &id, char who) {
   return drive(line, who);
 }
 
-#if ABS_POINTER
-#define ABS_FIELD "\"abs\":1,"  // in the full and the short status: the CLI sends `abs` and skips calibration
-#else
-#define ABS_FIELD ""
-#endif
+// In the full and the short status with the absolute pointer this boot runs with (setting `abs`): the CLI sends
+// `abs` and skips calibration.
+static const char *absField() { return mouse.absolute() ? "\"abs\":1," : ""; }
 
 // Bytes per second on the mirror data socket, over the last second or more.
 static uint32_t mirrorKbps(uint32_t rx) {
@@ -553,22 +460,24 @@ String statusJson(bool full) {
     int8_t txp = 0;
     esp_wifi_get_max_tx_power(&txp);
     snprintf(s, sizeof s,
-             "{\"fw\":\"%s\"," ABS_FIELD "\"up\":%lu,\"rst\":\"%s\",\"heap\":%u,\"psram\":%u,\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"sta\":%d,"
+             "{\"fw\":\"%s\",%s\"up\":%lu,\"rst\":\"%s\",\"heap\":%u,\"psram\":%u,\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"sta\":%d,"
              "\"ap\":\"%s\",\"kbd\":\"%s\",\"w\":%u,\"h\":%u,\"kbps\":%lu,\"fps\":%.1f,\"idr\":%lu,\"gop\":%lu,\"vbl\":%lu,\"vage\":%lu,\"ovf\":%lu,\"fz\":%d,"
              "\"link\":{\"kbps\":%lu},\"aud\":{\"pk\":%lu,\"seg\":%lu,\"snd\":%d,\"vol\":%.0f,\"drop\":%lu,\"raw\":%d},\"lost\":%lu,"
              "\"hb\":%lu,\"mgap\":%lu,\"rxkbps\":%lu,\"rssi\":%d,\"txp\":%d,\"ps\":\"%s\",\"stall\":%d}",
-             FW_VERSION, millis(), resetReason(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             FW_VERSION, absField(), millis(), resetReason(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM), usbState(), net_mode(), net_ip().c_str(), net_peers(),
              apStates[airplay_state()], kbd_layout_get(), cfg_width(), cfg_height(), (unsigned long)v.kbps, v.fps, (unsigned long)v.idr_ms,
              (unsigned long)v.gop_bytes, (unsigned long)v.backlog, (unsigned long)v.age_ms, (unsigned long)v.overflows, v.frozen,
              (unsigned long)cli_tcp_kbps(), (unsigned long)au.packets, (unsigned long)au.segments, au.sound, au.volume,
              (unsigned long)audio_drops(), cli_audio_wanted(), (unsigned long)v.lost, (unsigned long)mir.heartbeats,
              (unsigned long)mir.max_gap_ms, (unsigned long)mirrorKbps(mir.rx_bytes), rssi, txp, psName(), stall);
+    int bat = battery_percent(), n = strlen(s);  // with the setting `battery`
+    if (bat >= 0 && n > 0 && n < (int)sizeof s - 12) snprintf(s + n - 1, sizeof s - n + 1, ",\"bat\":%d}", bat);
     return s;
   }
   // The short form, should the full one ever outgrow a reply (link.cpp): what the CLI needs to go on.
-  snprintf(s, sizeof s, "{\"fw\":\"%s\"," ABS_FIELD "\"up\":%lu,\"rst\":\"%s\",\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"ap\":\"%s\",\"kbd\":\"%s\",\"fz\":%d,\"stall\":%d,\"lost\":%lu,\"vbl\":%lu}",
-           FW_VERSION, millis(), resetReason(), usbState(), net_mode(), net_ip().c_str(), apStates[airplay_state()],
+  snprintf(s, sizeof s, "{\"fw\":\"%s\",%s\"up\":%lu,\"rst\":\"%s\",\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"ap\":\"%s\",\"kbd\":\"%s\",\"fz\":%d,\"stall\":%d,\"lost\":%lu,\"vbl\":%lu}",
+           FW_VERSION, absField(), millis(), resetReason(), usbState(), net_mode(), net_ip().c_str(), apStates[airplay_state()],
            kbd_layout_get(), v.frozen, stall, (unsigned long)v.lost, (unsigned long)v.backlog);
   return s;
 }
@@ -685,11 +594,10 @@ void setup() {
   dbg_begin(resetReason(), lastCrash.c_str());
 #endif
   button_begin();
-#if STATUS_DISPLAY
-  display_begin();
-#endif
 
-  net_begin();
+  net_begin();       // reads the settings too
+  display_begin();   // the status OLED, if the setting `display` and the I2C bus say so
+  board_log("usb: %s pointer (setting abs)", mouse.absolute() ? "absolute" : "relative");
   if (!video_begin()) board_log("video: no PSRAM for the GOP buffer");
   link_begin();
   cli_begin();
@@ -708,9 +616,7 @@ void setup() {
 void loop() {
   static bool cliLinked = false;
   esp_task_wdt_reset();
-#if STATUS_DISPLAY
-  display_poll();
-#endif
+  display_poll();  // also samples the battery
   net_poll();
   advertiseState();
   ota_poll();

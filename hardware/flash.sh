@@ -8,21 +8,21 @@
 #   --info        no build: ask a running board for its setup Wi-Fi (name + password) over USB serial
 #   --name NAME   the board's name in Screen Mirroring and for the CLI (one word; default Tentacle), shown with the
 #                 board's suffix: "Tentacle 1A2B". The setup Wi-Fi is always Tentacle-1A2B
-#   --abs         absolute mouse instead of the relative one (needs AssistiveTouch; the CLI skips calibration)
 # Safety is on by default: BOOT button = stop (suppresses all HID output) + status LED,
 # and only one station may join the setup Wi-Fi. See docs/hardening.md. To opt out:
 #   --no-safety     build without the stop toggle / status light (BOOT still confirms requests, and held 10 s
 #                   forgets the Wi-Fi; the LED only blinks while a confirmation waits)
 #   --multi-client  let up to 4 stations join the setup Wi-Fi
 #   (--safety / --harden are still accepted; they are the default now)
-#   --display     show status on a 128x64 SSD1306 I2C OLED (-DSTATUS_DISPLAY=1); see docs/hardware-addons.md
-#   --battery-pin N  show LiPo % on the display, read through a 2:1 divider on GPIO N (XIAO D0 = 1)
-# The board is driven by the tentacle CLI over Wi-Fi only (TCP 7202): the firmware has no Bluetooth and needs no
-# library besides the esp32 core (and U8g2 for --display). The build switches live in hid_bridge/build_cfg.h,
-# force-included into every C/C++ file below.
+# One image serves every board: the status OLED (found on I2C by itself), the absolute or relative pointer, the
+# battery pin and the OLED's language are settings on the board (`tentacle device set`, or the web interface's
+# settings), no longer build options. --abs, --display and --battery-pin are accepted and ignored.
+# The board is driven by the tentacle CLI over Wi-Fi only (TCP 7202): the firmware has no Bluetooth and needs the
+# esp32 core and the U8g2 library (`arduino-cli lib install U8g2`). The build switches live in
+# hid_bridge/build_cfg.h, force-included into every C/C++ file below.
 # A running bridge is a TinyUSB device, so it is first kicked into the ROM
 # bootloader with a 1200-baud touch; a blank board is flashed directly.
-# After flashing, the board is asked for its setup Wi-Fi (name + password; also on the OLED of a --display build):
+# After flashing, the board is asked for its setup Wi-Fi (name + password; also on its OLED, if it has one):
 # join it, choose your Wi-Fi on the page that opens, press BOOT on the board. BOOT held 10 s starts over.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -32,7 +32,7 @@ PORT="" DEFS="" BUILD_ONLY=0 INFO=0 NAME_NEXT=0 BAT_NEXT=0
 for a in "$@"; do
   if (( BAT_NEXT )); then
     [[ $a =~ ^[0-9]+$ ]] || { echo "--battery-pin takes a GPIO number"; exit 1; }
-    DEFS+=" -DBATTERY_PIN=$a"; BAT_NEXT=0; continue
+    echo "--battery-pin is a setting now: after flashing, tentacle device set battery $a"; BAT_NEXT=0; continue
   fi
   if (( NAME_NEXT )); then
     [[ $a =~ ^[A-Za-z0-9]+$ ]] || { echo "--name takes one word of letters and digits"; exit 1; }
@@ -45,11 +45,11 @@ for a in "$@"; do
            DEFS+=" -DSTA_FROM_SECRETS=1" ;;
     --build-only) BUILD_ONLY=1 ;;
     --info) INFO=1 ;;
-    --abs) DEFS+=" -DABS_POINTER=1" ;;
+    --abs) echo "--abs is ignored: the absolute pointer is the default (tentacle device set abs on|off)" ;;
     --safety|--harden) ;;  # default now
     --no-safety) DEFS+=" -DSAFETY_CONTROLS=0" ;;
     --multi-client) DEFS+=" -DAP_MAX_CLIENTS=4" ;;
-    --display) DEFS+=" -DSTATUS_DISPLAY=1" ;;
+    --display) echo "--display is ignored: the board finds its OLED by itself (tentacle device set display ...)" ;;
     --battery-pin) BAT_NEXT=1 ;;
     --small-gop) DEFS+=" -DGOP_CAP_KB=256" ;;  # test build: the GOP fills (freezes) within minutes
     *) PORT=$a ;;
