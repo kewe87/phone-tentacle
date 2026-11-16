@@ -37,6 +37,7 @@
 #include "dbg.h"
 #include "ota.h"
 #include "kbd_layout.h"
+#include "web_server.h"
 
 const int STEP = 10;      // pointer speed per report while moving (any direction, see pace.h)
 const int ABS_STEP = 245;      // of 32767, per STEP_MS while dragging with `abs`: the relative mouse's speed
@@ -202,7 +203,7 @@ static void display_poll() {  // ~2 Hz from loop()
     snprintf(l3, sizeof l3, "PW %s", net_ap_pass().c_str());
     snprintf(l4, sizeof l4, "http://%s", net_ip().c_str());
   } else {
-    snprintf(l1, sizeof l1, "%s %s", BOARD_NAME_TEXT, FW_VERSION);
+    snprintf(l1, sizeof l1, "%s %s", board_name().c_str(), FW_VERSION);
     snprintf(l2, sizeof l2, "net %s %s", net_mode(), net_ip().c_str());
     if (!net_up()) snprintf(l3, sizeof l3, "no Wi-Fi: BOOT 10s=new");  // the stored network is out of reach, or its password changed
     else snprintf(l3, sizeof l3, "peers %d  cli %d", net_peers(), (int)cli_up());
@@ -301,6 +302,8 @@ static volatile uint32_t lastInputMs;  // the last HID input the phone took (for
 String drive(const String &line, char who) {
   int sp = line.indexOf(' ');
   String cmd = sp < 0 ? line : line.substring(0, sp);
+  if (who == FROM_CLI)
+    if (const char *busy = web_cli_gate(line.c_str())) return busy;  // the web interface drives (web_server.h)
   String reply = run(line);
   if (reply.startsWith("ok") && cmd != "ping" && cmd != "pace" && cmd != "reset") {
     lastInputMs = millis();
@@ -593,7 +596,7 @@ void logLine(const char *msg) {
 void startAirplay() {
   static airplay_cfg cfg;
   // What the iPhone lists under Screen Mirroring: the same name the CLI sees ("Tentacle 1A2B"), so two boards differ.
-  receiverName = String(BOARD_NAME_TEXT) + " " + board_suffix();
+  receiverName = board_name() + " " + board_suffix();
   cfg.name = receiverName.c_str();
   esp_read_mac(cfg.hwaddr, ESP_MAC_WIFI_STA);
   cfg_ed25519_seed(cfg.ed25519_seed);
@@ -620,7 +623,7 @@ static void advertiseCli() {
   uint8_t m[6];
   cli_board_id(m);
   snprintf(id, sizeof id, "%02x%02x%02x%02x%02x%02x", m[0], m[1], m[2], m[3], m[4], m[5]);
-  snprintf(name, sizeof name, "%s %s", BOARD_NAME_TEXT, board_suffix().c_str());
+  snprintf(name, sizeof name, "%s %s", board_name().c_str(), board_suffix().c_str());
   advertisedPaired = cli_paired();
   snprintf(paired, sizeof paired, "%d", advertisedPaired);
   advertisedOpen = 0;  // advertiseState() sets it once the window is open
@@ -681,6 +684,7 @@ void setup() {
   startAirplay();
   advertiseCli();  // after AirPlay: it starts the mDNS responder
   ota_setup();     // after the log is up: says whether this firmware is new and on trial
+  web_begin();     // the web interface: starts once the board is in a Wi-Fi
   xTaskCreatePinnedToCore(statusTask, "status", 4096, NULL, 1, NULL, 1);
   board_log("boot %s fw %s: free internal heap %u (largest %u), PSRAM %u, reset %s\n", receiverName.c_str(), FW_VERSION,
                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
@@ -740,7 +744,8 @@ void loop() {
     Serial.println(id + " " + board(sp < 0 ? "" : line.substring(sp + 1), id, FROM_SERIAL));
     return;
   }
-  if (!link_pop_cmd(line, 50)) return;
+  if (web_loop()) return;  // the web interface's input, one command at a time between the computer's
+  if (!link_pop_cmd(line, web_wait_ms(50))) return;
   int sp = line.indexOf(' ');
   String id = sp < 0 ? line : line.substring(0, sp);
   String rest = sp < 0 ? "" : line.substring(sp + 1);

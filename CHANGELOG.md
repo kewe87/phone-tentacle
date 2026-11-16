@@ -4,6 +4,20 @@ Tentacle's own history starts here. It is derived from
 [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan (the state of its tag
 `v1.0.6`: board firmware 0.2.5, CLI 0.1.5); that project's history is in its repository.
 
+## 0.3.0 (firmware) – unreleased
+
+Not run on hardware yet.
+
+- **Web interface** at `https://tentacle.local/`: the mirrored screen live (H.264 over a WebSocket, WebCodecs in
+  the browser) and the phone under mouse and keyboard (tap, swipe, long press, scroll, system gestures, text and
+  captured keys). English and German, dark and light. Password set on the setup page only (PBKDF2-SHA256),
+  sign-in lock after 5 wrong tries, one browser at a time, a self-signed ECDSA certificate per board.
+- **Sharing with the CLI:** while the page has control, the CLI's input commands get `err busy: …`; the stop toggle
+  stops both.
+- **Settings page:** board name, keyboard layout, language, Wi-Fi, firmware update with a signed image (the same
+  checks as `tentacle update`), password change confirmed with BOOT.
+- **Port 80** forwards to `https://` once the board is on a Wi-Fi.
+
 ## 0.1.0 – unreleased
 
 Not run on hardware yet.

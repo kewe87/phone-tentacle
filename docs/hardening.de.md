@@ -30,7 +30,8 @@ Die BOOT-Taste ist der Nachweis, dass jemand da ist. Drei Dinge brauchen sie:
 **1. Ein WLAN von der Einrichtungsseite speichern.** Ein Board ohne WLAN öffnet sein eigenes: `Tentacle-XXXX`,
 WPA2, mit einem zufälligen 12-stelligen Passwort, das auf diesem Board erzeugt wird (das Flash-Skript und das
 OLED zeigen es). Es kann immer nur ein Gerät darin sein. Die Auswahl eines Netzes auf der Seite speichert nichts,
-bis innerhalb von 30 s BOOT gedrückt wird. Ist das Board in deinem WLAN, sind Setup-WLAN und Port 80 weg, und sie
+bis innerhalb von 30 s BOOT gedrückt wird. Ist das Board in deinem WLAN, sind Setup-WLAN und Einrichtungsseite weg (Port 80 leitet dann nur
+noch auf die Weboberfläche an 443 weiter), und sie
 kommen nicht von selbst zurück, wenn dein WLAN ausfällt: nur BOOT 10 s halten (oder `tentacle net hotspot` von
 einem gekoppelten Computer) bringt sie zurück.
 

@@ -1,5 +1,6 @@
 // Mirrored H.264 from AirPlay to the computer's session (cli_link.h): keeps the current GOP in PSRAM and sends it
-// on `snap`, or every access unit while `stream on`. Also runs `bench` and computes the video stats.
+// on `snap`, or every access unit while `stream on`. Also runs `bench` and computes the video stats. The web
+// interface's page (web_server.cpp) gets the same stream on a task of its own.
 #pragma once
 #include <Arduino.h>
 
@@ -23,3 +24,15 @@ struct VideoStats {
 };
 VideoStats video_stats();
 String video_debug();              // `vdbg`: the tail and the stream's state, for a frozen screen
+
+// ---- The web interface's stream: the same chunks (src/video/gop.h, vchunk) to one page. Its own task and buffers
+// (512 KB PSRAM), made on first use. room: payload it takes now (0: no page); send: one chunk; gen: bumps with every
+// new page (it starts over with config + GOP). An access unit more than maxLagMs old once in step: it skips to the
+// next IDR (src/web/web_ctl.h, wv_gate).
+bool video_web_begin(size_t (*room)(), bool (*send)(const uint8_t *p, size_t n), uint32_t (*gen)(), size_t payload,
+                     uint32_t maxLagMs);
+void video_web_stream(bool on);
+enum { VW_OK, VW_KEYFRAME, VW_FROZEN };
+// What the page waits for: VW_KEYFRAME the next IDR (none yet, or it fell behind: waitedMs since when), VW_FROZEN
+// the GOP is full and the page was not in step (also the next IDR; restarting Screen Mirroring brings one).
+int video_web_state(uint32_t *waitedMs);

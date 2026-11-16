@@ -2,6 +2,7 @@
 #include "button.h"
 #include "cli_link.h"
 #include "dbg.h"
+#include "web_server.h"
 
 #ifndef STOP_BTN_PIN
 #define STOP_BTN_PIN 0  // BOOT button on XIAO ESP32-S3 / DevKitC (free as an input after boot)
@@ -29,7 +30,7 @@ static void buttonTask(void *) {
   for (;;) {
     uint32_t now = millis();
     bool pressed = digitalRead(STOP_BTN_PIN) == LOW;
-    bool inUse = cli_in_use();  // a computer drives the phone: BOOT is its stop button and nothing else
+    bool inUse = cli_in_use() || web_in_use();  // something drives the phone: BOOT is its stop button and nothing else
     portENTER_CRITICAL(&mux);
     int ev = btn_step(&btn, pressed, now);
 #if TENTACLE_DEBUG
