@@ -197,7 +197,7 @@ jobs:
           V: ${{ needs.firmware.outputs.version }}
         run: |
           mkdir -p dist
-          for t in windows/amd64 linux/amd64 linux/arm64; do
+          for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64; do
             goos=${t%/*} goarch=${t#*/}
             exe=tentacle; [ "$goos" = windows ] && exe=tentacle.exe
             pkg=$(mktemp -d)

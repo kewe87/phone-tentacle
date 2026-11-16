@@ -21,9 +21,10 @@ go build -o tentacle ./cmd/tentacle        # Windows: -o tentacle.exe
 Put the binary on your `PATH`. Screenshots need `ffmpeg` (`winget install Gyan.FFmpeg`, `brew install ffmpeg`,
 `apt install ffmpeg`).
 
-There are no releases yet. Once there are, [`install/install.sh`](install/install.sh) and
-[`install/install.ps1`](install/install.ps1) download a release from GitHub and check its SHA-256, and
-[`npm/`](npm/) wraps the same download; none of them has anything to fetch today.
+There are no published releases yet. Releases are tagged `vX.Y.Z` and built by
+[`release.yml`](../.github/workflows/release.yml); [`install/install.sh`](install/install.sh) and
+[`install/install.ps1`](install/install.ps1) download `tentacle` from the latest one (or `TENTACLE_VERSION`) and
+check it against the release's `SHA256SUMS`; [`npm/`](npm/) does the same for the release `v<package version>`.
 
 ## Pair
 
@@ -177,9 +178,11 @@ make -C hardware/tests/sim      # simulated board (the firmware's cli_link.cpp):
 TENTACLE_SIM=$PWD/hardware/tests/sim/cli_sim tentacle screenshot   # the CLI against the simulator
 ```
 
-Release: push a tag `cli-vX.Y.Z`; `.github/workflows/cli.yml` builds darwin, linux and windows for amd64/arm64
-and uploads the archives with `checksums.txt` to a GitHub release. Installer testing:
-`TENTACLE_ARCHIVE=/path/tentacle_darwin_arm64.tar.gz sh cli/install/install.sh` (checksums.txt next to it).
+Release: one path for firmware, `tentacle` and `tentacle-flash`, a tag `vX.Y.Z` and
+[`release.yml`](../.github/workflows/release.yml) (see [CONTRIBUTING.md](../CONTRIBUTING.md#releasing)).
+`tentacle_<os>_<arch>` for Windows (amd64, arm64; zip) and Linux (amd64, arm64; tar.gz), `tentacle_darwin_universal`
+for macOS; `cli.yml` only builds and tests. Installer testing:
+`TENTACLE_ARCHIVE=/path/tentacle_darwin_universal.tar.gz sh cli/install/install.sh` (SHA256SUMS next to it).
 
 ---
 

@@ -113,6 +113,15 @@ cli/tentacle screenshot
 ohne dass sonst etwas installiert werden muss. Es findet das Board, schreibt und prüft die Firmware und zeigt das
 Setup-WLAN als QR-Code ([Handbuch, „Flashen auf die einfache Art“](docs/manual.de.md#flashen-auf-die-einfache-art-tentacle-flash)).
 
+**Aus einem Release** (noch keins veröffentlicht): Jedes [Release](https://github.com/kewe87/phone-tentacle/releases)
+(Tag `vX.Y.Z`) enthält `tentacle-flash` und `tentacle` für Windows (zip), macOS (universal) und Linux (tar.gz),
+die signierte Firmware und `SHA256SUMS`. Die CLI installiert sich mit geprüfter Prüfsumme:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kewe87/phone-tentacle/main/cli/install/install.sh | sh     # macOS, Linux
+irm https://raw.githubusercontent.com/kewe87/phone-tentacle/main/cli/install/install.ps1 | iex          # Windows PowerShell
+```
+
 Jeder Schritt im Einzelnen, Verdrahtung und Fehlersuche: **[das Handbuch](docs/manual.de.md)**.
 
 <details>

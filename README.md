@@ -113,6 +113,15 @@ cli/tentacle screenshot
 with nothing else to install. It finds the board, writes and checks the firmware and shows the setup Wi-Fi as a
 QR code ([the manual, "Flashing the easy way"](docs/manual.md#flashing-the-easy-way-tentacle-flash)).
 
+**From a release** (none is published yet): each [release](https://github.com/kewe87/phone-tentacle/releases)
+(tag `vX.Y.Z`) holds `tentacle-flash` and `tentacle` for Windows (zip), macOS (universal) and Linux (tar.gz),
+the signed firmware and `SHA256SUMS`. The CLI installs with its checksum checked:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kewe87/phone-tentacle/main/cli/install/install.sh | sh     # macOS, Linux
+irm https://raw.githubusercontent.com/kewe87/phone-tentacle/main/cli/install/install.ps1 | iex          # Windows PowerShell
+```
+
 Every step in detail, wiring and troubleshooting: **[the manual](docs/manual.md)**.
 
 <details>

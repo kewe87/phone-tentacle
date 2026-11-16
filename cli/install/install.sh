@@ -1,8 +1,9 @@
 #!/bin/sh
-# Installs tentacle from this repository's GitHub Releases (tags cli-v*) and checks the archive's SHA-256:
+# Installs tentacle from this repository's GitHub Releases (tags vX.Y.Z, made by .github/workflows/release.yml) and
+# checks the archive against the release's SHA256SUMS:
 #   curl -fsSL https://raw.githubusercontent.com/kewe87/phone-tentacle/main/cli/install/install.sh | sh
-# Env: TENTACLE_VERSION=0.1.0 (default: latest), TENTACLE_BIN_DIR (default ~/.local/bin),
-#      TENTACLE_ARCHIVE=/path/tentacle_<os>_<arch>.tar.gz to install a local build (checksums.txt next to it,
+# Env: TENTACLE_VERSION=0.4.0 (default: the latest release), TENTACLE_BIN_DIR (default ~/.local/bin),
+#      TENTACLE_ARCHIVE=/path/tentacle_<os>_<arch>.tar.gz to install a local build (SHA256SUMS next to it,
 #      or TENTACLE_CHECKSUMS=/path), TENTACLE_FFMPEG=yes|no to answer the ffmpeg question without a prompt.
 set -eu
 
@@ -22,7 +23,8 @@ case $(uname -m) in
   arm64 | aarch64) arch=arm64 ;;
   *) die "unsupported CPU $(uname -m)" ;;
 esac
-name=tentacle_${os}_${arch}.tar.gz
+# macOS: one universal file for Apple silicon and Intel
+if [ "$os" = darwin ]; then name=tentacle_darwin_universal.tar.gz; else name=tentacle_${os}_${arch}.tar.gz; fi
 
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
@@ -35,25 +37,26 @@ trap 'rm -rf "$tmp"' EXIT
 if [ -n "${TENTACLE_ARCHIVE:-}" ]; then
   [ -f "$TENTACLE_ARCHIVE" ] || die "no file $TENTACLE_ARCHIVE"
   cp "$TENTACLE_ARCHIVE" "$tmp/$name"
-  sums=${TENTACLE_CHECKSUMS:-$(dirname "$TENTACLE_ARCHIVE")/checksums.txt}
+  sums=${TENTACLE_CHECKSUMS:-$(dirname "$TENTACLE_ARCHIVE")/SHA256SUMS}
   [ -f "$sums" ] || die "no checksums file $sums"
-  cp "$sums" "$tmp/checksums.txt"
+  cp "$sums" "$tmp/SHA256SUMS"
   say "installing tentacle from $TENTACLE_ARCHIVE"
 else
   version=${TENTACLE_VERSION:-}
-  if [ -z "$version" ]; then
-    version=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=50" |
-      sed -n 's/.*"tag_name": *"cli-v\([^"]*\)".*/\1/p' | head -n 1)
-    [ -n "$version" ] || die "no cli-v* release found on github.com/$REPO"
+  version=${version#v}
+  if [ -n "$version" ]; then
+    url=https://github.com/$REPO/releases/download/v$version
+  else
+    url=https://github.com/$REPO/releases/latest/download # the newest published release
+    version=latest
   fi
-  url=https://github.com/$REPO/releases/download/cli-v$version
   say "downloading tentacle $version ($os/$arch)"
   curl -fsSL -o "$tmp/$name" "$url/$name" || die "download failed: $url/$name"
-  curl -fsSL -o "$tmp/checksums.txt" "$url/checksums.txt" || die "download failed: $url/checksums.txt"
+  curl -fsSL -o "$tmp/SHA256SUMS" "$url/SHA256SUMS" || die "download failed: $url/SHA256SUMS"
 fi
 
-want=$(awk -v n="$name" '$2 == n || $2 == "*"n { print $1 }' "$tmp/checksums.txt")
-[ -n "$want" ] || die "$name is not listed in checksums.txt"
+want=$(awk -v n="$name" '$2 == n || $2 == "*"n { print $1 }' "$tmp/SHA256SUMS")
+[ -n "$want" ] || die "$name is not listed in SHA256SUMS"
 got=$(sha256 "$tmp/$name")
 [ "$want" = "$got" ] || die "checksum mismatch for $name (expected $want, got $got)"
 

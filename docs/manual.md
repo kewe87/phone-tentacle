@@ -68,10 +68,10 @@ yourself with arduino-cli (all build options, see below).
 
 ### Flashing the easy way: tentacle-flash
 
-`tentacle-flash` carries the firmware inside and writes it over USB, without arduino-cli, Python or drivers. There
-is one file per system: `tentacle-flash_windows_amd64.exe`, `tentacle-flash_darwin_universal` (Apple silicon and
-Intel) and `tentacle-flash_linux_amd64` / `_linux_arm64`. There are no published releases yet; until then build
-the files yourself (needs [Go](https://go.dev/dl/) and a firmware build, see [cli/README.md](../cli/README.md#tentacle-flash)).
+`tentacle-flash` carries the firmware inside and writes it over USB, without arduino-cli, Python or drivers. A release
+(tag `vX.Y.Z`) has one archive per system: `tentacle-flash_windows_amd64.zip`, `tentacle-flash_darwin_universal.tar.gz`
+(Apple silicon and Intel) and `tentacle-flash_linux_amd64.tar.gz` / `_linux_arm64.tar.gz`, each with the one file
+`tentacle-flash`. There are no published releases yet; until then build the files yourself (needs [Go](https://go.dev/dl/) and a firmware build, see [cli/README.md](../cli/README.md#tentacle-flash)).
 
 1. Plug the board into the computer with the USB-C data cable.
 2. Double-click `tentacle-flash`. A page opens in the browser (it runs only on this computer, at `127.0.0.1`), in
@@ -246,7 +246,8 @@ go build -o tentacle ./cmd/tentacle          # Windows: -o tentacle.exe
 ```
 
 Put the binary somewhere on your `PATH`. Screenshots need `ffmpeg` (`winget install Gyan.FFmpeg`,
-`brew install ffmpeg`, `apt install ffmpeg`). There are no releases or installers yet.
+`brew install ffmpeg`, `apt install ffmpeg`). Once a release is published, `cli/install/install.sh` (macOS, Linux)
+and `cli/install/install.ps1` (Windows) download `tentacle` from it and check it against its `SHA256SUMS`.
 
 ## 5. Pair the computer
 

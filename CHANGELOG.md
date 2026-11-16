@@ -14,6 +14,9 @@ Not run on GitHub yet.
   signatures against `ota_pubkey.h`, builds `tentacle` (Windows, Linux amd64/arm64, macOS universal) and
   `tentacle-flash` with the signed image inside, and creates a draft release with `SHA256SUMS`. Started by hand it
   is a dry run that keeps the files as workflow artifacts. See CONTRIBUTING.md, "Releasing".
+- **One release path:** `cli.yml` only builds and tests (no more `cli-v*` releases). `install.sh`, `install.ps1` and
+  the npm package fetch `tentacle` from the `vX.Y.Z` releases and check it against `SHA256SUMS`; macOS gets
+  `tentacle_darwin_universal`. The release also carries `tentacle_windows_arm64`.
 
 ## tentacle-flash – unreleased
 
