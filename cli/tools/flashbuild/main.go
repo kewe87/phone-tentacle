@@ -5,9 +5,9 @@
 //	cd cli
 //	go run ./tools/flashbuild --image ../build/hid_bridge.ino.merged.bin --version 0.4.0
 //
-// --image puts that firmware (and IMAGE.sig next to it, if there is one) into the binaries; without it they carry
-// no firmware and need --image or the page's "Own firmware" at run time. Sign the merged image first with
-// `tentacle sign` so the installer can check it.
+// --image puts that firmware into the binaries; without it they carry no firmware and need --image or the page's
+// "Own firmware" at run time. Sign the merged image first with `tentacle sign` (the signature goes into the file)
+// so the installer can check it.
 package main
 
 import (
@@ -23,6 +23,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/kewe87/phone-tentacle/cli/internal/fwsign"
 )
 
 const releaseDir = "internal/flash/release"
@@ -30,7 +32,7 @@ const releaseDir = "internal/flash/release"
 type target struct{ goos, goarch string }
 
 func main() {
-	image := flag.String("image", "", "firmware image to build in (a *.merged.bin; IMAGE.sig is taken along)")
+	image := flag.String("image", "", "firmware image to build in (a *.merged.bin, signed with tentacle sign)")
 	version := flag.String("version", "dev", "version printed by tentacle-flash --version")
 	out := flag.String("out", "dist", "output directory")
 	flag.Parse()
@@ -114,14 +116,16 @@ func embed(image, version string) (func(), error) {
 	if err := os.WriteFile(dst+".gz", gz.Bytes(), 0o644); err != nil {
 		return nil, err
 	}
-	if sig, err := os.ReadFile(image + ".sig"); err == nil {
-		if err := os.WriteFile(dst+".sig", sig, 0o644); err != nil {
+	if _, _, signed := fwsign.Split(data); signed {
+		// the signature is in the image itself (tentacle sign)
+	} else if sig, err := os.ReadFile(image + fwsign.SigExt); err == nil { // an older, separately signed image
+		if err := os.WriteFile(dst+fwsign.SigExt, sig, 0o644); err != nil {
 			os.Remove(dst + ".gz")
 			return nil, err
 		}
-		files = append(files, dst+".sig")
+		files = append(files, dst+fwsign.SigExt)
 	} else {
-		fmt.Printf("warning: %s.sig not found: the built-in firmware is unsigned (sign it with `tentacle sign`)\n", image)
+		fmt.Printf("warning: %s is not signed: the built-in firmware is unsigned (sign it with `tentacle sign`)\n", image)
 	}
 	return func() {
 		for _, f := range files {

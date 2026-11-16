@@ -62,7 +62,7 @@ func (im *Image) Bytes() int {
 	return n
 }
 
-// LoadImage reads an image file and FILE.sig next to it, if there is one.
+// LoadImage reads an image file with the signature in it (or, from older releases, in FILE.sig next to it).
 func LoadImage(path string) (*Image, error) {
 	f, err := readFile(path)
 	if err != nil {
@@ -82,16 +82,23 @@ func readFile(path string) (fileImage, error) {
 	if f.data, err = os.ReadFile(path); err != nil {
 		return f, msg("read_image", err, path, err.Error())
 	}
-	if f.sig, err = fwsign.ReadSig(path); err != nil {
+	if _, _, signed := fwsign.Split(f.data); signed {
+		return f, nil // ParseImage takes the signature out
+	}
+	if f.sig, err = fwsign.ReadSig(path); err != nil { // older releases: FILE.sig next to it
 		return f, msg("bad_sig", err, f.name)
 	}
 	return f, nil
 }
 
-// ParseImage checks an image and cuts it into regions. sig (64 bytes, may be nil) is an Ed25519 signature over
-// the whole file in fwsign's scheme; one that does not match the release key is an error, none is a warning.
+// ParseImage checks an image and cuts it into regions. A signature embedded in data (fwsign.Split) is cut off and
+// used; else sig (64 bytes, may be nil, from a legacy FILE.sig) is the signature. It is an Ed25519 signature over
+// the image in fwsign's scheme; one that does not match the release key is an error, none is a warning.
 func ParseImage(name string, data, sig []byte) (*Image, error) {
 	bad := func(why string) error { return msg("bad_image", nil, name, why) }
+	if img, s, signed := fwsign.Split(data); signed {
+		data, sig = img, s // the trailer is not part of the flash layout
+	}
 	sum := sha256.Sum256(data)
 	im := &Image{Name: name, Size: len(data), SHA256: hex.EncodeToString(sum[:]), Version: fwsign.Version(data)}
 	if sig != nil {

@@ -77,7 +77,7 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
   skill install                    agent skill for Claude Code / Codex
   logs [--board] [--save]          the CLI's log; --board the board's; --save both in one file (e.g. for an issue)
   logs --board --follow            the board's new log lines as they come, until Ctrl+C (debug firmware only)
-  update FILE.bin [--force]        new firmware over Wi-Fi: FILE.bin.sig next to it is sent too. The board takes
+  update FILE.bin [--force]        new firmware over Wi-Fi (the signature is in the file). The board takes
                                    only images signed for it (a debug build unsigned ones too), restarts into it
                                    and goes back to the old one if the new one does not start properly
   debug [dbg] CMD                  a debug build's serial dbg command over Wi-Fi: state, nvs, wifi [scan], reboot
@@ -332,7 +332,7 @@ func (a *App) help(cmd string) {
 		cmd = "intent"
 	case "keygen", "sign": // not in the usage: for whoever builds releases
 		fmt.Fprintln(a.Err, "usage: tentacle keygen DIR                  writes DIR/tentacle-release.key (keep it out of any repository)\n"+
-			"       tentacle sign FILE.bin --key KEYFILE   writes FILE.bin.sig (or TENTACLE_RELEASE_KEY for --key)")
+			"       tentacle sign FILE.bin --key KEYFILE   puts the signature into FILE.bin (or TENTACLE_RELEASE_KEY for --key)")
 		return
 	}
 	var out []string

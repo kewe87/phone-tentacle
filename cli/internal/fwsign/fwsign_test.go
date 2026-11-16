@@ -58,6 +58,66 @@ func TestSignVerifyAndKeyFiles(t *testing.T) {
 	if s, err := ReadSig(p); err != nil || hex.EncodeToString(s) != hex.EncodeToString(sig) {
 		t.Fatal("read .sig")
 	}
+	if img, s, err := Load(p); err != nil || string(img) != string(image) || string(s) != string(sig) {
+		t.Fatal("load with a legacy .sig")
+	}
+}
+
+func TestEmbedSplitAndSignFile(t *testing.T) {
+	_, priv, _ := ed25519.GenerateKey(nil)
+	pub := priv.Public().(ed25519.PublicKey)
+	image := append([]byte{0xE9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0}, []byte("....tentacle-fw:0.4.1;....")...)
+	if img, sig, ok := Split(image); ok || sig != nil || string(img) != string(image) {
+		t.Fatal("an unsigned image split")
+	}
+	if _, _, ok := Split([]byte("x")); ok {
+		t.Fatal("short data")
+	}
+	sig := Sign(priv, image)
+	file := Embed(image, sig)
+	if len(file) != len(image)+TrailerSize || string(file[len(file)-8:]) != "TNTSIG1\n" {
+		t.Fatalf("layout: %d", len(file))
+	}
+	img, s, ok := Split(file)
+	if !ok || string(img) != string(image) || string(s) != string(sig) || !Verify(pub, img, s) {
+		t.Fatal("split")
+	}
+	// the signature covers the image only, as the board checks it
+	sum := sha256.Sum256(image)
+	if !ed25519.Verify(pub, append([]byte("tentacle-fw-v1"), sum[:]...), s) {
+		t.Fatal("message")
+	}
+	// embedding again replaces the trailer
+	sig2 := Sign(priv, append([]byte{}, image...)) // ed25519 is deterministic: same bytes
+	again := Embed(file, sig2)
+	if len(again) != len(file) {
+		t.Fatal("re-embedding stacked a second trailer")
+	}
+
+	dir := t.TempDir()
+	p := filepath.Join(dir, "fw.bin")
+	os.WriteFile(p, image, 0o644)
+	os.WriteFile(p+SigExt, make([]byte, 64), 0o644) // a stale legacy .sig: the embedded one wins
+	for i := 0; i < 2; i++ {                        // signing a signed file replaces its signature
+		if got, err := SignFile(priv, p); err != nil || string(got) != string(image) {
+			t.Fatalf("sign file: %v", err)
+		}
+		data, _ := os.ReadFile(p)
+		if len(data) != len(image)+TrailerSize {
+			t.Fatalf("round %d: %d bytes", i, len(data))
+		}
+	}
+	img, s, err := Load(p)
+	if err != nil || string(img) != string(image) || !Verify(pub, img, s) {
+		t.Fatalf("load: %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
+		t.Fatalf("temporary files left: %v", entries)
+	}
+	os.WriteFile(p, []byte("not an image"), 0o644)
+	if _, err := SignFile(priv, p); err == nil {
+		t.Fatal("signed something that is no image")
+	}
 }
 
 func TestReleaseKeyMatchesFirmware(t *testing.T) {

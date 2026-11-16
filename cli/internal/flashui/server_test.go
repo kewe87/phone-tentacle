@@ -12,6 +12,7 @@ import (
 
 	"github.com/kewe87/phone-tentacle/cli/internal/esprom"
 	"github.com/kewe87/phone-tentacle/cli/internal/flash"
+	"github.com/kewe87/phone-tentacle/cli/internal/fwsign"
 )
 
 // image is a small merged image: bootloader, a partition table with otadata and app0, the app.
@@ -144,8 +145,8 @@ func TestUpload(t *testing.T) {
 	if im := st["image"].(map[string]any); im["version"] != "0.5.0" || im["source"] != "file" {
 		t.Errorf("uploaded image %v", im)
 	}
-	// a signature that does not belong to it
-	call(t, h, "POST", "/api/image?name=own.merged.bin.sig", s.addr, "tok", make([]byte, 64), nil)
+	// a signature inside it that does not belong to it
+	call(t, h, "POST", "/api/image?name=own.merged.bin", s.addr, "tok", fwsign.Embed(img, make([]byte, 64)), nil)
 	_, st = call(t, h, "GET", "/api/state", s.addr, "tok", nil, nil)
 	if st["image"] != nil || st["imageError"].(map[string]any)["code"] != "bad_sig" {
 		t.Errorf("bad signature accepted: %v", st)

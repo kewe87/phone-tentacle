@@ -55,10 +55,10 @@ const T = {
     pwGo: 'Change', pwPress: 'Now press the BOOT button on the board to confirm (30 s).', pwSaved: 'Password changed.',
     pwExpired: 'Not confirmed in time; the old password stays.', pwMismatch: 'The new passwords differ.',
     pwWeak: 'The new password needs 8 to 64 characters.', pwBusy: 'The board is waiting for another confirmation. Try again shortly.',
-    firmware: 'Firmware', fwNow: 'Running {fw}.', otaBin: 'Firmware image (.bin)', otaSig: 'Its signature (.sig)',
+    firmware: 'Firmware', fwNow: 'Running {fw}.', otaBin: 'Firmware image (.bin)',
     otaGo: 'Update', check: 'Check for updates', otaNoVersion: 'This file is not a Tentacle firmware.',
     otaSending: 'Sending {p}%…', otaChecking: 'Checking…', otaDone: 'Done: restarting into {v}. This page reloads in 20 s.',
-    otaNeedSig: 'Choose the .sig file too (a release build takes signed images only).',
+    otaUnsigned: 'This file is not signed (a release build takes signed images only).',
     otaHint: 'After an update the board restarts: start Screen Mirroring on the iPhone again.',
     checkStub: 'Checking for updates is not possible yet: the project\'s repository is private. Get new releases from the maintainer and upload them here.',
     restart: 'Restart the board', restartAsk: 'Restart the board now?', restarting: 'Restarting…', close: 'Close',
@@ -115,10 +115,10 @@ const T = {
     pwGo: 'Ändern', pwPress: 'Jetzt zum Bestätigen den BOOT-Taster am Board drücken (30 s).', pwSaved: 'Passwort geändert.',
     pwExpired: 'Nicht rechtzeitig bestätigt; das alte Passwort bleibt.', pwMismatch: 'Die neuen Passwörter sind verschieden.',
     pwWeak: 'Das neue Passwort braucht 8 bis 64 Zeichen.', pwBusy: 'Das Board wartet auf eine andere Bestätigung. Gleich noch einmal versuchen.',
-    firmware: 'Firmware', fwNow: 'Läuft mit {fw}.', otaBin: 'Firmware-Datei (.bin)', otaSig: 'Ihre Signatur (.sig)',
+    firmware: 'Firmware', fwNow: 'Läuft mit {fw}.', otaBin: 'Firmware-Datei (.bin)',
     otaGo: 'Aktualisieren', check: 'Nach Updates suchen', otaNoVersion: 'Diese Datei ist keine Tentacle-Firmware.',
     otaSending: 'Sende {p} %…', otaChecking: 'Prüfe…', otaDone: 'Fertig: Neustart mit {v}. Diese Seite lädt in 20 s neu.',
-    otaNeedSig: 'Bitte auch die .sig-Datei wählen (ein Release-Build nimmt nur signierte Images).',
+    otaUnsigned: 'Diese Datei ist nicht signiert (ein Release-Build nimmt nur signierte Images).',
     otaHint: 'Nach einem Update startet das Board neu: die Bildschirmsynchronisierung am iPhone danach neu starten.',
     checkStub: 'Die Suche nach Updates geht noch nicht: Das Repository des Projekts ist privat. Neue Versionen vom Maintainer holen und hier hochladen.',
     restart: 'Board neu starten', restartAsk: 'Das Board jetzt neu starten?', restarting: 'Starte neu…', close: 'Schließen',
@@ -570,6 +570,16 @@ $('b-pw').onclick = async () => {
 
 function hex(buf) { return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join(''); }
 
+// A signed file is image || 64-byte Ed25519 signature || "TNTSIG1\n" (tentacle sign, cli/internal/fwsign). The board
+// gets the image and the signature apart, as from `tentacle update`; it never sees the trailer.
+const SIG_MAGIC = 'TNTSIG1\n';
+function splitSigned(all) {
+  const n = all.length - 64 - SIG_MAGIC.length;
+  if (n < 0) return [all, null];
+  for (let k = 0; k < SIG_MAGIC.length; k++) if (all[n + 64 + k] !== SIG_MAGIC.charCodeAt(k)) return [all, null];
+  return [all.slice(0, n), all.slice(n, n + 64)];
+}
+
 // The version as `tentacle update` finds it: "tentacle-fw:X;" somewhere in the image (version.h, FW_MARKER).
 function fwVersion(bytes) {
   const m = [...'tentacle-fw:'].map((c) => c.charCodeAt(0));
@@ -583,15 +593,15 @@ function fwVersion(bytes) {
 }
 
 $('b-ota').onclick = async () => {
-  const msg = $('ota-msg'), bin = $('ota-bin').files[0], sigFile = $('ota-sig').files[0], prog = $('ota-prog');
+  const msg = $('ota-msg'), bin = $('ota-bin').files[0], prog = $('ota-prog');
   if (!bin) return;
   msg.className = 'small';
-  const bytes = new Uint8Array(await bin.arrayBuffer()), v = fwVersion(bytes);
+  const [bytes, sigBytes] = splitSigned(new Uint8Array(await bin.arrayBuffer())), v = fwVersion(bytes);
   if (!v) { msg.textContent = t('otaNoVersion'); return; }
   const sha = hex(await crypto.subtle.digest('SHA-256', bytes));
-  const sig = sigFile ? hex(await sigFile.arrayBuffer()) : '-';
+  const sig = sigBytes ? hex(sigBytes) : '-';
   const b = await api('/api/ota/begin', bytes.length + ' ' + sha + ' ' + sig + ' ' + v);
-  if (!b.reply || !b.reply.startsWith('ok')) { msg.textContent = (b.reply || t('failed')) + (sig === '-' ? ' ' + t('otaNeedSig') : ''); return; }
+  if (!b.reply || !b.reply.startsWith('ok')) { msg.textContent = (b.reply || t('failed')) + (sig === '-' ? ' ' + t('otaUnsigned') : ''); return; }
   prog.hidden = false;
   $('b-ota').disabled = true;
   const ok = await new Promise((done) => {

@@ -84,7 +84,7 @@ Datei `tentacle-flash`. Veröffentlichte Releases gibt es noch nicht; bis dahin 
    Handykamera scannen und mit [Schritt 3](#3-das-board-ins-eigene-wlan-bringen) weitermachen.
 
 Ein gespeichertes WLAN und die Kopplung bleiben auf dem Board; nur die Firmware wird ersetzt. Unter **Erweitert**
-lassen sich der Anschluss wählen, eine eigene `.merged.bin` (mit ihrer `.sig`) installieren, vorher der ganze Flash
+lassen sich der Anschluss wählen, eine eigene `.merged.bin` installieren, vorher der ganze Flash
 löschen (das entfernt auch WLAN und Kopplung), die Chip-Info lesen und das Protokoll ansehen.
 
 Bevor es etwas schreibt, prüft `tentacle-flash`, dass das Board ein ESP32-S3 mit mindestens 8 MB Flash ist (und
@@ -217,7 +217,7 @@ startet sie nicht von selbst wieder: Kontrollzentrum › Bildschirmsynchronisier
 „verbunden“, zuerst Synchronisierung stoppen). Bis dahin schlagen Screenshots fehl oder zeigen ein altes Bild.
 
 - **Nur signierte Firmware.** Das Board nimmt nur Images, die mit dem Tentacle-Release-Schlüssel signiert sind; die
-  Signatur liegt als `FILE.bin.sig` neben dem Image, und `tentacle update` schickt sie mit. Ein unsigniertes oder
+  Signatur steckt in der Image-Datei selbst, und `tentacle update` schickt sie mit. Ein unsigniertes oder
   falsch signiertes Image wird abgelehnt, bevor ein Byte geschrieben ist. Ein `--debug`-Build nimmt auch
   unsignierte Images, so lassen sich eigene Builds davon über WLAN aufspielen; einen selbst gebauten normalen Build
   per USB flashen.
@@ -556,7 +556,7 @@ tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
   skill install                    agent skill for Claude Code / Codex
   logs [--board] [--save]          the CLI's log; --board the board's; --save both in one file (e.g. for an issue)
   logs --board --follow            the board's new log lines as they come, until Ctrl+C (debug firmware only)
-  update FILE.bin [--force]        new firmware over Wi-Fi: FILE.bin.sig next to it is sent too. The board takes
+  update FILE.bin [--force]        new firmware over Wi-Fi (the signature is in the file). The board takes
                                    only images signed for it (a debug build unsigned ones too), restarts into it
                                    and goes back to the old one if the new one does not start properly
   debug [dbg] CMD                  a debug build's serial dbg command over Wi-Fi: state, nvs, wifi [scan], reboot
@@ -644,7 +644,7 @@ die des Browsers), das WLAN, der Fingerabdruck des Zertifikats und die Firmware.
 
 - **Passwort ändern:** das aktuelle, das neue zweimal, dann innerhalb von 30 s BOOT am Board drücken. Ohne diesen
   Druck ändert sich nichts. Vergessen: BOOT 10 s halten und auf der Einrichtungsseite ein neues setzen.
-- **Firmware-Update:** die `.ino.bin` und ihre `.sig` wählen, wie bei `tentacle update`; es gelten dieselben
+- **Firmware-Update:** die `.ino.bin` wählen (eine Datei, die Signatur steckt darin), wie bei `tentacle update`; es gelten dieselben
   Prüfungen (nur signierte Images, außer bei einem `--debug`-Build). Das Board startet damit neu: danach die
   Bildschirmsynchronisierung am iPhone neu starten. „Nach Updates suchen“ kann noch nirgends nachsehen, weil das
   Repository des Projekts privat ist; neue Versionen gibt es beim Maintainer.

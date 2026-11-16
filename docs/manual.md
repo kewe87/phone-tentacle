@@ -82,7 +82,7 @@ yourself with arduino-cli (all build options, see below).
    with the phone's camera and go on with [step 3](#3-put-the-board-on-your-wi-fi).
 
 A stored Wi-Fi and the pairing stay on the board; only the firmware is replaced. Under **Advanced** you can
-choose the port, install your own `.merged.bin` (with its `.sig`), erase the whole flash first (this removes the
+choose the port, install your own `.merged.bin`, erase the whole flash first (this removes the
 Wi-Fi and the pairing too), read the chip info and see the log.
 
 Before it writes anything, `tentacle-flash` checks that the board is an ESP32-S3 with at least 8 MB flash (and
@@ -209,7 +209,7 @@ a new one by itself: Control Center › Screen Mirroring › Tentacle XXXX (if i
 Mirroring first). Until then screenshots fail or show an old picture.
 
 - **Only signed firmware.** The board takes only images signed with the Tentacle release key; the signature is
-  `FILE.bin.sig` next to the image, and `tentacle update` sends it along. An unsigned or wrongly signed image is
+  inside the image file, and `tentacle update` sends it along. An unsigned or wrongly signed image is
   refused before a byte is written. A `--debug` build also takes unsigned images, so you can update your own
   builds of it over Wi-Fi; a normal build you made yourself goes over USB.
 - **Nothing breaks halfway.** The image goes into the board's second firmware slot. If the link drops, you press
@@ -537,7 +537,7 @@ tentacle: see and drive an iPhone through a Tentacle board, over Wi-Fi.
   skill install                    agent skill for Claude Code / Codex
   logs [--board] [--save]          the CLI's log; --board the board's; --save both in one file (e.g. for an issue)
   logs --board --follow            the board's new log lines as they come, until Ctrl+C (debug firmware only)
-  update FILE.bin [--force]        new firmware over Wi-Fi: FILE.bin.sig next to it is sent too. The board takes
+  update FILE.bin [--force]        new firmware over Wi-Fi (the signature is in the file). The board takes
                                    only images signed for it (a debug build unsigned ones too), restarts into it
                                    and goes back to the old one if the new one does not start properly
   debug [dbg] CMD                  a debug build's serial dbg command over Wi-Fi: state, nvs, wifi [scan], reboot
@@ -616,7 +616,7 @@ the certificate's fingerprint and the firmware.
 
 - **Change the password:** the current one, the new one twice, then press BOOT on the board within 30 s. Without
   that press nothing changes. Forgot it: hold BOOT 10 s and set a new one on the setup page.
-- **Firmware update:** choose the `.ino.bin` and its `.sig`, as for `tentacle update`; the same checks apply (only
+- **Firmware update:** choose the `.ino.bin` (one file, the signature is inside), as for `tentacle update`; the same checks apply (only
   signed images, unless it is a `--debug` build). The board restarts into it: then start Screen Mirroring on the
   iPhone again. "Check for updates" cannot look anywhere yet, because the project's repository is private; get
   new releases from the maintainer.

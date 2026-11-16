@@ -126,6 +126,23 @@ func TestUpdateSendsSignedImageAndWaitsForTheBoard(t *testing.T) {
 		t.Fatal("the board got another image")
 	}
 
+	// the signature inside the file (tentacle sign): the board gets the image without the trailer
+	os.Remove(path + fwsign.SigExt)
+	img = fakeImage("0.3.0", 200<<10+7)
+	os.WriteFile(path, fwsign.Embed(img, fwsign.Sign(priv, img)), 0o644)
+	r, data = call(t, c, Request{Cmd: "update", Text: path})
+	if r.Status != "ok" || data["fw"] != "0.3.0" {
+		t.Fatalf("embedded signature: %+v", r)
+	}
+	if !bytes.Equal(ob.image().Bytes(), img) {
+		t.Fatal("the board got the trailer or another image")
+	}
+	// a wrong embedded signature is refused like a wrong .sig
+	os.WriteFile(path, fwsign.Embed(img, make([]byte, 64)), 0o644)
+	if r, _ := call(t, c, Request{Cmd: "update", Text: path}); r.Status != "error" {
+		t.Fatalf("bad embedded signature: %+v", r)
+	}
+
 	// no marker: refused unless --force
 	os.WriteFile(path, fakeImage("x", 5000)[:99], 0o644)
 	if r, _ := call(t, c, Request{Cmd: "update", Text: path}); r.Status != "error" {

@@ -33,8 +33,8 @@ const T = {
     chipLine: '{n} {r} · {f} flash · PSRAM {ps} · MAC {m}', none: 'none',
     errTitle: 'That did not work', retry: 'Try again',
     bootHelp: 'Download mode by hand: hold the BOOT button (B), press and release RESET (R), let go of BOOT. The two tiny buttons sit next to the USB-C socket.',
-    advanced: 'Advanced', port: 'Port', auto: 'Automatic', ownImage: 'Own firmware (.bin, with its .sig if there is one)',
-    ownImageHint: 'Use the .merged.bin of a build. Choose the .bin and its .sig together.',
+    advanced: 'Advanced', port: 'Port', auto: 'Automatic', ownImage: 'Own firmware (.bin)',
+    ownImageHint: 'Use the .merged.bin of a build. A signed file carries its signature inside.',
     useBuiltin: 'Use the built-in firmware again', erase: 'Erase the whole flash first',
     eraseHint: 'Removes the stored Wi-Fi, the pairing and everything else. Only needed when something is badly broken.',
     chipInfo: 'Read chip info', log: 'Log',
@@ -71,8 +71,8 @@ const T = {
     chipLine: '{n} {r} · {f} Flash · PSRAM {ps} · MAC {m}', none: 'keins',
     errTitle: 'Das hat nicht geklappt', retry: 'Noch einmal',
     bootHelp: 'Download-Modus von Hand: BOOT-Taste (B) halten, RESET (R) kurz drücken, BOOT loslassen. Die beiden winzigen Tasten sitzen neben der USB-C-Buchse.',
-    advanced: 'Erweitert', port: 'Anschluss', auto: 'Automatisch', ownImage: 'Eigene Firmware (.bin, mit .sig, falls vorhanden)',
-    ownImageHint: 'Die .merged.bin eines Builds nehmen. .bin und .sig zusammen auswählen.',
+    advanced: 'Erweitert', port: 'Anschluss', auto: 'Automatisch', ownImage: 'Eigene Firmware (.bin)',
+    ownImageHint: 'Die .merged.bin eines Builds nehmen. Eine signierte Datei trägt ihre Signatur in sich.',
     useBuiltin: 'Wieder die eingebaute Firmware nehmen', erase: 'Vorher den ganzen Flash löschen',
     eraseHint: 'Entfernt das gespeicherte WLAN, die Kopplung und alles andere. Nur nötig, wenn etwas gründlich kaputt ist.',
     chipInfo: 'Chip-Info lesen', log: 'Protokoll',
@@ -357,9 +357,9 @@ $('b-builtin').onclick = async () => {
   try { await api('/api/image/reset', {}); } catch (e) { fail(e); }
 };
 $('file').onchange = async () => {
-  const files = [...$('file').files].sort((a, b) => (a.name.endsWith('.sig') ? 1 : 0) - (b.name.endsWith('.sig') ? 1 : 0));
+  const f = $('file').files[0];
   try {
-    for (const f of files) await api('/api/image?name=' + encodeURIComponent(f.name), f, true);
+    if (f) await api('/api/image?name=' + encodeURIComponent(f.name), f, true);
   } catch (e) { fail(e); }
   $('file').value = '';
 };
