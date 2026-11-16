@@ -34,8 +34,13 @@ Releases are built by `.github/workflows/release.yml`; nobody uploads files by h
    `v` + `FW_VERSION`, or the workflow stops.
 4. The workflow creates a **draft** release: `tentacle-fw-X.Y.Z.bin` + `.sig` (network update),
    `tentacle-fw-X.Y.Z.merged.bin` + `.sig` (whole flash image for USB), `tentacle-flash_*` and `tentacle_*` per
-   system (zip for Windows, tar.gz otherwise) and `SHA256SUMS`. Check it, write the notes from the changelog,
-   publish it.
+   system (`tentacle_windows_{amd64,arm64}.zip`, `tentacle_linux_{amd64,arm64}.tar.gz`,
+   `tentacle_darwin_universal.tar.gz`, the same for `tentacle-flash` without Windows arm64) and `SHA256SUMS`. Check
+   it, write the notes from the changelog, publish it. Only then do `cli/install/install.sh` and `install.ps1` see it
+   (they take the latest published release); the npm package downloads the release `v` + its `version` (or
+   `binaryVersion`), so bump `cli/npm/package.json` along with `FW_VERSION`.
+
+This is the only release path: `cli.yml` builds and tests, it uploads nothing (the old `cli-v*` tags are gone).
 
 The release firmware is built without any `-D` switch (only `-include build_cfg.h`); debug builds
 (`TENTACLE_DEBUG=1`) are never released.

@@ -58,10 +58,10 @@ die Firmware selbst mit arduino-cli bauen (alle Build-Optionen, siehe unten).
 
 ### Flashen auf die einfache Art: tentacle-flash
 
-`tentacle-flash` bringt die Firmware mit und schreibt sie über USB, ohne arduino-cli, Python oder Treiber. Es gibt
-eine Datei pro System: `tentacle-flash_windows_amd64.exe`, `tentacle-flash_darwin_universal` (Apple Silicon und
-Intel) und `tentacle-flash_linux_amd64` / `_linux_arm64`. Veröffentlichte Releases gibt es noch nicht; bis dahin
-die Dateien selbst bauen (braucht [Go](https://go.dev/dl/) und einen Firmware-Build, siehe
+`tentacle-flash` bringt die Firmware mit und schreibt sie über USB, ohne arduino-cli, Python oder Treiber. Ein Release
+(Tag `vX.Y.Z`) hat ein Archiv pro System: `tentacle-flash_windows_amd64.zip`, `tentacle-flash_darwin_universal.tar.gz`
+(Apple Silicon und Intel) und `tentacle-flash_linux_amd64.tar.gz` / `_linux_arm64.tar.gz`, jeweils mit der einen
+Datei `tentacle-flash`. Veröffentlichte Releases gibt es noch nicht; bis dahin die Dateien selbst bauen (braucht [Go](https://go.dev/dl/) und einen Firmware-Build, siehe
 [cli/README.md](../cli/README.md#tentacle-flash)).
 
 1. Das Board mit dem USB-C-Datenkabel an den Computer stecken.
@@ -244,8 +244,9 @@ go build -o tentacle ./cmd/tentacle          # Windows: -o tentacle.exe
 ```
 
 Die Datei in einen Ordner legen, der im `PATH` steht. Screenshots brauchen `ffmpeg`
-(`winget install Gyan.FFmpeg`, `brew install ffmpeg`, `apt install ffmpeg`). Releases und Installer gibt es
-noch nicht.
+(`winget install Gyan.FFmpeg`, `brew install ffmpeg`, `apt install ffmpeg`). Sobald ein Release veröffentlicht ist,
+laden `cli/install/install.sh` (macOS, Linux) und `cli/install/install.ps1` (Windows) `tentacle` daraus und prüfen
+es gegen seine `SHA256SUMS`.
 
 ## 5. Den Computer koppeln
 

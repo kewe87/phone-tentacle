@@ -1,9 +1,10 @@
 name: CLI
 
+# Build and test only. Releases (tentacle for every system, with the firmware) come from release.yml (tags vX.Y.Z).
+
 on:
   push:
     branches: [main]
-    tags: ["cli-v*"]
     paths: ["cli/**", ".github/workflows/cli.yml", "hardware/hid_bridge/cli_*", "hardware/hid_bridge/src/cli/**", "hardware/tests/sim/**"]
   pull_request:
     paths: ["cli/**", ".github/workflows/cli.yml", "hardware/hid_bridge/cli_*", "hardware/hid_bridge/src/cli/**", "hardware/tests/sim/**"]
@@ -45,66 +46,3 @@ jobs:
       - name: tentacle-flash, all platforms (pure Go, universal macOS file)
         if: runner.os == 'Linux'
         run: go run ./tools/flashbuild --out "$RUNNER_TEMP/flash"
-
-  build:
-    if: startsWith(github.ref, 'refs/tags/cli-v')
-    needs: test
-    strategy:
-      matrix:
-        include:
-          # darwin builds on macOS with cgo (the system resolver)
-          - { runner: macos-latest, goos: darwin, goarch: arm64, cgo: "1" }
-          - { runner: macos-latest, goos: darwin, goarch: amd64, cgo: "1" }
-          # the rest cross-compiles as pure Go
-          - { runner: ubuntu-latest, goos: linux, goarch: amd64, cgo: "0" }
-          - { runner: ubuntu-latest, goos: linux, goarch: arm64, cgo: "0" }
-          - { runner: ubuntu-latest, goos: windows, goarch: amd64, cgo: "0" }
-          - { runner: ubuntu-latest, goos: windows, goarch: arm64, cgo: "0" }
-    runs-on: ${{ matrix.runner }}
-    defaults:
-      run:
-        working-directory: cli
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: cli/go.mod
-          cache-dependency-path: cli/go.sum
-      - name: Build
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: ${{ matrix.cgo }}
-        run: |
-          version=${GITHUB_REF_NAME#cli-v}
-          exe=tentacle; [ "$GOOS" = windows ] && exe=tentacle.exe
-          mkdir -p dist/pkg
-          go build -trimpath -ldflags "-s -w -X github.com/kewe87/phone-tentacle/cli/internal/app.Version=$version" -o dist/pkg/$exe ./cmd/tentacle
-          name=tentacle_${GOOS}_${GOARCH}
-          if [ "$GOOS" = windows ]; then (cd dist/pkg && zip -q ../$name.zip $exe); else tar -czf dist/$name.tar.gz -C dist/pkg $exe; fi
-          rm -r dist/pkg
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tentacle_${{ matrix.goos }}_${{ matrix.goarch }}
-          path: cli/dist/*
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-      - name: Checksums and upload
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          cd dist
-          sha256sum tentacle_* > checksums.txt
-          cat checksums.txt
-          gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "Tentacle CLI ${GITHUB_REF_NAME#cli-v}" --notes "tentacle CLI ${GITHUB_REF_NAME#cli-v}. Install: see cli/README.md."
-          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber tentacle_* checksums.txt
