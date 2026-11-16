@@ -55,23 +55,15 @@ bool wc_tick(wc_state *c, bool cli_up, uint32_t now) {
   return was != c->control;
 }
 
-void wv_init(wv_gate *g) { memset(g, 0, sizeof *g); }
+void wv_init(wv_watch *w) { memset(w, 0, sizeof *w); }
 
-bool wv_send(wv_gate *g, uint32_t gen, uint32_t ts, bool catching_up, uint32_t now, uint32_t max_lag) {
-  if (g->skipping) {
-    if (gen == g->skip_gen) return false;
-    g->skipping = false;  // a new GOP: start over from its IDR
+int wv_update(wv_watch *w, bool following, bool wait_idr, bool whole, uint32_t now) {
+  int s = following || (!wait_idr && whole) ? VW_OK : wait_idr ? VW_KEYFRAME : VW_FROZEN;
+  if (s != w->state) {
+    w->state = s;
+    w->since = now;
   }
-  if (catching_up || !max_lag || (int32_t)(now - ts) <= (int32_t)max_lag) return true;
-  g->skipping = true;
-  g->skip_gen = gen;
-  g->since = now;
-  return false;
+  return s;
 }
 
-bool wv_waiting(wv_gate *g, uint32_t gen) {
-  if (g->skipping && gen != g->skip_gen) g->skipping = false;
-  return g->skipping;
-}
-
-uint32_t wv_waited(const wv_gate *g, uint32_t now) { return g->skipping ? now - g->since : 0; }
+uint32_t wv_waited(const wv_watch *w, uint32_t now) { return w->state == VW_OK ? 0 : now - w->since; }

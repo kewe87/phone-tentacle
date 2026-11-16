@@ -468,7 +468,7 @@ writes the CLI's log and the board's log into one file; nothing is sent anywhere
 | Taps do nothing, but the CLI says `tap done` | AssistiveTouch is off (*Settings › Accessibility › Touch › AssistiveTouch*). Tip: set it as the Accessibility Shortcut (triple click of the side button) |
 | Typed text has `?` for `_`, or Y and Z swapped | The keyboard layout: `tentacle keyboard layout de` (or `us`), the same as the iPhone's hardware keyboard layout |
 | After `tentacle update` no picture | Start Screen Mirroring again: the board restarted |
-| `video frozen (restart screen mirroring)` | Stop Screen Mirroring and start it again |
+| `video frozen (restart screen mirroring)` | Stop Screen Mirroring and start it again (or turn the phone sideways and back in an app that turns along: a new keyframe) |
 | `waiting for keyframe` | Change something on the phone's screen (open an app), then try again |
 | `calibration: pointer not found on screen …` | AssistiveTouch on? Pointer visible? Screen Mirroring on? Then `tentacle calibrate` |
 | The setup page does not open | Switch mobile data off on the phone for a moment, then open `http://192.168.4.1/` |
@@ -597,8 +597,15 @@ browser with the one under Settings > Network (also in the board's log).
 
 Clicks on the picture need the absolute pointer (setting `abs`, on by default); the page says so when the board runs with the relative one.
 The picture comes as H.264, decoded by the browser (WebCodecs); a page that joins starts at the last keyframe. The
-corner shows how old the frame is. A slow browser skips frames until the next keyframe; the phone's mirroring
-never waits for it.
+corner shows how old the frame is ("catching up" while the browser is behind). A slow browser is never cut off: it
+gets every frame in order and catches up; the phone's mirroring never waits for it. After a dropped connection the
+page goes on where it stopped.
+
+The iPhone sends a keyframe only when mirroring starts and when the picture's format changes, often never in
+between. The board keeps everything since the last keyframe as long as it fits (about 4.5 MB: minutes of a quiet
+screen); then it drops the oldest. A page that is open keeps going; a page opened or reloaded after that can not
+start until the next keyframe and says so. To get one: turn the iPhone sideways and back in an app that turns along
+(Safari, Photos), or restart Screen Mirroring.
 
 **One browser and the computer.** One page at a time: signing in elsewhere, or opening a second tab, ends the
 older one. The page and the CLI share the phone:

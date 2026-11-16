@@ -1,6 +1,5 @@
-// Who drives the phone, the computer's session (CLI) or the web interface, and when the web's video gives up on a
-// browser that falls behind. Plain C state machines for the host tests (web_server.cpp, video_link.cpp). Times are
-// millis(); they may wrap.
+// Who drives the phone, the computer's session (CLI) or the web interface, and what the web's picture waits for.
+// Plain C state machines for the host tests (web_server.cpp, video_link.cpp). Times are millis(); they may wrap.
 //
 // Control (docs/manual.md, "Web interface"): one at a time.
 //   - A page that connects gets control by itself if the computer's session sent no input for WC_CLI_IDLE_MS (or
@@ -40,22 +39,25 @@ void wc_cli_input(wc_state *c, uint32_t now);    // input from the session (it w
 bool wc_tick(wc_state *c, bool cli_up, uint32_t now);
 bool wc_cli_active(const wc_state *c, bool cli_up, uint32_t now);  // the session drove the phone lately
 
-// ---- Video for a browser that falls behind. The web's stream sends every access unit in order (a P-frame needs the
-// one before), catching up from the GOP's IDR when it starts. Once it is in step, an access unit older than max_lag
-// means the browser (or its Wi-Fi) is too slow for the stream: rather than fall further behind, it skips to the next
-// IDR (a new GOP generation). The AirPlay receiver never waits for it either way.
+// ---- What the page's picture waits for. The web's stream sends every access unit of the chain since the last IDR
+// in order (src/video/gop.h: a P-frame needs the one before), however far behind the browser is: it never skips
+// ahead to the next IDR, because iOS may send none for the rest of the mirroring session. A browser that is behind
+// decodes its way back to the live edge.
+//   VW_OK        the stream follows the chain, or is about to start from it (the chain is whole)
+//   VW_KEYFRAME  no IDR yet since mirroring started (or one AU did not fit at all)
+//   VW_FROZEN    the chain lost its start and this page is not on it (it joined late, reconnected without its
+//                decoder, or fell a whole buffer behind): only the next IDR helps (rotating the phone in an app that
+//                turns, or restarting Screen Mirroring)
+enum { VW_OK, VW_KEYFRAME, VW_FROZEN };
 typedef struct {
-  bool skipping;      // waits for a GOP generation other than skip_gen
-  uint32_t skip_gen;
-  uint32_t since;     // when it began to wait
-} wv_gate;
+  int state;
+  uint32_t since;  // when it went into this state
+} wv_watch;
 
-void wv_init(wv_gate *g);
-// Before sending an access unit of GOP generation gen, stamped ts. catching_up: still sending the GOP's backlog
-// (old by nature). False: skip it (and everything of this generation).
-bool wv_send(wv_gate *g, uint32_t gen, uint32_t ts, bool catching_up, uint32_t now, uint32_t max_lag);
-bool wv_waiting(wv_gate *g, uint32_t gen);              // skipping, and generation gen is still the one skipped
-uint32_t wv_waited(const wv_gate *g, uint32_t now);     // ms since it began to wait (0 if not waiting)
+void wv_init(wv_watch *w);
+// following: the page's stream is on the current chain; wait_idr, whole: gop_buf's. Returns the state.
+int wv_update(wv_watch *w, bool following, bool wait_idr, bool whole, uint32_t now);
+uint32_t wv_waited(const wv_watch *w, uint32_t now);  // ms in this state (0 while VW_OK)
 
 #ifdef __cplusplus
 }

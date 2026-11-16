@@ -487,7 +487,7 @@ gesendet. Die Meldungen der CLI sind englisch.
 | Taps bewirken nichts, die CLI meldet aber `tap done` | AssistiveTouch ist aus (*Einstellungen › Bedienungshilfen › Tippen › AssistiveTouch*). Tipp: als Bedienungshilfen-Kurzbefehl einrichten (Dreifachklick auf die Seitentaste) |
 | Getippter Text hat `?` statt `_`, oder Y und Z sind vertauscht | Das Tastaturlayout: `tentacle keyboard layout de` (oder `us`), wie das Hardware-Tastaturlayout des iPhones |
 | Nach `tentacle update` kein Bild | Die Bildschirmsynchronisierung neu starten: das Board hat neu gestartet |
-| `video frozen (restart screen mirroring)` | Die Bildschirmsynchronisierung stoppen und neu starten |
+| `video frozen (restart screen mirroring)` | Die Bildschirmsynchronisierung stoppen und neu starten (oder das iPhone in einer App, die sich mitdreht, quer und wieder hochkant halten: ein neues Schlüsselbild) |
 | `waiting for keyframe` | Am Handy etwas auf dem Bildschirm ändern (eine App öffnen), dann noch einmal |
 | `calibration: pointer not found on screen …` | AssistiveTouch an? Zeiger sichtbar? Bildschirmsynchronisierung an? Dann `tentacle calibrate` |
 | Die Einrichtungsseite öffnet sich nicht | Am Handy kurz die mobilen Daten ausschalten, dann `http://192.168.4.1/` aufrufen |
@@ -625,8 +625,16 @@ im Log des Boards).
 
 Klicks ins Bild brauchen den absoluten Zeiger (Einstellung `abs`, Standard); läuft das Board mit dem relativen, sagt die Seite das.
 Das Bild kommt als H.264 und wird vom Browser dekodiert (WebCodecs); eine Seite, die dazukommt, beginnt beim
-letzten Schlüsselbild. In der Ecke steht, wie alt das Bild ist. Ein langsamer Browser überspringt Bilder bis zum
-nächsten Schlüsselbild; die Spiegelung des iPhones wartet nie auf ihn.
+letzten Schlüsselbild. In der Ecke steht, wie alt das Bild ist („holt auf“, solange der Browser zurückliegt). Ein
+langsamer Browser wird nie abgehängt: Er bekommt jedes Bild der Reihe nach und holt auf; die Spiegelung des iPhones
+wartet nie auf ihn. Nach einer abgerissenen Verbindung macht die Seite dort weiter, wo sie stand.
+
+Das iPhone sendet ein Schlüsselbild nur zu Beginn der Spiegelung und wenn sich das Bildformat ändert, dazwischen oft
+nie. Das Board hält alles seit dem letzten Schlüsselbild, solange es passt (etwa 4,5 MB: Minuten eines ruhigen
+Bildschirms); danach verwirft es das Älteste. Eine offene Seite läuft weiter; eine Seite, die danach geöffnet oder
+neu geladen wird, kann erst mit dem nächsten Schlüsselbild beginnen und sagt das. So kommt eins: das iPhone in einer
+App, die sich mitdreht (Safari, Fotos), quer und wieder hochkant halten, oder die Bildschirmsynchronisierung neu
+starten.
 
 **Ein Browser und der Computer.** Immer nur eine Seite: Eine Anmeldung anderswo oder ein zweiter Tab beendet die
 ältere. Seite und CLI teilen sich das iPhone:

@@ -4,6 +4,27 @@ Tentacle's own history starts here. It is derived from
 [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan (the state of its tag
 `v1.0.6`: board firmware 0.2.5, CLI 0.1.5); that project's history is in its repository.
 
+## Video buffer as a ring, the web picture recovers by itself (firmware) – unreleased
+
+Not run on hardware yet.
+
+- **The board's video buffer no longer freezes.** It keeps the units since the last keyframe in one ring of 4.5 MB
+  (before: a 4 MB GOP that froze when full, plus a 512 KB ring behind it, about 20 s at 8 fps). When it is full it
+  drops the oldest units: a stream that is on the chain goes on, minutes behind if need be; only a stream that has
+  to start from the keyframe (a page opened or reloaded, a snap) waits for the next one. Seen 2026-11-16: "GOP
+  full (1225 AUs, 4073 KB)" 150 s after mirroring started, then the web page stayed black until mirroring restarted.
+- **The web page is never cut off for being slow.** It used to skip to the next keyframe once it was 6 s behind,
+  and a page that had just caught up with a big buffer always was; iOS often sends no keyframe until mirroring
+  restarts, so the picture stayed black. Now it gets every frame in order and catches up (the corner says
+  "catching up"); it draws a few frames a second while it decodes the backlog.
+- **The web page resumes after a dropped connection** (`stream on at IDR_TS N`, as the CLI does): its decoder
+  keeps its place, so it goes on even after the keyframe left the buffer. `stream on at` from the CLI works past
+  that point too.
+- When the picture really can not go on, the page says why and what brings a new keyframe: turn the phone sideways
+  and back in an app that turns along, or restart Screen Mirroring.
+- Status: `ovf` counts chains whose start was dropped, `fz` is 1 when that happened and the session's stream is not
+  on the chain; `vdbg` shows the ring and both streams.
+
 ## Signed firmware in one file – unreleased
 
 - **No more `.sig` files.** `tentacle sign FILE --key K` writes the signature into the file itself (in place,
