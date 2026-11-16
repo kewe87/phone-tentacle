@@ -286,6 +286,8 @@ func (s *Server) Do(ctx context.Context, req Request) Response {
 		return s.update(ctx, c, req)
 	case "debug":
 		return s.debug(ctx, c, req.Text)
+	case "web":
+		return s.web(ctx, c, req.Text)
 	case "keyboard":
 		return s.keyboard(ctx, c, req.Text)
 	case "video":

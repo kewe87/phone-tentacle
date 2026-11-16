@@ -14,4 +14,5 @@ void web_begin();                             // setup(), after net_begin() and 
 bool web_loop();                              // loop(): runs one queued command of the page; true if it did
 uint32_t web_wait_ms(uint32_t most);          // how long loop() may wait for the computer's next command
 const char *web_cli_gate(const char *line);   // a computer's HID command: NULL lets it through, else the reply
-bool web_in_use();                            // the page has control (button.cpp: BOOT is only the stop button)
+const char *web_pw_request(const char *pw);  // `webpw PASSWORD` from a paired computer: stored once BOOT confirms it
+bool web_in_use();                          // the page has control (button.cpp: BOOT is only the stop button)

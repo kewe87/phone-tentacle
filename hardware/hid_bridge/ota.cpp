@@ -206,10 +206,13 @@ String ota_command(const String &arg, const String &id) {
 void ota_poll() {
   if (onTrial) {
     bool net = net_up() || net_setup_active();
+    uint32_t now = millis();
+    // netSince is never in the future: `now | 1` was one ms ahead for an even now, and now - netSince wrapped
+    // around, so a new firmware was kept the moment its network came up (0.3.0, 2026-11-16).
     if (!net) netSince = 0;
-    else if (!netSince) netSince = millis() | 1;
+    else if (!netSince) netSince = now ? now : 1;
     if (cli_up()) keep("a session came up");
-    else if (netSince && millis() - netSince >= TRIAL_NET_MS) keep("the network has been up for 30 s");
+    else if (netSince && (int32_t)(now - netSince) >= (int32_t)TRIAL_NET_MS) keep("the network has been up for 30 s");
     else if (millis() >= TRIAL_GIVEUP_MS) {
       board_log("ota: firmware %s found no network and no session in 2 min: back to the previous one", FW_VERSION);
       link_flush();

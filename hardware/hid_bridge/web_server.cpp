@@ -456,6 +456,25 @@ static esp_err_t onPasswordPost(httpd_req_t *r) {
   return reply(r, "200 OK", "{\"state\":\"wait\"}");
 }
 
+// A new password from a paired computer's session (`webpw`), stored only once BOOT confirms it, as from the page.
+const char *web_pw_request(const char *pw) {
+  if (wa_check_new(pw) != WA_OK) return "err weak: 8 to 64 characters";
+  uint8_t salt[WA_SALT_LEN], made[WA_REC_LEN];
+  esp_fill_random(salt, sizeof salt);
+  if (!wa_make(pw, salt, WA_ITERATIONS, made)) return "err failed";
+  if (!confirm_request(CONFIRM_WEBPW, "New web password?", "from a computer", PW_CONFIRM_MS)) {
+    memset(made, 0, sizeof made);
+    return "err busy: another confirmation is waiting";
+  }
+  lock();
+  memcpy(newRec, made, sizeof made);
+  pwState = PW_WAIT;
+  unlock();
+  memset(made, 0, sizeof made);
+  board_log("web: a new password from a computer waits for the BOOT button");
+  return "ok wait: press BOOT on the board to confirm";
+}
+
 static esp_err_t onPasswordGet(httpd_req_t *r) {
   if (!signedIn(r)) return reply(r, "401 Unauthorized", "{\"err\":\"signin\"}");
   static const char *names[] = {"none", "wait", "saved", "expired"};

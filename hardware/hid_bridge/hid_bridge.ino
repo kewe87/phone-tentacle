@@ -440,6 +440,11 @@ String board(const String &line, const String &id, char who) {
     cli_audio(arg == "raw on");
     return "ok";
   }
+  // A new web password from a paired computer (never logged, see below): waits for a BOOT press like the page's.
+  if (cmd == "webpw") {
+    if (who != FROM_CLI) return NEEDS_SESSION;
+    return web_pw_request(arg.c_str());
+  }
   if (cmd == "kbd") {  // the phone's hardware keyboard layout (kbd_layout.h), kept in NVS
     if (arg == "layout") return String("ok ") + kbd_layout_get();
     if (!arg.startsWith("layout ")) return String("err usage: kbd layout [") + kbd_layout_codes() + "]";
@@ -761,13 +766,13 @@ void loop() {
 #if DEBUG_SERIAL
   // A Wi-Fi password never goes to the serial log: `net {...}` is shown without its argument.
   Serial.printf("[%lu.%03lu] C %s -> %s (%lu ms)\n", started / 1000, started % 1000,
-                rest.startsWith("net ") ? (id + " net {...}").c_str() : line.c_str(), reply.c_str(), millis() - started);
+                rest.startsWith("net ") ? (id + " net {...}").c_str() : rest.startsWith("webpw") ? (id + " webpw ...").c_str() : line.c_str(), reply.c_str(), millis() - started);
 #endif
 #if TENTACLE_DEBUG
   // ... and into the RAM log, for `tentacle logs --board --follow`; not the log's own reads, nor typed text
   if (!rest.startsWith("logs") && !rest.startsWith("dbgout")) {
     char kept[200];
-    String shown = rest.startsWith("net ") ? id + " net {...}" : rest.startsWith("type ") ? id + " type ..." : line;
+    String shown = rest.startsWith("net ") ? id + " net {...}" : rest.startsWith("webpw") ? id + " webpw ..." : rest.startsWith("type ") ? id + " type ..." : line;
     snprintf(kept, sizeof kept, "C %s -> %.80s (%lu ms)", shown.c_str(), reply.c_str(), millis() - started);
     board_log_keep(kept);
   }
