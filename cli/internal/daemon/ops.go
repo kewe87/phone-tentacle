@@ -238,7 +238,7 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 	err := func() error {
 		switch req.Cmd {
 		case "text":
-			p.Layout = c.layout()
+			p.Layout = c.layout(ctx)
 			typed, err := "", error(nil)
 			for rest := pointer.TypeableOn(p.Layout, req.Text); rest != "" && err == nil; {
 				n := min(len(rest), textChunk)
@@ -336,9 +336,23 @@ func (s *Server) io(ctx context.Context, c *Conn, req Request) Response {
 }
 
 // layout is the phone keyboard layout the board types with ("kbd" in its status); "" from a board without layouts.
-func (c *Conn) layout() string {
+// layout is the board's keyboard layout: from its status, else (right after connecting, before the first status)
+// asked from the board, so a fresh daemon does not type a German phone's text on US keys.
+func (c *Conn) layout(ctx context.Context) string {
 	st, _ := c.Status()
-	l, _ := st["kbd"].(string)
+	if l, _ := st["kbd"].(string); l != "" {
+		return l
+	}
+	reply, err := c.Send(ctx, "kbd layout")
+	if err != nil {
+		return "" // a board from before layouts: US
+	}
+	l := strings.TrimSpace(reply)
+	c.mu.Lock()
+	if c.status != nil {
+		c.status["kbd"] = l
+	}
+	c.mu.Unlock()
 	return l
 }
 
