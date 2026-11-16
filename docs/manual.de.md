@@ -567,8 +567,7 @@ im Log des Boards).
 | Mausrad | Scrollt die Liste unter dem Zeiger |
 | Home, App-Umschalter, Kontrollzentrum, Mitteilungen | Die Systemgesten des iPhones |
 | Bildschirmtastatur | Zeigt oder versteckt die Tastatur des iPhones (`key eject`) |
-| Textfeld + Tippen | Tippt den Text im Tastaturlayout des Boards (bei Deutsch auch ä ö ü ß € …); Zeichen ohne Taste werden übersprungen |
-| Tasten erfassen | Jede gedrückte Taste geht ans iPhone, mit Cmd / Strg / Alt / Shift, bis „Erfassen beenden“ |
+| Ins Bild klicken, dann tippen | Live tippen wie bei VNC: jede Taste geht sofort ans iPhone, im Tastaturlayout des Boards (bei Deutsch auch ä ö ü ß €, Akzente über Tottasten), mit Enter, Rücktaste, Entf, Tab, Esc, Pfeilen, Pos1/Ende, Bild auf/ab. Außer am Mac wirkt Strg wie ⌘ (Strg+C, Strg+Z, Strg+A); Strg+V tippt die Zwischenablage dieses Rechners. Ein Klick neben das Bild beendet es; „Live tippen“ schaltet es auch ein und aus |
 
 Klicks ins Bild brauchen den absoluten Zeiger (`flash.sh --abs`); hat die Firmware keinen, sagt die Seite das.
 Das Bild kommt als H.264 und wird vom Browser dekodiert (WebCodecs); eine Seite, die dazukommt, beginnt beim

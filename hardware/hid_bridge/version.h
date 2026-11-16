@@ -1,7 +1,7 @@
 #pragma once
 // The firmware's version, the same scheme as the repo's release tags (v0.1.0). Bump it for every firmware
 // release. The board reports it as `fw` in its status and in its mDNS TXT record.
-#define FW_VERSION "0.3.4"
+#define FW_VERSION "0.3.5"
 // The same in a form `tentacle update` finds in an image file (ota.cpp keeps it in the firmware).
 #define FW_MARKER "tentacle-fw:" FW_VERSION ";"
 

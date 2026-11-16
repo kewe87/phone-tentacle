@@ -171,7 +171,7 @@ Input (the board is the phone's USB mouse and keyboard):
 | `flick DX DY [SPEED]` | Press, move, release with no pause between: a fast swipe. |
 | `scroll V H` | Wheel. |
 | `type TEXT` | Types UTF-8 text with the keys of the phone's hardware keyboard layout (`kbd layout`). `us` types printable ASCII; `de` (Apple's German layout) also `ä ö ü Ä Ö Ü ß § ° € ´`, and `á é í ó ú à è ì ò ù â ê î ô û ñ ã õ` and their capitals by a dead key and the letter (`^`, `` ` `` and `~` too: the dead key, then space). A character the layout has no keys for: `err cannot type on layout de: <the characters>`, and nothing is typed. |
-| `key COMBO` | Keys joined by `+`: `enter esc tab backspace space up down left right cmd ctrl alt shift` or one character, e.g. `cmd+h`. A character is the key that types it on the layout (`cmd+z` on `de` is the key labelled Z; iOS matches shortcuts by the character): characters that need a dead key cannot be in a combo. `key eject` toggles the on-screen keyboard (do not retry it after a lost reply: a second press reverses the first). |
+| `key COMBO` | Keys joined by `+`: `enter esc tab backspace delete home end pageup pagedown space up down left right cmd ctrl alt shift` or one character, e.g. `cmd+h`. A character is the key that types it on the layout (`cmd+z` on `de` is the key labelled Z; iOS matches shortcuts by the character): characters that need a dead key cannot be in a combo. `key eject` toggles the on-screen keyboard (do not retry it after a lost reply: a second press reverses the first). |
 | `homescreen` | The consumer-control Home key: iOS goes to the Home Screen. |
 | `reset` | Releases all buttons, keys and consumer controls in place. Safe to retry. |
 

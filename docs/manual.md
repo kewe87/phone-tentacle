@@ -541,8 +541,7 @@ browser with the one under Settings > Network (also in the board's log).
 | Wheel | Scrolls the list under the pointer |
 | Home, App switcher, Control Center, Notifications | The phone's system gestures |
 | On-screen keyboard | Shows or hides the phone's keyboard (`key eject`) |
-| Text field + Type | Types the text on the board's keyboard layout (on German also ä ö ü ß € ...); characters it has no keys for are skipped |
-| Capture keys | Every key you press goes to the phone, with Cmd / Ctrl / Alt / Shift, until you click "Stop capturing" |
+| Click into the picture, then type | Typing live, like a VNC viewer: every key goes to the phone as you press it, in the board's keyboard layout (on German also ä ö ü ß €, accents from dead keys), with Enter, Backspace, Delete, Tab, Esc, arrows, Home/End, Page up/down. Off a Mac, Ctrl works as ⌘ (Ctrl+C, Ctrl+Z, Ctrl+A); Ctrl+V types this computer's clipboard. A click next to the picture stops it; "Type live" switches it on and off too |
 
 Clicks on the picture need the absolute pointer (`flash.sh --abs`); the page says so when the firmware has none.
 The picture comes as H.264, decoded by the browser (WebCodecs); a page that joins starts at the last keyframe. The

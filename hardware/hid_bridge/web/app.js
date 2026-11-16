@@ -22,8 +22,8 @@ const T = {
     ctlStop: 'Stopped with the BOOT button: no input reaches the phone until it is pressed again.',
     ctlWait: 'Waiting for control…', viewOnly: 'View only', stopped: 'Stopped',
     system: 'Phone', home: 'Home', switcher: 'App switcher', cc: 'Control Center', nc: 'Notifications',
-    kbdToggle: 'On-screen keyboard', capture: 'Capture keys', captureOff: 'Stop capturing',
-    captureHint: 'Keys you press go to the phone (Esc too). Click "Stop capturing" to end.',
+    kbdToggle: 'On-screen keyboard', capture: 'Type live', captureOff: 'Typing live',
+    captureHint: 'Keys go to the phone as you press them. Ctrl works as ⌘ (Ctrl+C, Ctrl+Z ...); Ctrl+V types this computer’s clipboard. Click next to the picture to stop.',
     typing: 'Keyboard', send: 'Type',
     mouseHint: 'Click: tap. Drag: swipe. Right click: long press. Wheel: scroll.',
     stream: 'Stream', airplay: 'AirPlay', frameAge: 'Frame age', rate: 'Rate', phoneUsb: 'Phone (USB)',
@@ -76,8 +76,8 @@ const T = {
     ctlStop: 'Mit dem BOOT-Taster gestoppt: Keine Eingabe erreicht das iPhone, bis er erneut gedrückt wird.',
     ctlWait: 'Warte auf die Steuerung…', viewOnly: 'Nur ansehen', stopped: 'Gestoppt',
     system: 'iPhone', home: 'Home', switcher: 'App-Umschalter', cc: 'Kontrollzentrum', nc: 'Mitteilungen',
-    kbdToggle: 'Bildschirmtastatur', capture: 'Tasten erfassen', captureOff: 'Erfassen beenden',
-    captureHint: 'Gedrückte Tasten gehen ans iPhone (auch Esc). „Erfassen beenden“ klicken zum Aufhören.',
+    kbdToggle: 'Bildschirmtastatur', capture: 'Live tippen', captureOff: 'Tippt live',
+    captureHint: 'Tasten gehen sofort ans iPhone. Strg wirkt wie ⌘ (Strg+C, Strg+Z …); Strg+V tippt die Zwischenablage dieses Rechners. Neben das Bild klicken zum Beenden.',
     typing: 'Tastatur', send: 'Tippen',
     mouseHint: 'Klick: tippen. Ziehen: wischen. Rechtsklick: lange drücken. Mausrad: scrollen.',
     stream: 'Übertragung', airplay: 'AirPlay', frameAge: 'Bildalter', rate: 'Rate', phoneUsb: 'iPhone (USB)',
@@ -404,15 +404,14 @@ cv.addEventListener('wheel', (e) => {
 // ---- Keyboard ----------------------------------------------------------------------------------------------------
 document.querySelectorAll('[data-btn]').forEach((b) => { b.onclick = () => send('btn ' + b.dataset.btn); });
 document.querySelectorAll('[data-key]').forEach((b) => { b.onclick = () => send('key ' + b.dataset.key); });
-$('f-text').onsubmit = (e) => {
-  e.preventDefault();
-  const v = $('t-text').value;
-  if (v) send('text ' + v);
-  $('t-text').value = '';
-};
-
+// Live typing, like a VNC viewer: while the picture has the focus (a click into it), every key goes to the phone.
+// Characters go as text (the board types them in the phone's layout: umlauts, €, accents from dead keys); keys and
+// shortcuts as key combos. Ctrl stands for ⌘ off a Mac (iOS's shortcuts are ⌘ ones); Ctrl+V / ⌘V types this
+// computer's clipboard (the phone's own clipboard is not this one).
 const NAMES = { Enter: 'enter', Escape: 'esc', Tab: 'tab', Backspace: 'backspace', ' ': 'space', ArrowUp: 'up',
-  ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Delete: 'delete', Home: 'home', End: 'end',
+  PageUp: 'pageup', PageDown: 'pagedown' };
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 let capturing = false;
 function setCapture(on) {
   capturing = on;
@@ -420,16 +419,47 @@ function setCapture(on) {
   $('capture').textContent = t(on ? 'captureOff' : 'capture');
   $('capture-hint').hidden = !on;
 }
-$('capture').onclick = () => setCapture(!capturing);
+cv.addEventListener('focus', () => setCapture(true));
+cv.addEventListener('blur', () => setCapture(false));
+$('capture').onmousedown = (e) => e.preventDefault();  // keeps the focus where it is
+$('capture').onclick = () => { if (capturing) cv.blur(); else cv.focus(); };
+// Pasted text in pieces the board takes: one message may turn into at most 8 commands (a word, a space, a newline
+// each; src/web/web_input.c), and its queue holds 32, so the pieces are paced by how long typing them takes.
+let pasting = Promise.resolve();
+function sendText(s) {
+  const parts = s.replace(/\r\n?/g, '\n').match(/[^ \n\t]+|[ \n\t]/g) || [];
+  const enc = new TextEncoder();
+  const chunks = [];
+  let cur = '', cmds = 0;
+  for (const p of parts) {
+    const c = /^[ \n\t]$/.test(p) ? 1 : Math.ceil(enc.encode(p).length / 80);
+    if (cur && (cmds + c > 7 || enc.encode(cur + p).length > 500)) { chunks.push(cur); cur = ''; cmds = 0; }
+    cur += p;
+    cmds += c;
+  }
+  if (cur) chunks.push(cur);
+  for (const ch of chunks) {
+    pasting = pasting.then(() => { send('text ' + ch); return new Promise((r) => setTimeout(r, 60 + 35 * [...ch].length)); });
+  }
+}
+document.addEventListener('paste', (e) => {
+  if (!capturing) return;
+  e.preventDefault();
+  const v = (e.clipboardData || window.clipboardData).getData('text');
+  if (v) sendText(v);
+});
 document.addEventListener('keydown', (e) => {
-  if (!capturing || ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(e.key)) return;
-  const mods = (e.metaKey ? 'cmd+' : '') + (e.ctrlKey ? 'ctrl+' : '') + (e.altKey ? 'alt+' : '');
+  if (!capturing || e.isComposing || ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Dead', 'AltGraph'].includes(e.key)) return;
+  const ctrl = e.ctrlKey && !(e.altKey && !MAC);  // AltGr arrives as Ctrl+Alt on Windows: it types a character
+  const cmd = e.metaKey || (ctrl && !MAC);
+  if (cmd && e.key.toLowerCase() === 'v' && !e.altKey) return;  // the paste event types the clipboard
+  const mods = (cmd ? 'cmd+' : '') + (ctrl && MAC ? 'ctrl+' : '') + (e.altKey && !(e.ctrlKey && !MAC) ? 'alt+' : '');
   let k = NAMES[e.key];
   if (k) {
     if (e.shiftKey) k = 'shift+' + k;
-  } else if (e.key.length === 1 && e.key > ' ' && e.key <= '~') {
+  } else if ([...e.key].length === 1) {
     if (!mods) { e.preventDefault(); send('text ' + e.key); return; }  // the board types it in the phone's layout
-    if (e.key === '+') return;  // can not be part of a combo
+    if (e.key === '+' || e.key > '~') return;  // can not be part of a combo
     k = (e.shiftKey ? 'shift+' : '') + e.key.toLowerCase();
   } else return;
   e.preventDefault();

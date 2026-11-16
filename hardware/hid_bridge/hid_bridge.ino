@@ -80,6 +80,11 @@ uint8_t keyCode(const String &k) {
   if (k == "down") return KEY_DOWN_ARROW;
   if (k == "left") return KEY_LEFT_ARROW;
   if (k == "right") return KEY_RIGHT_ARROW;
+  if (k == "delete") return KEY_DELETE;
+  if (k == "home") return KEY_HOME;
+  if (k == "end") return KEY_END;
+  if (k == "pageup") return KEY_PAGE_UP;
+  if (k == "pagedown") return KEY_PAGE_DOWN;
   if (k == "cmd") return KEY_LEFT_GUI;
   if (k == "ctrl") return KEY_LEFT_CTRL;
   if (k == "alt") return KEY_LEFT_ALT;
