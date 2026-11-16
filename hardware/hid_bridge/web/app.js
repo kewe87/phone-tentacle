@@ -25,7 +25,7 @@ const T = {
     kbdToggle: 'On-screen keyboard', capture: 'Type live', captureOff: 'Typing live',
     captureHint: 'Keys go to the phone as you press them. Ctrl works as ⌘ (Ctrl+C, Ctrl+Z ...); Ctrl+V types this computer’s clipboard. Click next to the picture to stop.',
     typing: 'Keyboard', send: 'Type',
-    mouseHint: 'Click: tap. Drag: swipe. Right click: long press. Wheel: scroll.',
+    mouseHint: 'Click into the picture: tap (takes control). Drag: swipe. Right click: long press. Wheel: swipe up/down.',
     stream: 'Stream', airplay: 'AirPlay', frameAge: 'Frame age', rate: 'Rate', phoneUsb: 'Phone (USB)',
     apIdle: 'Start Screen Mirroring on the iPhone: Control Center > Screen Mirroring > {name}.',
     apConnected: 'AirPlay connected, no picture yet. Start Screen Mirroring: Control Center > Screen Mirroring > {name}.',
@@ -85,7 +85,7 @@ const T = {
     kbdToggle: 'Bildschirmtastatur', capture: 'Live tippen', captureOff: 'Tippt live',
     captureHint: 'Tasten gehen sofort ans iPhone. Strg wirkt wie ⌘ (Strg+C, Strg+Z …); Strg+V tippt die Zwischenablage dieses Rechners. Neben das Bild klicken zum Beenden.',
     typing: 'Tastatur', send: 'Tippen',
-    mouseHint: 'Klick: tippen. Ziehen: wischen. Rechtsklick: lange drücken. Mausrad: scrollen.',
+    mouseHint: 'Klick ins Bild: tippen (übernimmt die Steuerung). Ziehen: wischen. Rechtsklick: lange drücken. Mausrad: hoch/runter wischen.',
     stream: 'Übertragung', airplay: 'AirPlay', frameAge: 'Bildalter', rate: 'Rate', phoneUsb: 'iPhone (USB)',
     apIdle: 'Bildschirmsynchronisierung am iPhone starten: Kontrollzentrum > Bildschirmsynchronisierung > {name}.',
     apConnected: 'AirPlay verbunden, noch kein Bild. Bildschirmsynchronisierung starten: Kontrollzentrum > Bildschirmsynchronisierung > {name}.',
@@ -376,13 +376,36 @@ function overlay(msg, label, fn) {
 
 // ---- Mouse -------------------------------------------------------------------------------------------------------
 const cv = $('cv');
-function at(e) {
+// The picture is drawn with object-fit: contain: scaled to fit the stage, centred, black bars around it.
+function fit() {
   const r = cv.getBoundingClientRect();
-  return Math.round((e.clientX - r.left) * cv.width / r.width) + ' ' + Math.round((e.clientY - r.top) * cv.height / r.height);
+  const s = Math.min(r.width / cv.width, r.height / cv.height) || 1;
+  return { s, x0: r.left + (r.width - cv.width * s) / 2, y0: r.top + (r.height - cv.height * s) / 2 };
+}
+function inside(e) {
+  const f = fit(), x = (e.clientX - f.x0) / f.s, y = (e.clientY - f.y0) / f.s;
+  return x >= 0 && y >= 0 && x < cv.width && y < cv.height;
+}
+function at(e) {
+  const f = fit();
+  const x = Math.min(cv.width - 1, Math.max(0, (e.clientX - f.x0) / f.s));
+  const y = Math.min(cv.height - 1, Math.max(0, (e.clientY - f.y0) / f.s));
+  return Math.round(x) + ' ' + Math.round(y);
+}
+// Input while only watching takes control first: a click into the picture means "I drive now". The board lets the
+// page take it (the session then gets "busy"); the stop toggle still wins.
+function drive() {
+  if (st.ctl) return true;
+  if (st.stop) return false;
+  send('take');
+  st.ctl = true;  // until the next status says otherwise
+  return true;
 }
 let down = false, pendingMove = null, moveTimer = null;
 cv.addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || !st.ctl) return;
+  if (e.button !== 0) return;
+  cv.focus();
+  if (!inside(e) || !drive()) return;
   e.preventDefault();
   cv.setPointerCapture(e.pointerId);
   cv.focus();
@@ -397,13 +420,12 @@ cv.addEventListener('pointermove', (e) => {
 const up = (e) => { if (!down) return; down = false; pendingMove = null; send('up ' + at(e)); };
 cv.addEventListener('pointerup', up);
 cv.addEventListener('pointercancel', up);
-cv.addEventListener('contextmenu', (e) => { e.preventDefault(); if (st.ctl) send('long ' + at(e)); });
+cv.addEventListener('contextmenu', (e) => { e.preventDefault(); if (inside(e) && drive()) send('long ' + at(e)); });
 let wheelSum = 0, wheelAt = '', wheelTimer = null;
 cv.addEventListener('wheel', (e) => {
   e.preventDefault();
-  if (!st.ctl) return;
-  const r = cv.getBoundingClientRect();
-  wheelSum += (e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY) * cv.height / r.height;
+  if (!drive()) return;
+  wheelSum += (e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY) / fit().s;
   wheelAt = at(e);
   clearTimeout(wheelTimer);
   wheelTimer = setTimeout(() => {
@@ -414,8 +436,7 @@ cv.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 // ---- Keyboard ----------------------------------------------------------------------------------------------------
-document.querySelectorAll('[data-btn]').forEach((b) => { b.onclick = () => send('btn ' + b.dataset.btn); });
-document.querySelectorAll('[data-key]').forEach((b) => { b.onclick = () => send('key ' + b.dataset.key); });
+document.querySelectorAll('[data-btn]').forEach((b) => { b.onclick = () => { if (drive()) send('btn ' + b.dataset.btn); }; });
 // Live typing, like a VNC viewer: while the picture has the focus (a click into it), every key goes to the phone.
 // Characters go as text (the board types them in the phone's layout: umlauts, €, accents from dead keys); keys and
 // shortcuts as key combos. Ctrl stands for ⌘ off a Mac (iOS's shortcuts are ⌘ ones); Ctrl+V / ⌘V types this
@@ -461,7 +482,7 @@ document.addEventListener('paste', (e) => {
   if (v) sendText(v);
 });
 document.addEventListener('keydown', (e) => {
-  if (!capturing || e.isComposing || ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Dead', 'AltGraph'].includes(e.key)) return;
+  if (!capturing || !drive() || e.isComposing || ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Dead', 'AltGraph'].includes(e.key)) return;
   const ctrl = e.ctrlKey && !(e.altKey && !MAC);  // AltGr arrives as Ctrl+Alt on Windows: it types a character
   const cmd = e.metaKey || (ctrl && !MAC);
   if (cmd && e.key.toLowerCase() === 'v' && !e.altKey) return;  // the paste event types the clipboard
