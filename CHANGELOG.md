@@ -4,6 +4,17 @@ Tentacle's own history starts here. It is derived from
 [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan (the state of its tag
 `v1.0.6`: board firmware 0.2.5, CLI 0.1.5); that project's history is in its repository.
 
+## Release workflow – unreleased
+
+Not run on GitHub yet.
+
+- **`.github/workflows/release.yml`**: a tag `vX.Y.Z` (equal to `FW_VERSION` in `hardware/hid_bridge/version.h`)
+  builds the release firmware (arduino-cli 1.5.1, esp32 core 3.3.12, only `build_cfg.h`, no debug switch), signs
+  the app image and the merged image with the release key from the secret `TENTACLE_SIGNING_KEY`, checks both
+  signatures against `ota_pubkey.h`, builds `tentacle` (Windows, Linux amd64/arm64, macOS universal) and
+  `tentacle-flash` with the signed image inside, and creates a draft release with `SHA256SUMS`. Started by hand it
+  is a dry run that keeps the files as workflow artifacts. See CONTRIBUTING.md, "Releasing".
+
 ## tentacle-flash – unreleased
 
 Not run on hardware yet.
