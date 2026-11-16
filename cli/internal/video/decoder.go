@@ -10,14 +10,68 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+	"time"
 
 	"golang.org/x/image/bmp"
 )
 
 // Frame is one decoded picture.
 type Frame struct {
-	Img image.Image
-	TS  uint32 // board ms of its AU
+	Img    image.Image
+	TS     uint32 // board ms of its AU: when the board got it from the iPhone (0: unknown)
+	Behind bool   // its AU had newer ones waiting on the board (flag Behind): a replay, not the live edge
+}
+
+// stamp is what a picture inherits from its AU.
+type stamp struct {
+	ts     uint32
+	behind bool
+}
+
+// maxStamps bounds the AUs in flight (the queue holds 8192, ffmpeg's pipe some more).
+const maxStamps = 16384
+
+// stamps pairs pictures with their AUs: ffmpeg gives one picture per AU, in order, but carries no timestamps. It
+// used to keep only the newest 30, but a replayed GOP is written into ffmpeg far ahead of what it has decoded (its
+// pipe holds hundreds of small P-frames): pictures from minutes ago got the time of AUs just written, and a
+// screenshot of the backlog said "39 ms old" (2026-11-16).
+type stamps struct {
+	mu         sync.Mutex
+	q          []stamp
+	wrote, got time.Time // the last AU written, the last picture out
+}
+
+func (s *stamps) push(st stamp, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// ffmpeg had a second with nothing to do and gave nothing for what is left: those AUs gave no picture (ffmpeg
+	// dropped them). Kept, every later picture would carry an older AU's time.
+	if len(s.q) > 0 && now.Sub(s.wrote) > time.Second && now.Sub(s.got) > time.Second {
+		s.q = s.q[:0]
+	}
+	if len(s.q) >= maxStamps {
+		s.q = s.q[1:]
+	}
+	s.q = append(s.q, st)
+	s.wrote = now
+}
+
+func (s *stamps) pop(now time.Time) stamp {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.got = now
+	if len(s.q) == 0 {
+		return stamp{}
+	}
+	st := s.q[0]
+	s.q = s.q[1:]
+	return st
+}
+
+func (s *stamps) len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.q)
 }
 
 // Decoder is an ffmpeg process: Annex-B in, one BMP per picture out. (Not PNG: ffmpeg's PNG encoder holds
@@ -27,7 +81,7 @@ type Decoder struct {
 	in     io.WriteCloser
 	queue  chan AU
 	mu     sync.Mutex
-	ts     []uint32 // board times of AUs in flight, oldest first
+	stamps stamps // AUs in flight, oldest first
 	stderr bytes.Buffer
 	done   chan struct{}
 	err    error
@@ -75,9 +129,9 @@ func NewDecoder(ffmpeg string, onFrame func(Frame)) (*Decoder, error) {
 				break
 			}
 			img, err := bmp.Decode(bytes.NewReader(raw))
-			ts := d.popTS()
+			st := d.stamps.pop(time.Now())
 			if err == nil {
-				onFrame(Frame{Img: img, TS: ts})
+				onFrame(Frame{Img: img, TS: st.ts, Behind: st.behind})
 			}
 		}
 		werr := d.cmd.Wait()
@@ -92,28 +146,12 @@ func NewDecoder(ffmpeg string, onFrame func(Frame)) (*Decoder, error) {
 	return d, nil
 }
 
-func (d *Decoder) popTS() uint32 {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if len(d.ts) == 0 {
-		return 0
-	}
-	t := d.ts[0]
-	d.ts = d.ts[1:]
-	return t
-}
-
 func (d *Decoder) feed() {
 	for au := range d.queue {
 		if au.Flags&(IDR|Config) == Config {
 			// parameter sets only: no picture comes out of it
 		} else {
-			d.mu.Lock()
-			d.ts = append(d.ts, au.TS)
-			if len(d.ts) > 30 { // a picture ffmpeg dropped would skew every later time; never by much
-				d.ts = d.ts[len(d.ts)-30:]
-			}
-			d.mu.Unlock()
+			d.stamps.push(stamp{au.TS, au.Flags&Behind != 0}, time.Now())
 		}
 		// The trailing delimiter ends the AU for ffmpeg's parser, which otherwise holds it until the next one starts.
 		if _, err := d.in.Write(append(au.Data, aud...)); err != nil {
@@ -134,6 +172,9 @@ func (d *Decoder) Write(au AU) bool {
 		return false
 	}
 }
+
+// Pending is how many AUs wait here or in ffmpeg for their picture.
+func (d *Decoder) Pending() int { return len(d.queue) + d.stamps.len() }
 
 // Done is closed when ffmpeg exits; Err says why.
 func (d *Decoder) Done() <-chan struct{} { return d.done }

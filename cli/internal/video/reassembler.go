@@ -11,6 +11,7 @@ const (
 	Config = 8
 	Bench  = 16
 	Snap   = 32
+	Behind = 64 // firmware 0.2.3: newer AUs waited on the board behind this one (a replay of the buffered GOP)
 )
 
 // AU is one access unit, Annex-B.
@@ -29,6 +30,10 @@ type Reassembler struct {
 }
 
 func NewReassembler() *Reassembler { return &Reassembler{expect: -1, waiting: true} }
+
+// Resume is a reassembler for a new session that goes on where the last one stopped (`stream on at`): the
+// decoder has the AUs before, so the first one need not be a CONFIG/IDR.
+func Resume() *Reassembler { return &Reassembler{expect: -1} }
 
 // Lost marks frames lost below the chunk layer (a counter gap on stream V).
 func (r *Reassembler) Lost() {

@@ -65,6 +65,16 @@ void gop_drop_front(gop_buf *g, int k) {
   for (int i = 0; i < g->n; i++) g->aus[i].off -= off;
 }
 
+int gop_resume_at(const gop_buf *g, uint32_t idr_ts, uint32_t n) {
+  if (g->wait_idr || g->frozen || g->n == 0 || !g->aus[0].idr || g->aus[0].ts != idr_ts) return -1;
+  return n >= 1 && n <= (uint32_t)g->n ? (int)n : -1;
+}
+
+size_t gop_bytes_from(const gop_buf *g, int i) {
+  if (i <= 0) return g->used;
+  return i >= g->n ? 0 : g->used - g->aus[i].off;
+}
+
 int gop_push(gop_buf *g, const uint8_t *annexb, size_t len, bool idr, uint32_t ts) {
   if (idr) {
     restart(g);

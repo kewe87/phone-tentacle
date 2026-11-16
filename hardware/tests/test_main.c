@@ -107,9 +107,14 @@ static void test_gop(void) {
   CHECK(gop_push(&g, au, 30, true, 2) == 0);
   CHECK(gop_push(&g, au, 30, false, 3) == 1);
   CHECK(gop_push(&g, au, 30, false, 4) == 2 && g.used == 90);
+  // a stream whose decoder has the first n AUs of this GOP (IDR stamped 2) goes on at n; another GOP's: from scratch
+  CHECK(gop_resume_at(&g, 2, 1) == 1 && gop_resume_at(&g, 2, 3) == 3);
+  CHECK(gop_resume_at(&g, 2, 4) == -1 && gop_resume_at(&g, 2, 0) == -1 && gop_resume_at(&g, 3, 2) == -1);
+  CHECK(gop_bytes_from(&g, 0) == 90 && gop_bytes_from(&g, 1) == 60 && gop_bytes_from(&g, 3) == 0);
   uint32_t gen = g.gen;
   CHECK(gop_push(&g, au, 30, false, 5) == -1 && g.n == 3 && g.frozen && !g.wait_idr && g.overflows == 1);
   CHECK(gop_push(&g, au, 5, false, 6) == -1 && g.n == 3 && g.gen == gen);  // frozen: kept whole, nothing added
+  CHECK(gop_resume_at(&g, 2, 2) == -1);  // frozen: the AUs after it went to the tail
   CHECK(gop_push(&g, au, 10, true, 7) == 0 && !g.frozen && g.gen != gen);
   CHECK(gop_push(&g, arena, sizeof arena + 1, true, 8) == -1 && g.n == 0 && g.wait_idr && g.overflows == 2);
 

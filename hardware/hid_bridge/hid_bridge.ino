@@ -414,7 +414,10 @@ String board(const String &line, const String &id, char who) {
 #endif
   }
   if (cmd == "stream") {
-    if (arg != "on" && arg != "off") return "err usage: stream on|off";
+    unsigned long ts = 0, at = 0;
+    if (arg.startsWith("on at ") && sscanf(arg.c_str() + 6, "%lu %lu", &ts, &at) == 2)  // 0.2.3: resume
+      return video_stream_at(ts, at) ? "ok resumed" : "ok";
+    if (arg != "on" && arg != "off") return "err usage: stream on|off|on at IDR_TS N";
     video_stream(arg == "on");
     return "ok";
   }
@@ -538,22 +541,22 @@ String statusJson(bool full) {
     esp_wifi_get_max_tx_power(&txp);
     snprintf(s, sizeof s,
              "{\"fw\":\"%s\"," ABS_FIELD "\"up\":%lu,\"rst\":\"%s\",\"heap\":%u,\"psram\":%u,\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"sta\":%d,"
-             "\"ap\":\"%s\",\"kbd\":\"%s\",\"w\":%u,\"h\":%u,\"kbps\":%lu,\"fps\":%.1f,\"idr\":%lu,\"gop\":%lu,\"vage\":%lu,\"ovf\":%lu,\"fz\":%d,"
+             "\"ap\":\"%s\",\"kbd\":\"%s\",\"w\":%u,\"h\":%u,\"kbps\":%lu,\"fps\":%.1f,\"idr\":%lu,\"gop\":%lu,\"vbl\":%lu,\"vage\":%lu,\"ovf\":%lu,\"fz\":%d,"
              "\"link\":{\"kbps\":%lu},\"aud\":{\"pk\":%lu,\"seg\":%lu,\"snd\":%d,\"vol\":%.0f,\"drop\":%lu,\"raw\":%d},\"lost\":%lu,"
              "\"hb\":%lu,\"mgap\":%lu,\"rxkbps\":%lu,\"rssi\":%d,\"txp\":%d,\"ps\":\"%s\",\"stall\":%d}",
              FW_VERSION, millis(), resetReason(), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM), usbState(), net_mode(), net_ip().c_str(), net_peers(),
              apStates[airplay_state()], kbd_layout_get(), cfg_width(), cfg_height(), (unsigned long)v.kbps, v.fps, (unsigned long)v.idr_ms,
-             (unsigned long)v.gop_bytes, (unsigned long)v.age_ms, (unsigned long)v.overflows, v.frozen,
+             (unsigned long)v.gop_bytes, (unsigned long)v.backlog, (unsigned long)v.age_ms, (unsigned long)v.overflows, v.frozen,
              (unsigned long)cli_tcp_kbps(), (unsigned long)au.packets, (unsigned long)au.segments, au.sound, au.volume,
              (unsigned long)audio_drops(), cli_audio_wanted(), (unsigned long)v.lost, (unsigned long)mir.heartbeats,
              (unsigned long)mir.max_gap_ms, (unsigned long)mirrorKbps(mir.rx_bytes), rssi, txp, psName(), stall);
     return s;
   }
   // The short form, should the full one ever outgrow a reply (link.cpp): what the CLI needs to go on.
-  snprintf(s, sizeof s, "{\"fw\":\"%s\"," ABS_FIELD "\"up\":%lu,\"rst\":\"%s\",\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"ap\":\"%s\",\"kbd\":\"%s\",\"fz\":%d,\"stall\":%d,\"lost\":%lu}",
+  snprintf(s, sizeof s, "{\"fw\":\"%s\"," ABS_FIELD "\"up\":%lu,\"rst\":\"%s\",\"usb\":\"%s\",\"net\":\"%s\",\"ip\":\"%s\",\"ap\":\"%s\",\"kbd\":\"%s\",\"fz\":%d,\"stall\":%d,\"lost\":%lu,\"vbl\":%lu}",
            FW_VERSION, millis(), resetReason(), usbState(), net_mode(), net_ip().c_str(), apStates[airplay_state()],
-           kbd_layout_get(), v.frozen, stall, (unsigned long)v.lost);
+           kbd_layout_get(), v.frozen, stall, (unsigned long)v.lost, (unsigned long)v.backlog);
   return s;
 }
 

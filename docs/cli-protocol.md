@@ -184,6 +184,7 @@ Board:
 | Command | Behavior |
 |---|---|
 | `stream on\|off` | Sends every access unit as it comes (`V`), starting with the config and the whole GOP since the last IDR. Off again when the session ends. |
+| `stream on at IDR_TS N` | From 0.2.3: the same, but the computer's decoder already has the first N units of the GOP whose IDR is stamped IDR_TS (it kept them across a reconnect): the stream goes on with unit N, without config and IDR. `ok resumed`; `ok` when that GOP is gone (a newer IDR, a reboot, the GOP is frozen, or it has fewer units): then it starts from the config and the IDR as `stream on`. Older boards answer `err usage`; send `stream on` then. |
 | `snap` | Sends the config and the current GOP once (chunks flagged SNAP), then replies `ok`. `err no video (start screen mirroring)`, `err waiting for keyframe` (mirroring is up, no IDR yet), `err video frozen (restart screen mirroring)`. |
 | `bench KB` | Sends KB kilobytes (1-4096) of filler chunks (flag BENCH), then `ok <ms>`. |
 | `res W H`, `fps N` | The mirroring format (default 480 1040, 30 fps; 5 fps before 0.2.2, and a stored 5 becomes 30 once), stored on the board; it applies to the next mirroring session. `tentacle video fps N`, `tentacle video res W H`. |
@@ -218,7 +219,7 @@ Once a second on stream `B`, one JSON object:
 ```json
 {"fw":"0.2.2","up":123456,"rst":"power-on","heap":81234,"psram":6200000,"usb":"ok",
  "net":"sta","ip":"192.168.1.50","sta":1,
- "ap":"streaming","kbd":"de","w":480,"h":1040,"kbps":180,"fps":4.8,"idr":2000,"gop":42000,"vage":120,"ovf":0,"fz":0,
+ "ap":"streaming","kbd":"de","w":480,"h":1040,"kbps":180,"fps":4.8,"idr":2000,"gop":42000,"vbl":0,"vage":120,"ovf":0,"fz":0,
  "link":{"kbps":350},"aud":{"pk":0,"seg":0,"snd":0,"vol":0,"drop":0,"raw":0},"lost":0,
  "hb":512,"mgap":1100,"rxkbps":240,"rssi":-58,"txp":78,"ps":"none","stall":0}
 ```
@@ -228,7 +229,9 @@ Once a second on stream `B`, one JSON object:
 - `net`: `sta` (on a Wi-Fi), `none` (a Wi-Fi is stored but not connected) or `ap` (setup hotspot); `ip`; `sta`:
   stations on the hotspot, or 1/0 connected.
 - `ap`: the AirPlay receiver, `idle|connected|streaming`. `w`, `h`: the mirroring format. `kbps`, `fps`: video
-  coming in; `idr` ms between the last two IDRs; `gop` bytes buffered since the last IDR; `vage` ms since the last
+  coming in; `idr` ms between the last two IDRs; `gop` bytes buffered since the last IDR; `vbl` (0.2.3) bytes of
+  the GOP (and the ring after a full one) this session's stream has not sent yet: above 0 the computer is still
+  catching up with what was buffered, 0 it is at the live edge (also 0 without `stream on`); `vage` ms since the last
   frame; `ovf` times the GOP buffer filled; `fz` 1: the GOP is full and the stream is not going on from it, no new
   picture until the next IDR (restart Screen Mirroring).
 - `lost`: AirPlay video packets the board dropped for good since boot. After one, the frames that follow may not
@@ -246,19 +249,26 @@ Once a second on stream `B`, one JSON object:
 - `aud`: see "Phone audio".
 
 Should the object ever outgrow a reply (514 bytes), the board sends a short form instead:
-`{"fw","up","rst","usb","net","ip","ap","kbd","fz","stall","lost"}`. The CLI merges every status into what it has.
+`{"fw","up","rst","usb","net","ip","ap","kbd","fz","stall","lost","vbl"}`. The CLI merges every status into what it has.
 
 ## Video
 Each chunk: `[seq u16 LE][flags u8][payload]`, payload up to 1380 bytes.
 flags: bit0 START of access unit, bit1 END of access unit, bit2 IDR, bit3 CONFIG (payload is SPS+PPS),
-bit4 BENCH (filler, ignore), bit5 SNAP (part of a `snap` reply).
+bit4 BENCH (filler, ignore), bit5 SNAP (part of a `snap` reply), bit6 BEHIND (0.2.3: when the unit went out, newer
+units were already waiting on the board behind it: the computer is replaying buffered video, not at the live edge;
+the last unit of a replay goes out without it). Older CLIs ignore unknown bits.
 Payload is Annex-B (`00 00 00 01` start codes). On a START chunk the first 4 payload bytes are a u32 LE
-board timestamp (ms), followed by the Annex-B data.
+board timestamp (ms since boot, when the board got the unit from the iPhone), followed by the Annex-B data. With
+`up` from the status (the board's ms when it sent the status) the CLI turns it into the picture's true age: a unit
+replayed from the GOP keeps the time it was taken, not when it reached the computer.
 `seq` increments per chunk; after a gap the CLI waits for the next IDR/CONFIG.
 
 The board keeps the GOP since the last IDR (up to 4 MB) and, once that is full, a ring of the newest units after
 it: a stream that is in step goes on from the ring, anyone else needs the next IDR (`fz`). A new session, and every
-`stream on`, starts from the GOP's IDR. A still screen gets an IDR only rarely, so the GOP can hold minutes.
+`stream on`, starts from the GOP's IDR (unless `stream on at` goes on from a unit the computer has). A still screen
+gets an IDR only rarely, so the GOP can hold minutes: a blinking text cursor at 30 fps adds about 300 KB a minute,
+and over a weak link (50 kbit/s) the replay of minutes takes minutes. Chunks are sent as fast as the TCP link takes
+them (no pacing); BEHIND and `vbl` say how far behind the computer still is.
 
 ## Phone audio
 What the iPhone plays while it mirrors (AirPlay audio). After `listen raw on` the board sends the audio records on

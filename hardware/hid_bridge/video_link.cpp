@@ -40,6 +40,11 @@ struct Sink {
   volatile uint32_t followGen = UINT32_MAX;  // the generation it sends in order, AU after AU
   volatile bool onTail;                      // it goes on from the tail past a frozen GOP
   uint32_t cliGen;                           // the session it streams to (cli_gen()): a new one starts over
+  // `stream on at`: the computer's decoder kept the first resumeN AUs of generation resumeGen across a reconnect;
+  // the stream goes on there instead of resending the GOP from its IDR (minutes over a weak link)
+  volatile bool resume;
+  uint32_t resumeGen;
+  int resumeN;
 };
 
 static gop_buf gop, tail;
@@ -74,25 +79,28 @@ static bool sendAu(Sink &s, const uint8_t *p, size_t n, uint8_t flags, uint32_t 
   return true;
 }
 
-// Copies AU i of generation gen into the sink's scratch; false if the GOP moved on.
-static bool copyAu(Sink &s, uint32_t gen, int i, gop_au *au) {
+// Copies AU i of generation gen into the sink's scratch; false if the GOP moved on. more: newer AUs wait behind it
+// (VF_BEHIND: the computer is still catching up).
+static bool copyAu(Sink &s, uint32_t gen, int i, gop_au *au, bool *more) {
   xSemaphoreTake(lock, portMAX_DELAY);
   bool ok = gop.gen == gen && i < gop.n && gop.aus[i].len <= SCRATCH_CAP;
   if (ok) {
     *au = gop.aus[i];
     memcpy(s.scratch, gop.arena + au->off, au->len);
+    *more = i + 1 < gop.n || (gop.frozen && tailLive && s.onTail && s.tailNext < tail.n);
   }
   xSemaphoreGive(lock);
   return ok;
 }
 
 // Copies tail AU i into the sink's scratch; false if there is none (yet) or the tail broke off.
-static bool copyTail(Sink &s, uint32_t gen, int i, gop_au *au) {
+static bool copyTail(Sink &s, uint32_t gen, int i, gop_au *au, bool *more) {
   xSemaphoreTake(lock, portMAX_DELAY);
   bool ok = gop.gen == gen && tailLive && s.onTail && i < tail.n && tail.aus[i].len <= SCRATCH_CAP;
   if (ok) {
     *au = tail.aus[i];
     memcpy(s.scratch, tail.arena + au->off, au->len);
+    *more = i + 1 < tail.n;
   }
   xSemaphoreGive(lock);
   return ok;
@@ -163,8 +171,10 @@ static String doSnap(Sink &s) {
     bool complete = true;
     for (int i = 0; i < n && complete; i++) {
       gop_au au;
-      complete = copyAu(s, gen, i, &au);
-      if (complete && !sendAu(s, s.scratch, au.len, VF_SNAP | (au.idr ? VF_IDR : 0), au.ts)) return "err video send failed";
+      bool more;
+      complete = copyAu(s, gen, i, &au, &more);
+      uint8_t flags = VF_SNAP | (au.idr ? VF_IDR : 0) | (i + 1 < n ? VF_BEHIND : 0);
+      if (complete && !sendAu(s, s.scratch, au.len, flags, au.ts)) return "err video send failed";
     }
     if (complete) return "ok";  // else a new IDR replaced the GOP mid-send: start over with it
   }
@@ -209,6 +219,15 @@ static void streamStep(Sink &s) {
   size_t cfg_len;
   int n;
   if (!snapshot(&gen, &n, cfg, &cfg_len, &cfg_ts, &s)) return;
+  if (s.resume) {  // the computer's decoder has the first resumeN AUs of this GOP: no config, no IDR again
+    s.resume = false;
+    if (gen == s.resumeGen && s.resumeN <= n) {
+      s.txGen = s.followGen = gen;
+      s.next = s.resumeN;
+      s.tailNext = 0;
+      s.catchingUp = true;
+    }
+  }
   if (gen != s.txGen) {
     s.txGen = gen;
     s.next = s.tailNext = 0;
@@ -216,12 +235,13 @@ static void streamStep(Sink &s) {
     if (!sendAu(s, cfg, cfg_len, VF_CONFIG, cfg_ts)) { s.txGen = UINT32_MAX; unfollow(s, 'c'); return; }
     s.followGen = gen;
   }
-  for (gop_au au; s.next < n && copyAu(s, gen, s.next, &au); s.next++)
-    if (!sendAu(s, s.scratch, au.len, au.idr ? VF_IDR : 0, au.ts)) { s.txGen = UINT32_MAX; unfollow(s, 'g'); return; }
+  bool more;
+  for (gop_au au; s.next < n && copyAu(s, gen, s.next, &au, &more); s.next++)
+    if (!sendAu(s, s.scratch, au.len, (au.idr ? VF_IDR : 0) | (more ? VF_BEHIND : 0), au.ts)) { s.txGen = UINT32_MAX; unfollow(s, 'g'); return; }
   if (s.next < n) return;
   s.catchingUp = false;
-  for (gop_au au; copyTail(s, gen, s.tailNext, &au); s.tailNext++)
-    if (!sendAu(s, s.scratch, au.len, 0, au.ts)) { s.txGen = UINT32_MAX; unfollow(s, 't'); return; }
+  for (gop_au au; copyTail(s, gen, s.tailNext, &au, &more); s.tailNext++)
+    if (!sendAu(s, s.scratch, au.len, more ? VF_BEHIND : 0, au.ts)) { s.txGen = UINT32_MAX; unfollow(s, 't'); return; }
 }
 
 static void videoTask(void *arg) {
@@ -313,7 +333,33 @@ void video_on_au(const uint8_t *au, size_t len, bool idr) {
 static volatile uint32_t lostPackets;
 void video_on_lost() { lostPackets++; }
 
-void video_stream(bool on) { sink.streaming = on; }
+void video_stream(bool on) {
+  sink.resume = false;
+  sink.streaming = on;
+}
+
+bool video_stream_at(uint32_t idrTs, uint32_t n) {
+  xSemaphoreTake(lock, portMAX_DELAY);
+  int at = gop_resume_at(&gop, idrTs, n);
+  if (at >= 0) {
+    sink.resumeGen = gop.gen;
+    sink.resumeN = at;
+  }
+  sink.resume = at >= 0;
+  xSemaphoreGive(lock);
+  sink.streaming = true;
+  return at >= 0;
+}
+
+// Bytes the stream has still to send from the board's buffers (status vbl); must hold lock.
+static uint32_t backlogLocked() {
+  const Sink &s = sink;
+  if (!s.streaming || !cli_up() || gop.wait_idr) return 0;
+  if (s.txGen != gop.gen) return gop.frozen ? 0 : gop.used;  // (re)starting: the whole GOP
+  uint32_t b = gop_bytes_from(&gop, s.next);
+  if (gop.frozen && tailLive && s.onTail) b += gop_bytes_from(&tail, s.tailNext);
+  return b;
+}
 
 static void request(const String &id, bool bench, uint32_t kb) {
   Req r = {{0}, kb, bench};
@@ -329,9 +375,10 @@ VideoStats video_stats() {
   xSemaphoreTake(lock, portMAX_DELAY);
   uint32_t gopBytes = gop.used, overflows = gop.overflows;
   bool frozen = gop.frozen && !(tailLive && sink.onTail);
+  uint32_t backlog = backlogLocked();
   xSemaphoreGive(lock);
   uint32_t age = lastAu ? millis() - lastAu : 0;
-  return {fresh ? statKbps : 0, statIdrMs, gopBytes, age, fresh ? statFps : 0, overflows, frozen, lostPackets};
+  return {fresh ? statKbps : 0, statIdrMs, gopBytes, age, fresh ? statFps : 0, overflows, frozen, lostPackets, backlog};
 }
 
 String video_debug() {

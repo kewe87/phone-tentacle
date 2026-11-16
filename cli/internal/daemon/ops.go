@@ -70,10 +70,73 @@ func videoAlive(st map[string]any, c *Conn) bool {
 
 // shot is a screenshot's frame and what is known of its freshness.
 type shot struct {
-	img      image.Image
-	captured time.Time // when the board got it (local clock)
-	stale    bool      // input went to the phone after it, and no newer picture came within the wait
-	warning  string
+	img        image.Image
+	captured   time.Time      // when the board got it from the iPhone (local clock)
+	stale      bool           // input went to the phone after it, and no newer picture came within the wait
+	catchingUp map[string]any // set while the picture is from the buffered video still being replayed
+	warning    string
+}
+
+// lagLive is how far behind the live edge a replayed picture may be and still count as the current screen: on a
+// link that barely keeps up, frames are always one or two behind.
+const lagLive = time.Second
+
+// catchUp says whether the shown picture is from the video the board buffered since the last keyframe and is still
+// replaying (after a (re)connect: everything since the iPhone's last IDR, minutes on a still screen), not the live
+// edge; with what is known of what is left. Firmware 0.2.3 flags the replayed AUs (BEHIND) and says what it has
+// left (`vbl`); with an older one only AUs piling up at the decoder here tell.
+func (c *Conn) catchUp() (bool, map[string]any) {
+	st, _ := c.Status()
+	c.mu.Lock()
+	behind, captured, queued := c.behind, c.captured, 0
+	if c.dec != nil {
+		queued = c.dec.Pending()
+	}
+	c.mu.Unlock()
+	age := time.Since(captured)
+	if !(behind || queued > 30) || age < lagLive {
+		return false, nil
+	}
+	info := map[string]any{"behind_ms": age.Milliseconds(), "queued_frames": queued}
+	if v, ok := st["vbl"].(float64); ok {
+		info["bytes_left"] = int64(v)
+	}
+	return true, info
+}
+
+// waitLive waits until the picture is at the live edge, or until the deadline.
+func (c *Conn) waitLive(ctx context.Context, deadline time.Time) (bool, map[string]any) {
+	for {
+		catching, info := c.catchUp()
+		if !catching {
+			return false, nil
+		}
+		_, _, _, wake := c.times()
+		left := time.Until(deadline)
+		if left <= 0 {
+			return true, info
+		}
+		t := time.NewTimer(min(left, 500*time.Millisecond)) // the age grows, vbl comes with the status
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return true, info
+		case <-wake:
+		case <-t.C:
+		}
+		t.Stop()
+	}
+}
+
+func catchUpWarning(info map[string]any) string {
+	left := ""
+	if b, ok := info["bytes_left"].(int64); ok && b > 0 {
+		left = fmt.Sprintf(", %d KB still on the board", (b+1023)/1024)
+	}
+	return fmt.Sprintf("NOT the current screen: this picture is %.0f s old. After a (re)connect the board replays all "+
+		"video since the iPhone's last keyframe, and this is still that replay%s. Wait and take another screenshot "+
+		"(it drains at the link's speed), or make the iPhone send a new keyframe at once: stop Screen Mirroring and "+
+		"start it again (Control Center > Screen Mirroring > Tentacle)", float64(info["behind_ms"].(int64))/1000, left)
 }
 
 // frame returns the screen as it is after the last action (like the upstream app's VideoFeed.afterAction). The
@@ -98,9 +161,15 @@ func (s *Server) frame(ctx context.Context, c *Conn, wait time.Duration) (shot, 
 	c.mu.Lock()
 	acted, input, last := c.lastAction, c.lastInput, c.lastShot
 	c.mu.Unlock()
+	deadline := time.Now().Add(wait)
 	var out shot
-	// a picture from after the input began: a tap's change comes after its click, and the pointer is not in it
-	if captured, _, _, _ := c.times(); !input.IsZero() && input.After(captured) && c.Fresh(ctx, input, wait) == nil {
+	// Still replaying the video buffered on the board: what comes first are minutes-old pictures. Wait for the live
+	// edge within the budget, else say so (2026-11-16: a replay of 2.5 MB over 50 kbit/s showed old screens as new).
+	if catching, info := c.waitLive(ctx, deadline); catching {
+		out.stale, out.catchingUp, out.warning = true, info, catchUpWarning(info)
+	} else if captured, _, _, _ := c.times(); !input.IsZero() && input.After(captured) &&
+		// a picture from after the input began: a tap's change comes after its click, and the pointer is not in it
+		c.Fresh(ctx, input, max(time.Until(deadline), 0)) == nil {
 		out.stale = true
 		out.warning = fmt.Sprintf("no new picture since the last input %.1f s ago: the screen may not have changed, "+
 			"or the iPhone stopped sending pictures. If a change was expected, take another screenshot; if it stays "+
@@ -116,7 +185,7 @@ func (s *Server) frame(ctx context.Context, c *Conn, wait time.Duration) (shot, 
 	if num(st["fz"]) == 1 {
 		return shot{}, errFrozen
 	}
-	if num(st["stall"]) == 1 { // the board saw input, heartbeats, and no picture for 15 s (firmware 0.2.2)
+	if num(st["stall"]) == 1 && out.catchingUp == nil { // the board saw input, heartbeats, and no picture for 15 s (firmware 0.2.2)
 		out.stale = true
 		out.warning = "the iPhone sends no pictures any more (mirroring is up, but nothing came for a while after input): " +
 			"restart Screen Mirroring on the iPhone (Control Center > Screen Mirroring > Stop Mirroring, then Tentacle)"
@@ -178,6 +247,9 @@ func (s *Server) screenshot(ctx context.Context, c *Conn, req Request) Response 
 	if !sh.captured.IsZero() {
 		out["age_ms"] = max(time.Since(sh.captured).Milliseconds(), 0)
 		out["captured_at"] = sh.captured.Format(capturedFormat)
+	}
+	if sh.catchingUp != nil {
+		out["catching_up"] = sh.catchingUp
 	}
 	if sh.warning != "" {
 		out["warning"] = sh.warning

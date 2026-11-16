@@ -32,6 +32,7 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
   screenshot [--format png|jpeg] [--quality N] [--scale F] [--max-size N] [--output PATH|-] [--wait MS]
                                    after input, waits up to --wait ms (3000) for a newer picture; the result
                                    says how old the picture is (age_ms) and "stale" with a warning when none came
+                                   or while the board still replays buffered video ("catching_up")
   io tap X,Y [--aim] [--count N]   coordinates are screenshot pixels; --count 2 double-taps
   io longpress X,Y [--duration MS]
   io swipe X1,Y1,X2,Y2
@@ -444,6 +445,7 @@ func (a *App) screenshot(fs *flag.FlagSet, dev *string, args []string) int {
 			AgeMs                *int64 `json:"age_ms"`
 			CapturedAt           string `json:"captured_at"`
 			Stale                bool   `json:"stale"`
+			CatchingUp           any    `json:"catching_up"`
 			Warning              string `json:"warning"`
 		} `json:"data"`
 	}
@@ -475,6 +477,9 @@ func (a *App) screenshot(fs *flag.FlagSet, dev *string, args []string) int {
 		"stale": r.Data.Stale}
 	if r.Data.AgeMs != nil {
 		out["age_ms"], out["captured_at"] = *r.Data.AgeMs, r.Data.CapturedAt
+	}
+	if r.Data.CatchingUp != nil {
+		out["catching_up"] = r.Data.CatchingUp
 	}
 	if r.Data.Warning != "" {
 		out["warning"] = r.Data.Warning

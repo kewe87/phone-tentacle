@@ -10,7 +10,8 @@ extern "C" {
 #endif
 
 // video chunk flags (docs/cli-protocol.md, "Video")
-enum { VF_START = 1, VF_END = 2, VF_IDR = 4, VF_CONFIG = 8, VF_BENCH = 16, VF_SNAP = 32 };
+// VF_BEHIND (0.2.3): more units were waiting on the board behind this one when it went out (a replay, not the live edge)
+enum { VF_START = 1, VF_END = 2, VF_IDR = 4, VF_CONFIG = 8, VF_BENCH = 16, VF_SNAP = 32, VF_BEHIND = 64 };
 #define VCHUNK_HDR 3  // seq u16 LE + flags u8
 #define GOP_CFG_MAX 512
 
@@ -46,6 +47,10 @@ int gop_append_ring(gop_buf *g, const uint8_t *annexb, size_t len, uint32_t ts);
 void gop_clear(gop_buf *g);
 int gop_find(const gop_buf *g, uint32_t ts);  // the last AU with this timestamp, -1 if none
 void gop_drop_front(gop_buf *g, int k);       // forget the oldest k AUs (a plain AU list, e.g. the tail)
+// Where a stream goes on whose decoder already has the first n AUs of the GOP that starts with the IDR stamped
+// idr_ts: n, or -1 if that GOP is gone (a newer IDR, a reboot), frozen, or shorter.
+int gop_resume_at(const gop_buf *g, uint32_t idr_ts, uint32_t n);
+size_t gop_bytes_from(const gop_buf *g, int i);  // bytes of AU i and all after it (0 past the end)
 // True if the Annex-B data contains an IDR slice (NAL type 5).
 bool annexb_has_idr(const uint8_t *p, size_t len);
 // Rewrites AVCC (4-byte big-endian length prefixes) in place into Annex-B start codes.

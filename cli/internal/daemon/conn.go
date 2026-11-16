@@ -43,12 +43,20 @@ type Conn struct {
 	ffmpeg    string
 	frame     image.Image
 	frameHash uint64
-	captured  time.Time  // when the board got the shown frame (local clock)
+	captured  time.Time  // when the board got the shown frame from the iPhone (local clock)
+	frameTS   uint32     // the same in board ms (0: unknown), to place it again once the clock is known better
+	behind    bool       // the board had newer AUs behind the shown frame's: a replay, not the live edge (0.2.3)
+	boardUp   uint32     // the latest `up`: a smaller one is a reboot, whose clock starts over
 	updated   time.Time  // when it was decoded here
 	changed   time.Time  // when the shown image last differed from the one before
 	offset    *int64     // local ms − board ms, the smallest seen (≈ the link latency)
 	config    []byte     // last SPS/PPS, for screencapture
 	gop       []video.AU // AUs since the last IDR, so a new screencapture starts at once
+	// The decoder's place, for `stream on at` after a reconnect: it has the first inGOP AUs of the GOP whose IDR is
+	// stamped idrTS, none lost (inStep). The board then goes on from there instead of replaying the GOP from its IDR.
+	idrTS     uint32
+	inGOP     uint32
+	inStep    bool
 	subs      map[chan video.AU]bool
 	frameSubs map[chan image.Image]bool
 	wake      chan struct{} // closed and replaced on every new frame
@@ -96,7 +104,9 @@ func (c *Conn) attach(s *proto.Session) {
 	quit := make(chan struct{})
 	c.sess, c.quit, c.links, c.linked = s, quit, c.links+1, time.Now()
 	c.re = video.NewReassembler()
-	if c.dec != nil { // the new stream starts over from the GOP
+	if c.resumable() { // start() asks the board to go on where the decoder is
+		c.re = video.Resume()
+	} else if c.dec != nil { // the new stream starts over from the GOP
 		c.dec.Close()
 		c.dec = nil
 	}
@@ -112,7 +122,23 @@ func (c *Conn) attach(s *proto.Session) {
 func (c *Conn) start() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, err := c.Send(ctx, "stream on")
+	c.mu.Lock()
+	resume, line := c.resumable(), "stream on"
+	if resume {
+		line = fmt.Sprintf("stream on at %d %d", c.idrTS, c.inGOP)
+	}
+	c.mu.Unlock()
+	reply, err := c.Send(ctx, line)
+	if resume && err != nil && strings.Contains(err.Error(), "usage") { // a board before 0.2.3
+		reply, err = c.Send(ctx, "stream on")
+	}
+	if resume && err == nil {
+		if reply == "resumed" {
+			log.Printf("%s: video goes on from AU %d of the GOP (no replay)", c.ID, c.inGOPNow())
+		} else {
+			log.Printf("%s: video replays the GOP from its IDR", c.ID)
+		}
+	}
 	if err == nil && c.rawWanted != nil && c.rawWanted() {
 		c.Send(ctx, "listen raw on") // the board forgets it with every session
 	}
@@ -125,6 +151,16 @@ func (c *Conn) start() error {
 	return err
 }
 
+// resumable: the decoder is in step with a GOP the board may still hold; must hold mu.
+func (c *Conn) resumable() bool { return c.dec != nil && c.inStep && c.inGOP > 0 }
+
+func (c *Conn) inGOPNow() uint32 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.inGOP
+}
+
+// detach drops a session. The decoder stays, so a reconnect can go on where it is (start()).
 func (c *Conn) detach(s *proto.Session, why error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -137,10 +173,6 @@ func (c *Conn) detach(s *proto.Session, why error) {
 		close(ch)
 		delete(c.pending, id)
 	}
-	if c.dec != nil {
-		c.dec.Close()
-		c.dec = nil
-	}
 	log.Printf("%s: session ended: %v", c.ID, why)
 }
 
@@ -151,6 +183,12 @@ func (c *Conn) close() {
 	if s != nil {
 		c.detach(s, errors.New("closed"))
 	}
+	c.mu.Lock()
+	if c.dec != nil {
+		c.dec.Close()
+		c.dec = nil
+	}
+	c.mu.Unlock()
 }
 
 func (c *Conn) read(s *proto.Session, quit chan struct{}) {
@@ -275,15 +313,23 @@ func (c *Conn) onStatus(b []byte) {
 	}
 	c.statusAt = now
 	if up, ok := m["up"].(float64); ok {
+		if uint32(up) < c.boardUp { // rebooted: its clock started over, and the shown frame is of the last boot
+			c.offset, c.frameTS = nil, 0
+		}
+		c.boardUp = uint32(up)
 		c.learnClock(now, uint32(up))
 	}
 }
 
-// learnClock must hold mu.
+// learnClock must hold mu. The offset is the smallest seen: the status's `up`, or a live AU's stamp (a replayed AU
+// is old, its offset large). A better one places the shown frame again.
 func (c *Conn) learnClock(now time.Time, boardMs uint32) {
 	off := now.UnixMilli() - int64(boardMs)
 	if c.offset == nil || off < *c.offset {
 		c.offset = &off
+		if c.frameTS != 0 {
+			c.captured = time.UnixMilli(int64(c.frameTS) + off)
+		}
 	}
 }
 
@@ -297,7 +343,11 @@ func (c *Conn) onVideo(chunk []byte, gap bool) {
 	if len(chunk) >= 7 && chunk[2]&video.Start != 0 {
 		c.learnClock(time.Now(), binary.LittleEndian.Uint32(chunk[3:]))
 	}
+	gaps := c.re.Gaps
 	au := c.re.Feed(chunk)
+	if c.re.Gaps != gaps || gap {
+		c.inStep = false // the decoder waits for the next IDR
+	}
 	if au == nil {
 		return
 	}
@@ -332,6 +382,22 @@ func (c *Conn) onVideo(chunk []byte, gap bool) {
 		c.dec.Close()
 		c.dec = nil
 		c.re.Lost()
+		c.inStep = false
+	} else if c.dec != nil {
+		c.track(au)
+	}
+}
+
+// track counts the AUs the decoder got since its GOP's IDR (resumable()); must hold mu.
+func (c *Conn) track(au *video.AU) {
+	switch {
+	case au.Flags&video.Snap != 0: // a snap sends the GOP again into the same decoder: the count is off until an IDR
+		c.inStep = false
+	case au.Flags&video.IDR != 0:
+		c.idrTS, c.inGOP, c.inStep = au.TS, 1, true
+	case au.Flags&video.Config != 0:
+	case c.inStep:
+		c.inGOP++
 	}
 }
 
@@ -349,7 +415,7 @@ func (c *Conn) onFrame(f video.Frame) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.updated = now
-	c.captured = now
+	c.captured, c.frameTS, c.behind = now, f.TS, f.Behind
 	if c.offset != nil && f.TS != 0 {
 		c.captured = time.UnixMilli(int64(f.TS) + *c.offset)
 	}
