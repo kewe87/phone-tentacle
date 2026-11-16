@@ -133,13 +133,20 @@ func (f *Flasher) Connect(ctx context.Context, port string) (*Board, error) {
 	} else {
 		f.logf("%s: running firmware, restarting it into the bootloader (1200 baud touch)", p.Name)
 	}
-	if c, err := f.Sys.Open(p.Name, 1200); err != nil {
-		return nil, msg("port_open", err, p.Name, err)
-	} else {
+	// On Windows the touch can take effect inside the open: the board restarts while usbser still sets the port
+	// up, and the open fails ("Invalid serial port") although the board is on its way to the bootloader
+	// (2026-11-16). So a failed open is only an error when no bootloader port turns up after it.
+	c, openErr := f.Sys.Open(p.Name, 1200)
+	if openErr == nil {
 		_ = c.Close()
+	} else {
+		f.logf("%s: the 1200 baud open failed (%v); looking for the bootloader all the same", p.Name, openErr)
 	}
 	name, err := f.follow(ctx, before, p.Name)
 	if err != nil {
+		if openErr != nil {
+			return nil, msg("port_open", openErr, p.Name, openErr)
+		}
 		return nil, err
 	}
 	f.logf("bootloader on %s", name)

@@ -40,6 +40,9 @@ func ParseSetupLine(line string) (*SetupInfo, bool) {
 		return nil, false
 	}
 	s := &SetupInfo{Setup: raw.Setup == 1, SSID: raw.SSID, Pass: raw.Pass, URL: raw.URL, IP: raw.IP}
+	if s.IP == "0.0.0.0" { // asked right after the restart: the Wi-Fi is still connecting
+		s.IP = ""
+	}
 	if raw.QR != "" {
 		s.QR = strings.Split(raw.QR, ",")
 	}

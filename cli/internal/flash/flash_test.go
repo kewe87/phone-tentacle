@@ -358,3 +358,20 @@ func TestMsgLanguages(t *testing.T) {
 		t.Error(m.Text("de"))
 	}
 }
+
+func TestInstallTouchOpenFails(t *testing.T) {
+	// Windows: the 1200 baud open of the firmware's port fails while the touch already restarted the board
+	rom := esprom.NewFakeROM()
+	rom.Download = false
+	sys := NewFakeSystem(rom, "wifi-setup "+setupJSON)
+	sys.TouchOpenFails = true
+	im, _ := ParseImage("t.merged.bin", testImage(t, 9), nil)
+	f, _ := newFlasher(sys)
+	res, err := f.Install(context.Background(), Options{Image: im, SetupWait: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sys.Touches != 1 || res.Port != "COM5" {
+		t.Errorf("touches %d, port %s", sys.Touches, res.Port)
+	}
+}

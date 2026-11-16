@@ -21,6 +21,7 @@ type FakeSystem struct {
 	ROMPort string
 	Product bool       // the system reports USB product strings (Windows, Linux; not macOS)
 	Blank   bool       // no firmware: every open reaches the ROM
+	TouchOpenFails bool // the 1200 baud open fails although the touch worked (Windows)
 	Gap     int        // Ports calls that see no board (set after each restart)
 	Extra   []PortInfo // other ports on the computer
 	Setup   string     // the firmware's answer to `0 setup`
@@ -80,6 +81,9 @@ func (s *FakeSystem) Open(name string, baud int) (Conn, error) {
 	if baud == 1200 {
 		s.Touches++
 		s.ROM.RestartToBootloader()
+		if s.TouchOpenFails { // Windows: the board is gone before the open finished
+			return nil, fmt.Errorf("open %s: Invalid serial port", name)
+		}
 		return nopConn{}, nil
 	}
 	return &fwConn{s: s}, nil

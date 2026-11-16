@@ -26,6 +26,7 @@ const T = {
     how2: 'The setup page opens by itself (otherwise open {u}).',
     how3: 'Choose your home Wi-Fi (2.4 GHz) and enter its password.',
     how4: 'Press the BOOT button (B) on the board within 30 seconds to confirm.',
+    ipPending: 'still connecting',
     stored: 'The board already has a Wi-Fi stored: {s} (address {ip}). To set it up again, hold BOOT for 10 seconds.',
     noSetup: 'The board restarted. It now opens a Wi-Fi called Tentacle-XXXX; the name and password are on its OLED. Without a display: run "tentacle-flash --info" in a terminal, or see the manual, chapter 3.',
     manual: 'Next steps: the manual, chapter 3 (Wi-Fi) and 5 (pairing).',
@@ -63,6 +64,7 @@ const T = {
     how2: 'Die Einrichtungsseite öffnet sich von selbst (sonst {u} öffnen).',
     how3: 'Das eigene WLAN (2,4 GHz) wählen und sein Passwort eingeben.',
     how4: 'Innerhalb von 30 Sekunden die BOOT-Taste (B) am Board drücken, um zu bestätigen.',
+    ipPending: 'verbindet sich noch',
     stored: 'Auf dem Board ist schon ein WLAN gespeichert: {s} (Adresse {ip}). Zum Neu-Einrichten BOOT 10 Sekunden halten.',
     noSetup: 'Das Board ist neu gestartet. Es öffnet jetzt ein WLAN namens Tentacle-XXXX; Name und Passwort stehen auf seinem OLED. Ohne Display: im Terminal „tentacle-flash --info“ aufrufen oder im Handbuch, Kapitel 3, nachlesen.',
     manual: 'Weiter geht es im Handbuch, Kapitel 3 (WLAN) und 5 (Koppeln).',
@@ -221,7 +223,7 @@ function doneView(j) {
     box.append(el('ol', { class: 'how' }, el('li', null, t('how1')), el('li', null, t('how2', { u: s.url || 'http://192.168.4.1/' })),
       el('li', null, t('how3')), el('li', null, t('how4'))));
   } else if (s) {
-    box.append(el('p', null, t('stored', { s: s.ssid, ip: s.ip || '?' })));
+    box.append(el('p', null, t('stored', { s: s.ssid, ip: s.ip || t('ipPending') })));
   } else {
     box.append(el('p', null, t('noSetup')));
     box.append(el('ol', { class: 'how' }, el('li', null, t('how1')), el('li', null, t('how2', { u: 'http://192.168.4.1/' })),

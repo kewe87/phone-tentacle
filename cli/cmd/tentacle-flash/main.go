@@ -128,6 +128,7 @@ var words = map[string][2]string{
 	"how":       {"Join that Wi-Fi with a phone or laptop; the setup page opens by itself (or open %s).\nChoose your home Wi-Fi, enter its password, then press the BOOT button (B) on the board within 30 s.", "Tritt diesem WLAN mit Handy oder Laptop bei; die Einrichtungsseite öffnet sich von selbst (sonst %s öffnen).\nDas eigene WLAN wählen, Passwort eingeben, dann innerhalb von 30 s die BOOT-Taste (B) am Board drücken."},
 	"stored":    {"The board already has a Wi-Fi stored: '%s' (address %s). To set it up again, hold BOOT for 10 s.", "Auf dem Board ist schon ein WLAN gespeichert: '%s' (Adresse %s). Zum Neu-Einrichten BOOT 10 s halten."},
 	"page":      {"The installer is open in your browser: %s\nKeep this window open while it runs; closing it ends the installer.", "Der Installer ist im Browser geöffnet: %s\nDieses Fenster offen lassen, solange er läuft; Schließen beendet den Installer."},
+	"ipPending": {"still connecting", "verbindet sich noch"},
 	"pageNo":    {"Open this address in a browser: %s", "Diese Adresse im Browser öffnen: %s"},
 	"noPorts":   {"No serial ports.", "Keine seriellen Anschlüsse."},
 	"next":      {"Next: the manual, chapter 3 (Wi-Fi) and 5 (pairing).", "Weiter im Handbuch, Kapitel 3 (WLAN) und 5 (Koppeln)."},
@@ -238,7 +239,11 @@ func (c *cli) install(ctx context.Context, sys flash.System, src flash.Source, p
 
 func (c *cli) showSetup(s *flash.SetupInfo) {
 	if !s.Setup {
-		fmt.Fprintln(c.out, c.w("stored", s.SSID, s.IP))
+		ip := s.IP
+		if ip == "" {
+			ip = c.w("ipPending")
+		}
+		fmt.Fprintln(c.out, c.w("stored", s.SSID, ip))
 		return
 	}
 	fmt.Fprintln(c.out)
