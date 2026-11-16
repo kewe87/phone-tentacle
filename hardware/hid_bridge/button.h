@@ -18,7 +18,7 @@ bool stop_active();        // all HID output is suppressed (always false without
 bool button_take_long();   // the button was held 10 s since the last call
 
 // "Press BOOT to confirm": one request at a time, shown on the display (two lines of up to 21 characters) and by the
-// LED. kind: CONFIRM_WIFI, CONFIRM_PAIR. Safe to call from any task.
+// LED. kind: CONFIRM_WIFI, CONFIRM_PAIR, CONFIRM_UPDATE (ota.h). Safe to call from any task.
 //   confirm_request()  opens it; false while another kind is waiting. The same kind may ask again (restarts):
 //                      pairing never does, cli_link.cpp lets one request through at a time (pair_gate.h).
 //   confirm_state()    CF_WAITING, then CF_ACCEPTED (pressed in time) or CF_EXPIRED; these two stay until

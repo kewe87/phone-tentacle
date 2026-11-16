@@ -25,7 +25,7 @@ int btn_step(btn_state *b, bool pressed, uint32_t now);  // BTN_PRESS once per p
 uint32_t btn_held_ms(const btn_state *b, uint32_t now);  // 0 when up
 
 // ---- Confirmation: one open request at a time; a short press accepts it, the timeout refuses it.
-enum { CONFIRM_NONE = 0, CONFIRM_WIFI = 1, CONFIRM_PAIR = 2 };       // who asks
+enum { CONFIRM_NONE = 0, CONFIRM_WIFI = 1, CONFIRM_PAIR = 2, CONFIRM_UPDATE = 3 };  // who asks
 enum { CF_IDLE = 0, CF_WAITING, CF_ACCEPTED, CF_EXPIRED };           // CF_ACCEPTED / CF_EXPIRED stay until cleared
 #define CF_TEXT 22  // one display line (21 characters of the 6-pixel font)
 // A press this soon after a request opened was on its way before anyone could have seen the request: it is not an
