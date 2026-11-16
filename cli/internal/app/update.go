@@ -12,7 +12,7 @@ import (
 	"github.com/kewe87/phone-tentacle/cli/internal/fwsign"
 )
 
-// update runs `update FILE.bin`: the daemon sends the image (and FILE.bin.sig, if there is one) over the session,
+// update runs `update FILE.bin`: the daemon sends the image and the signature in it (fwsign.Split) over the session,
 // the board checks it and restarts into it, the daemon waits for it to come back.
 func (a *App) update(args []string) int {
 	dev := new(string)
@@ -23,19 +23,16 @@ func (a *App) update(args []string) int {
 		return a.fail(err)
 	}
 	if len(pos) != 1 {
-		return a.fail(errors.New("usage: tentacle update FILE.bin [--force]  (FILE.bin.sig next to it is sent too)"))
+		return a.fail(errors.New("usage: tentacle update FILE.bin [--force]  (a signed image: tentacle sign)"))
 	}
 	path, err := filepath.Abs(pos[0])
 	if err != nil {
 		return a.fail(err)
 	}
-	if _, err := os.Stat(path); err != nil {
-		return a.fail(err)
-	}
-	if sig, err := fwsign.ReadSig(path); err != nil {
+	if _, sig, err := fwsign.Load(path); err != nil {
 		return a.fail(err)
 	} else if sig == nil {
-		fmt.Fprintf(a.Err, "No %s next to the image: sending it unsigned (only a debug build takes that).\n", filepath.Base(path)+fwsign.SigExt)
+		fmt.Fprintf(a.Err, "%s is not signed: sending it unsigned (only a debug build takes that).\n", filepath.Base(path))
 	}
 	return a.call(daemon.Request{Cmd: "update", Device: *dev, Text: path, Force: *force})
 }
@@ -110,22 +107,15 @@ func (a *App) sign(args []string) int {
 		return a.fail(err)
 	}
 	if len(pos) != 1 || *key == "" {
-		return a.fail(errors.New("usage: tentacle sign FILE.bin --key KEYFILE   (writes FILE.bin.sig)"))
+		return a.fail(errors.New("usage: tentacle sign FILE.bin --key KEYFILE   (puts the signature into FILE.bin)"))
 	}
 	priv, err := fwsign.LoadKey(*key)
 	if err != nil {
 		return a.fail(err)
 	}
-	img, err := os.ReadFile(pos[0])
+	img, err := fwsign.SignFile(priv, pos[0])
 	if err != nil {
 		return a.fail(err)
 	}
-	if err := fwsign.CheckImage(img); err != nil {
-		return a.fail(err)
-	}
-	sigPath := pos[0] + fwsign.SigExt
-	if err := os.WriteFile(sigPath, fwsign.Sign(priv, img), 0o644); err != nil {
-		return a.fail(err)
-	}
-	return a.print(daemon.Response{Status: "ok", Data: map[string]string{"signature": sigPath, "version": fwsign.Version(img)}})
+	return a.print(daemon.Response{Status: "ok", Data: map[string]string{"signed": pos[0], "version": fwsign.Version(img)}})
 }

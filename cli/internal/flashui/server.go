@@ -47,7 +47,7 @@ type Server struct {
 	mu       sync.Mutex
 	image    *flash.Image
 	imageErr error
-	upload   *flash.Bytes // the last uploaded .bin, so a .sig sent after it can join it
+	upload   *flash.Bytes // the last uploaded .bin (its signature inside)
 	job      *job
 	ports    []flash.PortInfo
 	portsAt  time.Time
@@ -381,7 +381,7 @@ func (s *Server) chip(w http.ResponseWriter, r *http.Request) any {
 	})
 }
 
-// uploadImage takes a .bin (or its .sig, sent right after it) as the request body.
+// uploadImage takes a .bin as the request body; its signature is inside it (tentacle sign, fwsign.Embed).
 func (s *Server) uploadImage(w http.ResponseWriter, r *http.Request) any {
 	name := r.URL.Query().Get("name")
 	data, err := io.ReadAll(io.LimitReader(r.Body, 17<<20))
@@ -394,13 +394,9 @@ func (s *Server) uploadImage(w http.ResponseWriter, r *http.Request) any {
 		return flash.Busy
 	}
 	if strings.HasSuffix(strings.ToLower(name), ".sig") {
-		if s.upload == nil {
-			return errors.New("send the .bin before its .sig")
-		}
-		s.upload.Sig = data
-	} else {
-		s.upload = &flash.Bytes{Name: name, Data: data}
+		return errors.New("choose the .bin: its signature is inside it (a separate .sig is only read next to --image FILE)")
 	}
+	s.upload = &flash.Bytes{Name: name, Data: data}
 	s.image, s.imageErr = flash.Open(context.Background(), *s.upload)
 	return map[string]bool{"ok": s.imageErr == nil}
 }

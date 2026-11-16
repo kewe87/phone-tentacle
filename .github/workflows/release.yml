@@ -106,7 +106,8 @@ jobs:
           ls -l dist
 
       # The key is the content of the file `tentacle keygen` writes (64 hex digits). It lives in a 0600 file only
-      # while the two images are signed and is never printed.
+      # while the two images are signed and is never printed. `tentacle sign` puts the signature into the file:
+      # image || 64-byte Ed25519 signature || "TNTSIG1\n" (cli/internal/fwsign); there are no .sig files.
       - name: Sign (Ed25519, release key)
         env:
           TENTACLE_SIGNING_KEY: ${{ secrets.TENTACLE_SIGNING_KEY }}
@@ -142,9 +143,12 @@ jobs:
         env:
           V: ${{ steps.version.outputs.version }}
         run: |
-          shopt -s nullglob
-          sigs=(dist/*.sig)
-          if [ ${#sigs[@]} -eq 0 ]; then
+          signed() { [ "$(tail -c 8 "$1" | od -An -tx1 | tr -d ' \n')" = 544e54534947310a ]; }  # ends with the trailer "TNTSIG1\n"
+          if ! signed "dist/tentacle-fw-$V.bin" && ! signed "dist/tentacle-fw-$V.merged.bin"; then
+            if [ "$RELEASE" = true ]; then
+              echo "::error::the images are not signed"
+              exit 1
+            fi
             echo "unsigned dry run: nothing to check"
             exit 0
           fi
@@ -157,9 +161,18 @@ jobs:
           openssl pkey -pubin -inform DER -in "$tmp/pub.der" -out "$tmp/pub.pem"
           bad=0
           for f in "dist/tentacle-fw-$V.bin" "dist/tentacle-fw-$V.merged.bin"; do
+            if ! signed "$f"; then
+              echo "::error::$f is not signed"
+              bad=1
+              continue
+            fi
+            # the file = image || signature (64 bytes) || "TNTSIG1\n" (8 bytes); the signature covers the image only
+            n=$(( $(stat -c %s "$f") - 72 ))
+            head -c "$n" "$f" > "$tmp/img"
+            tail -c 72 "$f" | head -c 64 > "$tmp/sig"
             # signed message = "tentacle-fw-v1" || SHA-256(image)
-            { printf 'tentacle-fw-v1'; openssl dgst -sha256 -binary "$f"; } > "$tmp/msg"
-            if openssl pkeyutl -verify -pubin -inkey "$tmp/pub.pem" -rawin -in "$tmp/msg" -sigfile "$f.sig" >/dev/null; then
+            { printf 'tentacle-fw-v1'; openssl dgst -sha256 -binary "$tmp/img"; } > "$tmp/msg"
+            if openssl pkeyutl -verify -pubin -inkey "$tmp/pub.pem" -rawin -in "$tmp/msg" -sigfile "$tmp/sig" >/dev/null; then
               echo "$f: signature OK (key ${hex:0:16}...)"
             else
               echo "::error::$f: the signature does not match OTA_RELEASE_PUBKEY in ota_pubkey.h (wrong key in TENTACLE_SIGNING_KEY?)"
@@ -212,7 +225,8 @@ jobs:
           V: ${{ needs.firmware.outputs.version }}
         run: |
           img="$RUNNER_TEMP/fw/tentacle-fw-$V.merged.bin"
-          [ -f "$img.sig" ] || echo "::warning::no $img.sig: tentacle-flash carries an UNSIGNED image (dry run)"
+          signed() { [ "$(tail -c 8 "$1" | od -An -tx1 | tr -d ' \n')" = 544e54534947310a ]; }  # the signature is in the file (tentacle sign)
+          signed "$img" || echo "::warning::$img is not signed: tentacle-flash carries an UNSIGNED image (dry run)"
           out="$RUNNER_TEMP/flash"
           go run ./tools/flashbuild --image "$img" --version "$V" --out "$out"
           (cd "$out" && mv tentacle-flash_windows_amd64.exe tentacle-flash.exe && zip -q "$OLDPWD/dist/tentacle-flash_windows_amd64.zip" tentacle-flash.exe)
@@ -307,9 +321,11 @@ jobs:
           V: ${{ needs.firmware.outputs.version }}
         run: |
           cd dist
-          for f in "tentacle-fw-$V.bin.sig" "tentacle-fw-$V.merged.bin.sig"; do
-            [ -f "$f" ] || { echo "::error::$f missing: a release must be signed"; exit 1; }
+          signed() { [ "$(tail -c 8 "$1" | od -An -tx1 | tr -d ' \n')" = 544e54534947310a ]; }  # image || signature || "TNTSIG1\n"
+          for f in "tentacle-fw-$V.bin" "tentacle-fw-$V.merged.bin"; do
+            signed "$f" || { echo "::error::$f is not signed: a release must be signed"; exit 1; }
           done
+          if ls -- *.sig >/dev/null 2>&1; then echo "::error::stray .sig files: the signature is inside the images"; exit 1; fi
           if gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::release $GITHUB_REF_NAME exists already; delete it (or the tag) first"
             exit 1
@@ -317,8 +333,8 @@ jobs:
           cat > "$RUNNER_TEMP/notes.md" <<EOF
           Tentacle $V (draft: fill in the notes from CHANGELOG.md before publishing).
 
-          - tentacle-fw-$V.bin + .sig: firmware update over the network (\`tentacle update\`, the web page's settings)
-          - tentacle-fw-$V.merged.bin + .sig: the whole flash image for USB
+          - tentacle-fw-$V.bin: firmware update over the network (\`tentacle update\`, the web page's settings), signed (the signature is inside the file)
+          - tentacle-fw-$V.merged.bin: the whole flash image for USB, signed the same way
           - tentacle-flash_*: the USB installer with this firmware inside (Windows zip; Linux and macOS tar.gz)
           - tentacle_*: the command line / MCP server
           - SHA256SUMS: \`sha256sum -c SHA256SUMS\`

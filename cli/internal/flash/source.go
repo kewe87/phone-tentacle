@@ -16,13 +16,14 @@ import (
 // or picked on the page, else the image built into the program (Embedded).
 //
 // Further sources plug in here. One that fetches the newest signed release from GitHub would implement Source
-// with Fetch downloading the release's .merged.bin and .merged.bin.sig (ParseImage then checks the signature as
+// with Fetch downloading the release's .merged.bin, signature inside (ParseImage then checks the signature as
 // for any other source) and be put in front of Embedded in cmd/tentacle-flash. The repository is private for now,
 // so there is no such source yet.
 type Source interface {
 	// Label names the source for people ("built in", a file name).
 	Label() string
-	// Fetch returns the image's name, its bytes and its signature (nil if it has none). It returns
+	// Fetch returns the image's name, its bytes (the signature usually inside, fwsign.Embed) and a separate
+	// signature (nil if there is none or it is inside the bytes). It returns
 	// ErrNoImage if the source has nothing to offer.
 	Fetch(ctx context.Context) (name string, data, sig []byte, err error)
 }
@@ -55,7 +56,7 @@ func (Embedded) Fetch(context.Context) (string, []byte, []byte, error) {
 }
 
 // embeddedFrom picks the last NAME.bin or NAME.bin.gz in dir (gzip keeps the 8 MB merged image, mostly empty
-// flash, small in the program) and NAME.bin.sig, the signature of the unpacked image.
+// flash, small in the program). The signature is inside the image; a legacy NAME.bin.sig is taken too.
 func embeddedFrom(fsys fs.FS, dir string) (string, []byte, []byte, error) {
 	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
@@ -93,7 +94,7 @@ func embeddedFrom(fsys fs.FS, dir string) (string, []byte, []byte, error) {
 	return name, data, sig, nil
 }
 
-// File is an image file on disk, with FILE.sig next to it if there is one.
+// File is an image file on disk, signed inside (or, from older releases, with FILE.sig next to it).
 type File struct{ Path string }
 
 func (f File) Label() string { return f.Path }

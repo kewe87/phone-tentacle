@@ -9,6 +9,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -119,6 +121,39 @@ func TestParseOtherImages(t *testing.T) {
 	bad[0x20000] ^= 1
 	if _, err := ParseImage("m.bin", bad, fwsign.Sign(priv, merged)); code(err) != "bad_sig" {
 		t.Errorf("changed image passed: %v", err)
+	}
+	// the signature inside the file (tentacle sign): cut off before the regions, same layout as without it
+	plain, _ := ParseImage("m.bin", merged, nil)
+	signed := fwsign.Embed(merged, fwsign.Sign(priv, merged))
+	im, err = ParseImage("m.bin", signed, nil)
+	if err != nil || !im.Signed || len(im.Notes) != 0 || im.Size != len(merged) || im.SHA256 != plain.SHA256 {
+		t.Fatalf("embedded: %+v %v", im, err)
+	}
+	if len(im.Regions) != len(plain.Regions) {
+		t.Fatal("embedded: regions differ")
+	}
+	for i := range im.Regions {
+		if !bytes.Equal(im.Regions[i].Data, plain.Regions[i].Data) || im.Regions[i].Offset != plain.Regions[i].Offset {
+			t.Fatalf("embedded: region %s differs (the trailer got into the flash)", im.Regions[i].Name)
+		}
+	}
+	if _, err := ParseImage("m.bin", fwsign.Embed(merged, make([]byte, 64)), nil); code(err) != "bad_sig" {
+		t.Errorf("wrong embedded signature passed: %v", err)
+	}
+	if _, err := ParseImage("m.bin", fwsign.Embed(bad, fwsign.Sign(priv, merged)), nil); code(err) != "bad_sig" {
+		t.Errorf("changed image with embedded signature passed: %v", err)
+	}
+	// from disk: embedded, and a legacy FILE.sig next to an unsigned file
+	dir := t.TempDir()
+	p := filepath.Join(dir, "own.merged.bin")
+	os.WriteFile(p, signed, 0o644)
+	if im, err := LoadImage(p); err != nil || !im.Signed {
+		t.Errorf("load embedded: %v", err)
+	}
+	os.WriteFile(p, merged, 0o644)
+	os.WriteFile(p+".sig", fwsign.Sign(priv, merged), 0o644)
+	if im, err := LoadImage(p); err != nil || !im.Signed {
+		t.Errorf("load legacy .sig: %v", err)
 	}
 }
 

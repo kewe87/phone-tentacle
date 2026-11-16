@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +32,7 @@ var updateBackWait = 90 * time.Second
 
 func (s *Server) update(ctx context.Context, c *Conn, req Request) Response {
 	path := req.Text
-	img, err := os.ReadFile(path)
+	img, sig, err := fwsign.Load(path) // the image without the signature trailer; the board never sees it
 	if err != nil {
 		return fail(err)
 	}
@@ -43,10 +42,6 @@ func (s *Server) update(ctx context.Context, c *Conn, req Request) Response {
 	newVer := fwsign.Version(img)
 	if newVer == "" && !req.Force {
 		return fail(fmt.Errorf("%s is not a Tentacle firmware image (no version marker); --force sends it anyway", path))
-	}
-	sig, err := fwsign.ReadSig(path)
-	if err != nil {
-		return fail(err)
 	}
 	st, _ := c.StatusNow(ctx, 3*time.Second) // this session's: right after a restart the merged one was the last boot's
 	oldVer, _ := st["fw"].(string)

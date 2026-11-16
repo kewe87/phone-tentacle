@@ -141,19 +141,20 @@ per system:
 
 ```sh
 cd cli
-tentacle sign ../hardware/build/hid_bridge.ino.merged.bin --key KEYFILE    # writes .merged.bin.sig
+tentacle sign ../hardware/build/hid_bridge.ino.merged.bin --key KEYFILE    # puts the signature into the file
 go run ./tools/flashbuild --image ../hardware/build/hid_bridge.ino.merged.bin --version 0.4.0
 ```
 
 `dist/` then holds `tentacle-flash_windows_amd64.exe`, `_linux_amd64`, `_linux_arm64` and
 `_darwin_universal` (arm64 + amd64 in one Mach-O file). `--image` gzips the image into
-`internal/flash/release/` for `go:embed` (with `IMAGE.sig` if there is one) and takes it out again afterwards;
+`internal/flash/release/` for `go:embed` (signature included) and takes it out again afterwards;
 without `--image` the binaries carry no firmware and need `--image FILE` or "Advanced" at run time.
 
 - **Image.** A `.merged.bin` from arduino-cli (what `hardware/flash.sh` uploads) is cut along its partition
   table: bootloader (0x0), partition table (0x8000), `otadata` (0xe000, reset so the board boots `app0`) and the
   app (0x10000) are written; `nvs` (Wi-Fi, pairing), `app1` and the rest stay as they are. A plain `.ino.bin`
-  goes to 0x10000 with a fresh `otadata`. The signature is checked as for OTA (`internal/fwsign`, the release key
+  goes to 0x10000 with a fresh `otadata`. The signature travels inside the file (`fwsign.Split` cuts it off before
+  the partitions are read) and is checked as for OTA (`internal/fwsign`, the release key
   in `fwsign.ReleaseKey`, compared with `hardware/hid_bridge/ota_pubkey.h` by a test): a wrong one is refused,
   none is a warning.
 - **Board.** `internal/esprom` speaks the ESP32-S3 ROM bootloader protocol (SLIP, SYNC, chip detection, eFuses,
@@ -165,7 +166,7 @@ without `--image` the binaries carry no firmware and need `--image FILE` or "Adv
 - **Page.** `internal/flashui` serves the installer page on `127.0.0.1` (random port, a token in the URL and an
   `X-Token` header on every API call, the `Host` header checked).
 - **Another source.** `flash.Source` is the hook for fetching a release (e.g. from GitHub, once the repository is
-  public): `Fetch` returns the `.merged.bin` and its `.sig`, `ParseImage` checks them, and the source is used in
+  public): `Fetch` returns the signed `.merged.bin`, `ParseImage` checks it, and the source is used in
   front of `flash.Embedded` in `cmd/tentacle-flash`.
 - **Tests** run against `esprom.FakeROM` and `flash.FakeSystem`, a simulated ROM and computer; nothing touches a
   serial port. `TENTACLE_FLASH_DEBUG=1 tentacle-flash --yes` prints every ROM command.

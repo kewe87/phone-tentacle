@@ -3,7 +3,13 @@
 // key whose public half is compiled into it (hardware/hid_bridge/ota_pubkey.h); a debug build takes unsigned ones too.
 //
 //	signed message = "tentacle-fw-v1" || SHA-256(image)
-//	signature      = Ed25519(release key, signed message), 64 bytes in FILE.bin.sig
+//	signature      = Ed25519(release key, signed message), 64 bytes
+//	signed file    = image || signature || "TNTSIG1\n" (8 bytes)
+//
+// The signature travels inside the file, behind the image: 64 bytes, then the 8-byte trailer Magic. Nothing that
+// reads the file needs to know more than Split; the board never sees the trailer, the uploaders (tentacle update,
+// the board's web page, tentacle-flash) cut it off and send image and signature apart, as before. Older releases
+// had the signature in FILE.bin.sig next to the image; Load still takes that.
 package fwsign
 
 import (
@@ -21,8 +27,82 @@ import (
 
 const label = "tentacle-fw-v1"
 
-// SigExt is the signature file next to an image: FILE.bin.sig.
+// SigExt is the legacy signature file next to an image: FILE.bin.sig (read for older files, no longer written).
 const SigExt = ".sig"
+
+// Magic ends a signed file: image || 64-byte signature || Magic.
+const Magic = "TNTSIG1\n"
+
+// TrailerSize is what signing adds to an image.
+const TrailerSize = ed25519.SignatureSize + len(Magic)
+
+// Split cuts a file into the image and the signature embedded behind it. Without the trailer, data is the image
+// and signed is false. It does not check the signature.
+func Split(data []byte) (image, sig []byte, signed bool) {
+	n := len(data) - TrailerSize
+	if n < 0 || string(data[len(data)-len(Magic):]) != Magic {
+		return data, nil, false
+	}
+	return data[:n], data[n : n+ed25519.SignatureSize], true
+}
+
+// Embed puts a signature behind an image (one already there is replaced).
+func Embed(image, sig []byte) []byte {
+	image, _, _ = Split(image)
+	out := make([]byte, 0, len(image)+TrailerSize)
+	out = append(append(append(out, image...), sig...), Magic...)
+	return out
+}
+
+// SignFile signs an image file in place: the signature goes into the file (an old one is replaced), written to a
+// temporary file next to it and renamed over it. It returns the image without the trailer.
+func SignFile(key ed25519.PrivateKey, path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	image, _, _ := Split(data)
+	if err := CheckImage(image); err != nil {
+		return nil, err
+	}
+	mode := os.FileMode(0o644)
+	if st, err := os.Stat(path); err == nil {
+		mode = st.Mode().Perm()
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmp.Name())
+	_, err = tmp.Write(Embed(image, Sign(key, image)))
+	if err2 := tmp.Close(); err == nil {
+		err = err2
+	}
+	if err == nil {
+		err = os.Chmod(tmp.Name(), mode)
+	}
+	if err == nil {
+		err = os.Rename(tmp.Name(), path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return image, nil
+}
+
+// Load reads an image file: the image and its signature, embedded or (older files) in FILE.sig next to it; sig
+// is nil when there is neither. It does not check the signature.
+func Load(path string) (image, sig []byte, err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if image, sig, ok := Split(data); ok {
+		return image, sig, nil
+	}
+	sig, err = ReadSig(path)
+	return data, sig, err
+}
 
 // Message is what the signature covers.
 func Message(sha [32]byte) []byte { return append([]byte(label), sha[:]...) }
@@ -98,7 +178,7 @@ func CArray(pub []byte) string {
 	return b.String()
 }
 
-// ReadSig reads FILE.bin.sig next to an image: nil, nil when there is none.
+// ReadSig reads a legacy FILE.bin.sig next to an image: nil, nil when there is none.
 func ReadSig(image string) ([]byte, error) {
 	sig, err := os.ReadFile(image + SigExt)
 	if errors.Is(err, os.ErrNotExist) {

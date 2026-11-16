@@ -44,7 +44,7 @@ func run(args []string, out, errOut io.Writer) int {
 	fs.SetOutput(errOut)
 	yes := fs.Bool("yes", false, "install right away, without the browser page")
 	port := fs.String("port", "", "the board's serial port (COM5, /dev/cu.usbmodem1101, /dev/ttyACM0); default: find it")
-	image := fs.String("image", "", "firmware image to install (a *.merged.bin; FILE.sig next to it is checked); default: the built-in one")
+	image := fs.String("image", "", "firmware image to install (a *.merged.bin, signed with tentacle sign); default: the built-in one")
 	erase := fs.Bool("erase", false, "erase the whole flash first (removes the stored Wi-Fi and the pairing)")
 	info := fs.Bool("info", false, "ask the board for its setup Wi-Fi and exit")
 	chip := fs.Bool("chip", false, "show the chip info and exit")

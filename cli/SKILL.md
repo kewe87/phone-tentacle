@@ -24,8 +24,8 @@ device_info, plus history, intent_list, intent_show, intent_save, memory_recall 
 - The keyboard layout, once: `tentacle keyboard layout de` for an iPhone with a German hardware keyboard layout
   (Settings > General > Keyboard > Hardware Keyboard), `us` (default) otherwise. Wrong: `_` comes out `?`, Y/Z swap.
 - `tentacle calibrate` (also runs by itself on the first tap). It needs the mouse pointer visible on screen.
-- `tentacle update FILE.bin` puts new firmware on the board over Wi-Fi (only images signed for it, `FILE.bin.sig`
-  beside the file). Only when the user asks for it.
+- `tentacle update FILE.bin` puts new firmware on the board over Wi-Fi (only images signed for it; the signature
+  is inside the file). Only when the user asks for it.
 
 ## The loop
 1. `tentacle screenshot` (writes a PNG in the current directory and prints its `filePath`; read the image).

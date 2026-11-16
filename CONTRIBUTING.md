@@ -32,8 +32,9 @@ Releases are built by `.github/workflows/release.yml`; nobody uploads files by h
    if the secret is missing) and keeps the files as the workflow artifact `release-X.Y.Z`; it creates no release.
 3. Tag the commit on `main` and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag must be exactly
    `v` + `FW_VERSION`, or the workflow stops.
-4. The workflow creates a **draft** release: `tentacle-fw-X.Y.Z.bin` + `.sig` (network update),
-   `tentacle-fw-X.Y.Z.merged.bin` + `.sig` (whole flash image for USB), `tentacle-flash_*` and `tentacle_*` per
+4. The workflow creates a **draft** release: `tentacle-fw-X.Y.Z.bin` (network update),
+   `tentacle-fw-X.Y.Z.merged.bin` (whole flash image for USB), both signed with the signature inside the file
+   (there are no `.sig` files), `tentacle-flash_*` and `tentacle_*` per
    system (`tentacle_windows_{amd64,arm64}.zip`, `tentacle_linux_{amd64,arm64}.tar.gz`,
    `tentacle_darwin_universal.tar.gz`, the same for `tentacle-flash` without Windows arm64) and `SHA256SUMS`. Check
    it, write the notes from the changelog, publish it. Only then do `cli/install/install.sh` and `install.ps1` see it
@@ -50,7 +51,8 @@ The release firmware is built without any `-D` switch (only `-include build_cfg.
 from the key file without printing it, for example with the GitHub CLI reading the file on standard input:
 `gh secret set TENTACLE_SIGNING_KEY -R kewe87/phone-tentacle < /path/to/tentacle-release.key` (or paste the line
 under Settings → Secrets and variables → Actions). The workflow writes it to a temporary 0600 file only for
-`tentacle sign` and deletes it afterwards. The key's public half must be the one in
+`tentacle sign` and deletes it afterwards. `tentacle sign FILE` writes the signature into FILE itself
+(image ‖ 64-byte Ed25519 signature ‖ the 8 bytes `TNTSIG1\n`; signing again replaces it). The key's public half must be the one in
 `hardware/hid_bridge/ota_pubkey.h` and `fwsign.ReleaseKey` (`cli/internal/fwsign`): the workflow checks both
 signatures against `ota_pubkey.h` and refuses a tag signed with another key. Never commit the key file or paste
 it into an issue, a log or a chat.

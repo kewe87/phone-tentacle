@@ -4,6 +4,19 @@ Tentacle's own history starts here. It is derived from
 [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan (the state of its tag
 `v1.0.6`: board firmware 0.2.5, CLI 0.1.5); that project's history is in its repository.
 
+## Signed firmware in one file – unreleased
+
+- **No more `.sig` files.** `tentacle sign FILE --key K` writes the signature into the file itself (in place,
+  atomically; signing again replaces it): image ‖ 64-byte Ed25519 signature ‖ `TNTSIG1\n`. The signature still
+  covers the image alone, as before (`"tentacle-fw-v1" ‖ SHA-256(image)`).
+- `tentacle update FILE`, the board's web page (Settings › Firmware: one file field instead of two) and
+  `tentacle-flash` (page and `--image`) take the one file, cut the signature off and send the image and the
+  signature apart, as before; the board firmware is unchanged and never sees the trailer. An unsigned file is
+  reported as "not signed".
+- Older files with `FILE.sig` next to them still work with `tentacle update` and `tentacle-flash --image`.
+- The release carries `tentacle-fw-X.Y.Z.bin` and `.merged.bin` signed inside, without `.sig` files; the workflow
+  checks the embedded signatures against `ota_pubkey.h`.
+
 ## Release workflow – unreleased
 
 Not run on GitHub yet.

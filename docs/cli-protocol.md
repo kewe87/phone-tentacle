@@ -342,12 +342,15 @@ old firmware stays. Only one update at a time.
 **Signature.** A release build takes only images signed with the Tentacle release key, Ed25519:
 ```
 message   = "tentacle-fw-v1" || SHA-256(image)          # 14 + 32 bytes
-signature = Ed25519(release private key, message)       # 64 bytes, raw, in FILE.bin.sig
+signature = Ed25519(release private key, message)       # 64 bytes, raw
+signed file = image || signature || "TNTSIG1\n"         # the last 72 bytes: signature + 8-byte magic
 ```
 The public key is compiled into the firmware (`hardware/hid_bridge/ota_pubkey.h`). `tentacle keygen DIR` makes a key
 pair (`DIR/tentacle-release.key`, the 32-byte seed as hex: keep it out of any repository; `.pub` and the C array
 for ota_pubkey.h are printed), `tentacle sign FILE.bin --key KEYFILE` (or `TENTACLE_RELEASE_KEY`) writes
-`FILE.bin.sig`, and `tentacle update FILE.bin` sends `FILE.bin.sig` when it is there. A **debug build**
+the signature into the file (in place; signing again replaces it), and `tentacle update FILE.bin` cuts it off and
+sends `SIZE`, `SHA256` and `SIG` of the image alone, as do the board's web page and `tentacle-flash`: the board
+never sees the trailer. A file without the trailer goes out unsigned (`SIG` = `-`). A **debug build**
 (`TENTACLE_DEBUG`) takes unsigned images too (`SIG` = `-`); a signature that is there but wrong is refused by every
 build. The status of `dbg state` has `ota.unsigned_ok`.
 
