@@ -1,0 +1,327 @@
+name: Release
+
+# A tag v* (v0.4.0, equal to FW_VERSION in hardware/hid_bridge/version.h) builds the release firmware, signs it with
+# the release key, builds the tentacle CLI and tentacle-flash (with the signed image inside) and creates a DRAFT
+# GitHub release. Run by hand (workflow_dispatch) it is a dry run: the same build, kept as workflow artifacts only.
+# See CONTRIBUTING.md, "Releasing".
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ARDUINO_CLI_VERSION: 1.5.1
+  ARDUINO_CLI_SHA256: 28a8e119c498a25607821c36cb2dc49e8463941b261a0d99091baa7bc692dd2b
+  ESP32_CORE_VERSION: 3.3.12
+  U8G2_VERSION: 2.36.19
+  FQBN: esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB
+  # true only for a pushed tag; a workflow_dispatch run is a dry run even when started on a tag
+  RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+
+jobs:
+  firmware:
+    name: Firmware (build, sign)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version (version.h must match the tag)
+        id: version
+        run: |
+          v=$(sed -n 's/^#define FW_VERSION "\([^"]*\)".*/\1/p' hardware/hid_bridge/version.h)
+          if ! [[ $v =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::FW_VERSION in hardware/hid_bridge/version.h is '$v', want X.Y.Z"
+            exit 1
+          fi
+          if [ "$RELEASE" = true ] && [ "$GITHUB_REF_NAME" != "v$v" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match FW_VERSION $v in hardware/hid_bridge/version.h (want v$v)"
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Firmware $v (release: $RELEASE)"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      # Only the downloaded archives are cached; arduino-cli checks each against the checksum in the freshly loaded
+      # package index before it installs it.
+      - name: Cache the esp32 core downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.arduino15/staging
+          key: arduino-staging-${{ runner.os }}-esp32-${{ env.ESP32_CORE_VERSION }}-u8g2-${{ env.U8G2_VERSION }}
+
+      - name: Install arduino-cli ${{ env.ARDUINO_CLI_VERSION }} + esp32 core ${{ env.ESP32_CORE_VERSION }}
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          tgz="$RUNNER_TEMP/arduino-cli.tar.gz"
+          curl -fsSL -o "$tgz" "https://github.com/arduino/arduino-cli/releases/download/v$ARDUINO_CLI_VERSION/arduino-cli_${ARDUINO_CLI_VERSION}_Linux_64bit.tar.gz"
+          echo "$ARDUINO_CLI_SHA256  $tgz" | sha256sum -c -
+          tar -xzf "$tgz" -C "$HOME/.local/bin" arduino-cli
+          rm "$tgz"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          arduino-cli version
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install "esp32:esp32@$ESP32_CORE_VERSION"
+          arduino-cli lib install "U8g2@$U8G2_VERSION"
+
+      # The release image: no -D switches, only build_cfg.h's defaults (never TENTACLE_DEBUG).
+      - name: Compile the release firmware
+        run: |
+          inc="-include $GITHUB_WORKSPACE/hardware/hid_bridge/build_cfg.h"
+          arduino-cli compile --clean -b "$FQBN" \
+            --build-property "compiler.cpp.extra_flags=$inc" \
+            --build-property "compiler.c.extra_flags=$inc" \
+            --output-dir "$RUNNER_TEMP/build" hardware/hid_bridge
+
+      - name: Collect the images
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          cp "$RUNNER_TEMP/build/hid_bridge.ino.bin" "dist/tentacle-fw-$V.bin"
+          cp "$RUNNER_TEMP/build/hid_bridge.ino.merged.bin" "dist/tentacle-fw-$V.merged.bin"
+          for f in "dist/tentacle-fw-$V.bin" "dist/tentacle-fw-$V.merged.bin"; do
+            if ! grep -aq "tentacle-fw:$V;" "$f"; then
+              echo "::error::$f does not carry the marker tentacle-fw:$V;"
+              exit 1
+            fi
+          done
+          ls -l dist
+
+      # The key is the content of the file `tentacle keygen` writes (64 hex digits). It lives in a 0600 file only
+      # while the two images are signed and is never printed.
+      - name: Sign (Ed25519, release key)
+        env:
+          TENTACLE_SIGNING_KEY: ${{ secrets.TENTACLE_SIGNING_KEY }}
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          if [ -z "$TENTACLE_SIGNING_KEY" ]; then
+            if [ "$RELEASE" = true ]; then
+              echo "::error::the secret TENTACLE_SIGNING_KEY is not set: a release must be signed"
+              exit 1
+            fi
+            echo "::warning::TENTACLE_SIGNING_KEY is not set: dry run with UNSIGNED images (boards refuse them over the network)"
+            exit 0
+          fi
+          go -C cli build -trimpath -o "$RUNNER_TEMP/tentacle" ./cmd/tentacle
+          keyfile=$(mktemp "$RUNNER_TEMP/key.XXXXXX")
+          trap 'rm -f "$keyfile"' EXIT
+          chmod 600 "$keyfile"
+          printf '%s\n' "$TENTACLE_SIGNING_KEY" > "$keyfile"
+          unset TENTACLE_SIGNING_KEY
+          for f in "dist/tentacle-fw-$V.bin" "dist/tentacle-fw-$V.merged.bin"; do
+            out=$("$RUNNER_TEMP/tentacle" sign "$f" --key "$keyfile") || { echo "::error::signing $f failed: $out"; exit 1; }
+            echo "$out"
+            case $out in
+              *"\"version\":\"$V\""*) ;;
+              *) echo "::error::$f: the signer read another version than $V"; exit 1 ;;
+            esac
+          done
+          rm -f "$keyfile" "$RUNNER_TEMP/tentacle"
+
+      # Boards and tentacle-flash accept only signatures by the key in ota_pubkey.h (fwsign.ReleaseKey is kept equal
+      # by a test). A signature by another key would make a release no board takes.
+      - name: Check the signatures against ota_pubkey.h
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          shopt -s nullglob
+          sigs=(dist/*.sig)
+          if [ ${#sigs[@]} -eq 0 ]; then
+            echo "unsigned dry run: nothing to check"
+            exit 0
+          fi
+          hex=$(grep -o '0x[0-9a-fA-F]\{2\}' hardware/hid_bridge/ota_pubkey.h | sed 's/^0x//' | tr -d '\n')
+          [ ${#hex} -eq 64 ] || { echo "::error::could not read OTA_RELEASE_PUBKEY from ota_pubkey.h"; exit 1; }
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          # SubjectPublicKeyInfo for Ed25519 = fixed 12-byte prefix + the 32-byte key
+          python3 -c 'import sys; sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]))' "302a300506032b6570032100$hex" > "$tmp/pub.der"
+          openssl pkey -pubin -inform DER -in "$tmp/pub.der" -out "$tmp/pub.pem"
+          bad=0
+          for f in "dist/tentacle-fw-$V.bin" "dist/tentacle-fw-$V.merged.bin"; do
+            # signed message = "tentacle-fw-v1" || SHA-256(image)
+            { printf 'tentacle-fw-v1'; openssl dgst -sha256 -binary "$f"; } > "$tmp/msg"
+            if openssl pkeyutl -verify -pubin -inkey "$tmp/pub.pem" -rawin -in "$tmp/msg" -sigfile "$f.sig" >/dev/null; then
+              echo "$f: signature OK (key ${hex:0:16}...)"
+            else
+              echo "::error::$f: the signature does not match OTA_RELEASE_PUBKEY in ota_pubkey.h (wrong key in TENTACLE_SIGNING_KEY?)"
+              bad=1
+            fi
+          done
+          if [ $bad = 1 ] && [ "$RELEASE" = true ]; then exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: dist/*
+          if-no-files-found: error
+
+  cli:
+    name: CLI + tentacle-flash (Windows, Linux)
+    needs: firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: ${{ runner.temp }}/fw
+      - name: tentacle (pure Go)
+        env:
+          V: ${{ needs.firmware.outputs.version }}
+        run: |
+          mkdir -p dist
+          for t in windows/amd64 linux/amd64 linux/arm64; do
+            goos=${t%/*} goarch=${t#*/}
+            exe=tentacle; [ "$goos" = windows ] && exe=tentacle.exe
+            pkg=$(mktemp -d)
+            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -trimpath \
+              -ldflags "-s -w -X github.com/kewe87/phone-tentacle/cli/internal/app.Version=$V" -o "$pkg/$exe" ./cmd/tentacle
+            name=tentacle_${goos}_${goarch}
+            if [ "$goos" = windows ]; then (cd "$pkg" && zip -q "$OLDPWD/dist/$name.zip" "$exe"); else tar -czf "dist/$name.tar.gz" -C "$pkg" "$exe"; fi
+            rm -r "$pkg"
+          done
+      - name: tentacle-flash with the signed release image inside
+        env:
+          V: ${{ needs.firmware.outputs.version }}
+        run: |
+          img="$RUNNER_TEMP/fw/tentacle-fw-$V.merged.bin"
+          [ -f "$img.sig" ] || echo "::warning::no $img.sig: tentacle-flash carries an UNSIGNED image (dry run)"
+          out="$RUNNER_TEMP/flash"
+          go run ./tools/flashbuild --image "$img" --version "$V" --out "$out"
+          (cd "$out" && mv tentacle-flash_windows_amd64.exe tentacle-flash.exe && zip -q "$OLDPWD/dist/tentacle-flash_windows_amd64.zip" tentacle-flash.exe)
+          for p in linux_amd64 linux_arm64 darwin_universal; do
+            mv "$out/tentacle-flash_$p" "$out/tentacle-flash"
+            chmod 755 "$out/tentacle-flash"
+            tar -czf "dist/tentacle-flash_$p.tar.gz" -C "$out" tentacle-flash
+            rm "$out/tentacle-flash"
+          done
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-other
+          path: cli/dist/*
+          if-no-files-found: error
+
+  cli-darwin:
+    name: CLI (macOS universal)
+    needs: firmware
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      # cgo on for the system resolver (as cli.yml), then one universal file for Apple silicon and Intel
+      - name: tentacle (arm64 + amd64 -> universal)
+        env:
+          V: ${{ needs.firmware.outputs.version }}
+        run: |
+          mkdir -p dist
+          pkg=$(mktemp -d)
+          for a in arm64 amd64; do
+            CGO_ENABLED=1 GOOS=darwin GOARCH=$a go build -trimpath \
+              -ldflags "-s -w -X github.com/kewe87/phone-tentacle/cli/internal/app.Version=$V" -o "$pkg/tentacle_$a" ./cmd/tentacle
+          done
+          lipo -create -output "$pkg/tentacle" "$pkg/tentacle_arm64" "$pkg/tentacle_amd64"
+          lipo -info "$pkg/tentacle"
+          tar -czf dist/tentacle_darwin_universal.tar.gz -C "$pkg" tentacle
+          rm -r "$pkg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-darwin
+          path: cli/dist/*
+          if-no-files-found: error
+
+  assemble:
+    name: Assemble (checksums)
+    needs: [firmware, cli, cli-darwin]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ needs.firmware.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+      - name: Dry run
+        if: env.RELEASE != 'true'
+        env:
+          V: ${{ needs.firmware.outputs.version }}
+        run: echo "Dry run, no release created. The files are in the workflow artifact release-$V." >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Draft GitHub release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [firmware, assemble]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.firmware.outputs.version }}
+          path: dist
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.firmware.outputs.version }}
+        run: |
+          cd dist
+          for f in "tentacle-fw-$V.bin.sig" "tentacle-fw-$V.merged.bin.sig"; do
+            [ -f "$f" ] || { echo "::error::$f missing: a release must be signed"; exit 1; }
+          done
+          if gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $GITHUB_REF_NAME exists already; delete it (or the tag) first"
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Tentacle $V (draft: fill in the notes from CHANGELOG.md before publishing).
+
+          - tentacle-fw-$V.bin + .sig: firmware update over the network (\`tentacle update\`, the web page's settings)
+          - tentacle-fw-$V.merged.bin + .sig: the whole flash image for USB
+          - tentacle-flash_*: the USB installer with this firmware inside (Windows zip; Linux and macOS tar.gz)
+          - tentacle_*: the command line / MCP server
+          - SHA256SUMS: \`sha256sum -c SHA256SUMS\`
+          EOF
+          gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "Tentacle $V" --notes-file "$RUNNER_TEMP/notes.md" -- *
