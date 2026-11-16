@@ -18,80 +18,85 @@ void gop_set_config(gop_buf *g, const uint8_t *annexb, size_t len, uint32_t ts) 
   g->cfg_ts = ts;
 }
 
-static void restart(gop_buf *g) {
-  g->used = 0;
-  g->n = 0;
-  g->gen++;
+static gop_au *slot(const gop_buf *g, uint32_t k) { return &g->aus[k % (uint32_t)g->max]; }
+
+static void drop_oldest(gop_buf *g) {
+  g->used -= slot(g, g->first)->len;
+  if (g->first++ == 0) g->overflows++;  // the chain lost its start: no new viewer until the next IDR
+  g->n--;
 }
 
-int gop_append(gop_buf *g, const uint8_t *annexb, size_t len, bool idr, uint32_t ts) {
-  if (g->used + len > g->cap || g->n == g->max) return -1;
-  memcpy(g->arena + g->used, annexb, len);
-  g->aus[g->n] = (gop_au){(uint32_t)g->used, (uint32_t)len, ts, idr};
-  g->used += len;
-  return g->n++;
-}
-
-int gop_append_ring(gop_buf *g, const uint8_t *annexb, size_t len, uint32_t ts) {
-  if (len > g->cap || g->max < 1) return -1;
-  int dropped = 0;
-  while (gop_append(g, annexb, len, false, ts) < 0) {
-    int k = g->n > 4 ? g->n / 4 : g->n;
-    gop_drop_front(g, k);
-    dropped += k;
+// Where an AU of len bytes goes without overwriting a kept one. The AUs lie in one piece [head, wr) or, wrapped,
+// in [head, end of the arena) and [0, wr); an AU never wraps itself (the end of the arena stays unused then).
+// False: the oldest has to go first.
+static bool place(const gop_buf *g, size_t len, size_t *pos) {
+  if (!g->n) {
+    *pos = 0;
+    return true;
   }
-  return dropped;
+  if (g->n == g->max) return false;
+  const gop_au *w = slot(g, gop_end(g) - 1);
+  size_t head = slot(g, g->first)->off, wr = w->off + w->len;
+  if (w->off >= head) {
+    if (g->cap - wr >= len) *pos = wr;
+    else if (head >= len) *pos = 0;  // wraps around
+    else return false;
+    return true;
+  }
+  if (head - wr < len) return false;
+  *pos = wr;
+  return true;
 }
 
-void gop_clear(gop_buf *g) {
-  g->used = 0;
+static void empty(gop_buf *g) {
   g->n = 0;
-}
-
-int gop_find(const gop_buf *g, uint32_t ts) {
-  for (int i = g->n - 1; i >= 0; i--)
-    if (g->aus[i].ts == ts) return i;
-  return -1;
-}
-
-void gop_drop_front(gop_buf *g, int k) {
-  if (k <= 0) return;
-  if (k >= g->n) return gop_clear(g);
-  uint32_t off = g->aus[k].off;
-  memmove(g->arena, g->arena + off, g->used - off);
-  memmove(g->aus, g->aus + k, (size_t)(g->n - k) * sizeof *g->aus);
-  g->n -= k;
-  g->used -= off;
-  for (int i = 0; i < g->n; i++) g->aus[i].off -= off;
-}
-
-int gop_resume_at(const gop_buf *g, uint32_t idr_ts, uint32_t n) {
-  if (g->wait_idr || g->frozen || g->n == 0 || !g->aus[0].idr || g->aus[0].ts != idr_ts) return -1;
-  return n >= 1 && n <= (uint32_t)g->n ? (int)n : -1;
-}
-
-size_t gop_bytes_from(const gop_buf *g, int i) {
-  if (i <= 0) return g->used;
-  return i >= g->n ? 0 : g->used - g->aus[i].off;
+  g->first = 0;
+  g->used = 0;
+  g->total = 0;
 }
 
 int gop_push(gop_buf *g, const uint8_t *annexb, size_t len, bool idr, uint32_t ts) {
   if (idr) {
-    restart(g);
+    empty(g);
+    g->gen++;
     g->wait_idr = false;
-    g->frozen = false;
-  } else if (g->wait_idr || g->frozen) {
+    g->idr_ts = ts;
+  } else if (g->wait_idr) {
     return -1;
   }
-  int i = gop_append(g, annexb, len, idr, ts);
-  if (i < 0) {
-    // Full. Keep what we have: it still decodes, and iOS 26 may send no IDR for the rest of the mirroring
-    // session, so restarting would leave nothing to show at all (#25). Only an IDR too big leaves it empty.
-    if (g->n) g->frozen = true;
-    else g->wait_idr = true;
+  if (len > g->cap || g->max < 1) {
+    // Nothing after it decodes without it: wait for the next IDR. A new generation, so a stream on this chain stops.
+    empty(g);
+    g->gen++;
+    g->wait_idr = true;
     g->overflows++;
+    return -1;
   }
-  return i;
+  size_t pos;
+  while (!place(g, len, &pos)) drop_oldest(g);
+  uint32_t k = gop_end(g);
+  memcpy(g->arena + pos, annexb, len);
+  *slot(g, k) = (gop_au){(uint32_t)pos, (uint32_t)len, ts, g->total};
+  g->used += len;
+  g->total += (uint32_t)len;
+  g->n++;
+  return (int)k;
+}
+
+const gop_au *gop_at(const gop_buf *g, uint32_t k) {
+  if (k < g->first || k >= gop_end(g)) return NULL;
+  return slot(g, k);
+}
+
+int gop_resume_at(const gop_buf *g, uint32_t idr_ts, uint32_t n) {
+  if (g->wait_idr || !g->n || g->idr_ts != idr_ts || n < 1 || n < g->first || n > gop_end(g)) return -1;
+  return (int)n;
+}
+
+size_t gop_bytes_from(const gop_buf *g, uint32_t k) {
+  if (!g->n || k >= gop_end(g)) return 0;
+  if (k <= g->first) return g->used;
+  return g->total - slot(g, k)->at;
 }
 
 bool annexb_has_idr(const uint8_t *p, size_t len) {

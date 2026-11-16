@@ -31,7 +31,8 @@ const T = {
     apConnected: 'AirPlay connected, no picture yet. Start Screen Mirroring: Control Center > Screen Mirroring > {name}.',
     keyframe: 'Waiting for a keyframe…',
     keyframeLong: 'Still waiting for a keyframe ({s} s). Touching the phone often brings one; restarting Screen Mirroring always does.',
-    frozen: 'The board\'s picture buffer is full. Restart Screen Mirroring on the iPhone.',
+    frozen: 'The picture cannot go on: the iPhone sent its last keyframe so long ago that the board no longer holds everything since then. A new keyframe brings it back by itself: turn the iPhone sideways and back in an app that turns along (Safari, Photos), or restart Screen Mirroring.',
+    behind: 'catching up, {s} s behind',
     noCodec: 'This browser cannot decode the video (it needs WebCodecs: a current Chrome, Edge, Safari or Firefox).',
     still: 'no new frames for {s} s (a still screen sends none)',
     disconnected: 'Connection to the board lost.', reconnect: 'Reconnect', replaced: 'Another tab or browser took over.',
@@ -91,7 +92,8 @@ const T = {
     apConnected: 'AirPlay verbunden, noch kein Bild. Bildschirmsynchronisierung starten: Kontrollzentrum > Bildschirmsynchronisierung > {name}.',
     keyframe: 'Warte auf ein Schlüsselbild…',
     keyframeLong: 'Noch kein Schlüsselbild ({s} s). Eine Berührung am iPhone bringt oft eins; ein Neustart der Bildschirmsynchronisierung immer.',
-    frozen: 'Der Bildpuffer des Boards ist voll. Bildschirmsynchronisierung am iPhone neu starten.',
+    frozen: 'Das Bild kann nicht weiterlaufen: Das iPhone hat sein letztes Schlüsselbild vor so langer Zeit gesendet, dass das Board nicht mehr alles seither hält. Ein neues Schlüsselbild bringt es von selbst zurück: das iPhone in einer App, die sich mitdreht (Safari, Fotos), quer und wieder hochkant halten, oder die Bildschirmsynchronisierung neu starten.',
+    behind: 'holt auf, {s} s zurück',
     noCodec: 'Dieser Browser kann das Video nicht dekodieren (er braucht WebCodecs: ein aktueller Chrome, Edge, Safari oder Firefox).',
     still: 'seit {s} s keine neuen Bilder (ein ruhiger Bildschirm sendet keine)',
     disconnected: 'Verbindung zum Board verloren.', reconnect: 'Neu verbinden', replaced: 'Ein anderer Tab oder Browser hat übernommen.',
@@ -204,7 +206,15 @@ async function connect() {
   if (!tk.ticket) return lost('');
   ws = new WebSocket('wss://' + location.host + '/ws');
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { wsOpenedAt = Date.now(); video.reset(); ws.send('hello ' + tk.ticket); send('stream on'); if (video.w) send('size ' + video.w + ' ' + video.h); };
+  ws.onopen = () => {
+    wsOpenedAt = Date.now();
+    ws.send('hello ' + tk.ticket);
+    // After a dropped connection the decoder still has the chain up to its last unit: the board goes on from there
+    // (it may no longer hold the chain's start). Otherwise from the keyframe.
+    const at = video.resumeAt();
+    if (at) send('stream on at ' + at); else { video.reset(); send('stream on'); }
+    if (video.w) send('size ' + video.w + ' ' + video.h);
+  };
   ws.onmessage = (e) => { retries = 0; if (typeof e.data === 'string') onText(e.data); else video.chunk(new Uint8Array(e.data)); };
   byeWhy = '';
   ws.onclose = () => { ws = null; lost(byeWhy); };
@@ -260,15 +270,23 @@ $('b-release').onclick = () => send('release');
 
 // ---- Video -------------------------------------------------------------------------------------------------------
 // Chunks as the board sends them to the CLI (src/video/gop.h): [seq u16][flags u8], the first of an access unit
-// with its board time (u32 ms) before the bytes. A CONFIG unit (SPS/PPS) starts a stream: the GOP from its IDR
-// follows, so a page that joins late starts at once.
-const VF_START = 1, VF_END = 2, VF_IDR = 4, VF_CONFIG = 8;
+// with its board time (u32 ms) before the bytes. A CONFIG unit (SPS/PPS) starts a stream: the chain from its IDR
+// follows, so a page that joins late starts at once. The board never skips ahead: a page that is behind (BEHIND:
+// more units wait on the board) decodes every unit and draws only now and then until it is at the live edge.
+const VF_START = 1, VF_END = 2, VF_IDR = 4, VF_CONFIG = 8, VF_BEHIND = 64;
 const video = {
   w: 0, h: 0, parts: [], flags: 0, ts: 0, cfg: null, dec: null, needKey: true, lastTs: 0, offset: null,
-  decoded: false, barsAt: 0, bars: '', ctx: null, probe: null,
+  decoded: false, barsAt: 0, bars: '', ctx: null, probe: null, drawnAt: 0, behind: false,
+  idrTs: 0, inChain: 0,  // the decoder has units 0 .. inChain-1 of the chain whose IDR is stamped idrTs
   // The part of the frame shown (letterboxing cut off, e.g. a landscape picture in a portrait frame), in frame pixels.
   crop: { x: 0, y: 0, w: 0, h: 0 },
-  reset() { this.parts = []; this.needKey = true; this.cfg = null; },
+  reset() { this.parts = []; this.needKey = true; this.cfg = null; this.inChain = 0; },
+  // 'IDR_TS N' if the decoder can go on where it stopped (a dropped connection, not a reload), else ''.
+  resumeAt() {
+    this.parts = [];  // a unit cut off by the drop comes again
+    const ok = this.dec && this.dec.state === 'configured' && !this.needKey && this.inChain > 0;
+    return ok ? this.idrTs + ' ' + this.inChain : '';
+  },
   sync(boardNow) { this.offset = boardNow - performance.now(); },
   chunk(b) {
     if (b.length < 3) return;
@@ -290,7 +308,7 @@ const video = {
     }
   },
   unit(au, flags, ts) {
-    if (flags & VF_CONFIG) { this.cfg = au; this.needKey = true; this.configure(au); return; }
+    if (flags & VF_CONFIG) { this.cfg = au; this.needKey = true; this.inChain = 0; this.configure(au); return; }
     if (!this.dec || this.dec.state !== 'configured') return;
     const key = !!(flags & VF_IDR);
     if (this.needKey && !key) return;  // a P-frame needs the frames before it
@@ -300,7 +318,9 @@ const video = {
       this.dec.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: ts * 1000, data }));
       this.needKey = false;
       this.lastTs = ts;
-    } catch (e) { this.needKey = true; }
+      this.behind = !!(flags & VF_BEHIND);
+      if (key) { this.idrTs = ts; this.inChain = 1; } else this.inChain++;
+    } catch (e) { this.needKey = true; this.inChain = 0; }
   },
   configure(cfg) {
     if (typeof VideoDecoder === 'undefined') { overlay(t('noCodec')); return; }
@@ -309,10 +329,13 @@ const video = {
     const hex = (x) => x.toString(16).padStart(2, '0');
     const codec = i + 6 < cfg.length ? 'avc1.' + hex(cfg[i + 4]) + hex(cfg[i + 5]) + hex(cfg[i + 6]) : 'avc1.42e01f';
     if (this.dec && this.dec.state !== 'closed') try { this.dec.close(); } catch (e) { /* closed */ }
-    this.dec = new VideoDecoder({ output: (f) => this.draw(f), error: () => { this.needKey = true; } });
+    this.dec = new VideoDecoder({ output: (f) => this.draw(f), error: () => { this.needKey = true; this.inChain = 0; } });
     try { this.dec.configure({ codec, optimizeForLatency: true }); } catch (e) { overlay(t('noCodec')); }
   },
   draw(f) {
+    // Catching up (more units queued for the decoder): draw a few frames a second, not every one.
+    if (this.dec && this.dec.decodeQueueSize > 0 && this.decoded && performance.now() - this.drawnAt < 250) { f.close(); return; }
+    this.drawnAt = performance.now();
     const cv = $('cv');
     if (f.displayWidth !== this.w || f.displayHeight !== this.h || !this.w) {
       this.w = f.displayWidth;
@@ -371,7 +394,8 @@ const video = {
       age.hidden = false;
       const stale = st.vage > 3000;
       age.classList.toggle('stale', stale);
-      age.textContent = stale ? t('still', { s: Math.round(st.vage / 1000) }) : a.toFixed(1) + ' s';
+      age.textContent = this.behind && a >= 2 ? t('behind', { s: Math.round(a) })
+        : stale ? t('still', { s: Math.round(st.vage / 1000) }) : a.toFixed(1) + ' s';
       $('s-age').textContent = age.textContent;
     } else { age.hidden = true; $('s-age').textContent = '–'; }
   },

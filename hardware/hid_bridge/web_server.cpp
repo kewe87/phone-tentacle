@@ -41,7 +41,6 @@ static bool hasAbs() { return cfg_abs_active(); }
 const uint16_t HTTPS_PORT = 443, HTTP_PORT = 80;
 const char *const HOST_NAME = "tentacle.local";   // the mDNS name (src/airplay/mdns.c)
 const size_t WEB_PAYLOAD = 8192;                   // video bytes per WebSocket frame
-const uint32_t WEB_MAX_LAG_MS = 6000;              // a page this far behind skips to the next IDR
 const uint32_t SESSION_IDLE_MS = 12 * 3600000u;    // a sign-in unused this long ends
 const uint32_t PW_CONFIRM_MS = 30000;              // to press BOOT for a new password
 const size_t WS_MSG_MAX = 640;                     // one message from the page
@@ -114,7 +113,8 @@ static void sendErr(const char *why) {
 }
 
 // Video: one chunk at a time, handed to the server's task; the web's video task waits for it. A slow browser
-// holds up only that task (video_link.cpp skips ahead for it); the AirPlay receiver never waits.
+// holds up only that task (it falls behind in the board's buffer and catches up later); the AirPlay receiver never
+// waits.
 static SemaphoreHandle_t vDone;
 static volatile bool vStuck, vOk;
 static const uint8_t *vP;
@@ -577,13 +577,23 @@ static void wsGone(void *ctx) {  // the server's task: the page's connection clo
   free(t);
 }
 
-// One message from the page (src/web/web_input.h; plus take, release, stream on|off, ping).
+// One message from the page (src/web/web_input.h; plus take, release, stream on|off|on at IDR_TS N, ping).
 static void onMessage(const char *m) {
   uint32_t now = millis();
   if (!strcmp(m, "ping")) return;
   if (!strcmp(m, "stream on") || !strcmp(m, "stream off")) {
     wsStream = m[7] == 'o' && m[8] == 'n';
     video_web_stream(wsStream);
+    return;
+  }
+  unsigned long ts, at;
+  char extra;
+  if (sscanf(m, "stream on at %lu %lu%c", &ts, &at, &extra) == 2) {
+    // The page kept its decoder across a reconnect: go on after its last AU. Resume first, then let it take chunks
+    // (webRoom()): the video task keeps the resume until it can send, and looks again within 20 ms.
+    bool ok = video_web_stream_at(ts, at);
+    wsStream = true;
+    board_log("web: the page resumes the video at AU %lu: %s", at, ok ? "yes" : "no, from the next whole chain");
     return;
   }
   if (!strcmp(m, "take") || !strcmp(m, "release")) {
@@ -790,7 +800,7 @@ static void startServer() {
   route(h, "/ws", HTTP_GET, onWs, nullptr, true);
   vStuck = false;
   srv = h;
-  if (!video_web_begin(webRoom, webSend, webGen, WEB_PAYLOAD, WEB_MAX_LAG_MS)) board_log("web: no video (PSRAM)");
+  if (!video_web_begin(webRoom, webSend, webGen, WEB_PAYLOAD)) board_log("web: no video (PSRAM)");
   board_log("web: https://%s/ and https://%s/ up (internal heap %u -> %u)", HOST_NAME, WiFi.localIP().toString().c_str(),
             (unsigned)before, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 }

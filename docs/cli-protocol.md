@@ -191,7 +191,7 @@ Board:
 | Command | Behavior |
 |---|---|
 | `stream on\|off` | Sends every access unit as it comes (`V`), starting with the config and the whole GOP since the last IDR. Off again when the session ends. |
-| `stream on at IDR_TS N` | From 0.2.3: the same, but the computer's decoder already has the first N units of the GOP whose IDR is stamped IDR_TS (it kept them across a reconnect): the stream goes on with unit N, without config and IDR. `ok resumed`; `ok` when that GOP is gone (a newer IDR, a reboot, the GOP is frozen, or it has fewer units): then it starts from the config and the IDR as `stream on`. Older boards answer `err usage`; send `stream on` then. |
+| `stream on at IDR_TS N` | From 0.2.3: the same, but the computer's decoder already has the first N units of the GOP whose IDR is stamped IDR_TS (it kept them across a reconnect): the stream goes on with unit N, without config and IDR. `ok resumed`; `ok` when that GOP is gone (a newer IDR, a reboot, unit N was dropped already, or it has fewer units): then it starts from the config and the IDR as `stream on`. Older boards answer `err usage`; send `stream on` then. |
 | `snap` | Sends the config and the current GOP once (chunks flagged SNAP), then replies `ok`. `err no video (start screen mirroring)`, `err waiting for keyframe` (mirroring is up, no IDR yet), `err video frozen (restart screen mirroring)`. |
 | `bench KB` | Sends KB kilobytes (1-4096) of filler chunks (flag BENCH), then `ok <ms>`. |
 | `res W H`, `fps N` | The mirroring format (default 480 1040, 15 fps since 0.3.2; 30 in 0.2.2, 5 before, and a stored 5 is dropped once), stored on the board; it applies to the next mirroring session. `tentacle video fps N`, `tentacle video res W H`. |
@@ -238,11 +238,11 @@ Once a second on stream `B`, one JSON object:
 - `net`: `sta` (on a Wi-Fi), `none` (a Wi-Fi is stored but not connected) or `ap` (setup hotspot); `ip`; `sta`:
   stations on the hotspot, or 1/0 connected.
 - `ap`: the AirPlay receiver, `idle|connected|streaming`. `w`, `h`: the mirroring format. `kbps`, `fps`: video
-  coming in; `idr` ms between the last two IDRs; `gop` bytes buffered since the last IDR; `vbl` (0.2.3) bytes of
-  the GOP (and the ring after a full one) this session's stream has not sent yet: above 0 the computer is still
+  coming in; `idr` ms between the last two IDRs; `gop` bytes buffered since the last IDR (the part still kept); `vbl` (0.2.3) bytes
+  of the buffer this session's stream has not sent yet: above 0 the computer is still
   catching up with what was buffered, 0 it is at the live edge (also 0 without `stream on`); `vage` ms since the last
-  frame; `ovf` times the GOP buffer filled; `fz` 1: the GOP is full and the stream is not going on from it, no new
-  picture until the next IDR (restart Screen Mirroring).
+  frame; `ovf` times the buffer was full and dropped the start of the chain since an IDR; `fz` 1: that happened and
+  this session's stream is not on the chain, no new picture until the next IDR (restart Screen Mirroring).
 - `lost`: AirPlay video packets the board dropped for good since boot. After one, the frames that follow may not
   decode until the next IDR.
 - `link.kbps`: bytes out to the computer in the last second.
@@ -272,9 +272,11 @@ board timestamp (ms since boot, when the board got the unit from the iPhone), fo
 replayed from the GOP keeps the time it was taken, not when it reached the computer.
 `seq` increments per chunk; after a gap the CLI waits for the next IDR/CONFIG.
 
-The board keeps the GOP since the last IDR (up to 4 MB) and, once that is full, a ring of the newest units after
-it: a stream that is in step goes on from the ring, anyone else needs the next IDR (`fz`). A new session, and every
-`stream on`, starts from the GOP's IDR (unless `stream on at` goes on from a unit the computer has). A still screen
+The board keeps the chain of units since the last IDR in a ring (4.5 MB, numbered from the IDR on, 0): while the
+IDR is still in it, a stream can start from it; once the ring was full and dropped the oldest units, a stream that is
+on the chain goes on (however far behind, as long as its next unit is still kept), anyone else needs the next IDR
+(`fz`). The board never skips ahead for a slow receiver. A new session, and every `stream on`, starts from the IDR
+(unless `stream on at` goes on from a unit the computer has, which also works after the IDR was dropped). A still screen
 gets an IDR only rarely, so the GOP can hold minutes: a blinking text cursor at 30 fps adds about 300 KB a minute,
 and over a weak link (50 kbit/s) the replay of minutes takes minutes. Chunks are sent as fast as the TCP link takes
 them (no pacing); BEHIND and `vbl` say how far behind the computer still is.

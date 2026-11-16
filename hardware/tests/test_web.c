@@ -1,7 +1,7 @@
 // Host tests for the web interface's plain-C parts (src/web/): the password record and the login lock, the cookie
 // and Host helpers, where a point of the picture lands on the phone (letterbox bars as in the CLI's area.go), what
 // the page's mouse and keyboard messages become, the move-coalescing queue, who has control (session or page),
-// the video gate that skips to the next IDR when a browser falls behind, and the board's own TLS certificate.
+// what the page's picture waits for (never a skip ahead to an IDR), and the board's own TLS certificate.
 // Alone: gcc -DTEST_WEB_MAIN -I<mbedtls>/include -o test_web test_web.c ../hid_bridge/src/web/*.c -lmbedx509
 //        -lmbedcrypto -lm
 #include <stdio.h>
@@ -227,18 +227,22 @@ static void test_control(void) {
 }
 
 static void test_video_gate(void) {
-  wv_gate g;
-  wv_init(&g);
-  CHECK(wv_send(&g, 1, 0, true, 60000, 5000));     // catching up: old is fine
-  CHECK(wv_send(&g, 1, 1000, false, 5000, 5000));  // in step, 4 s behind
-  CHECK(!wv_send(&g, 1, 1000, false, 6001, 5000)); // too far behind: skip ...
-  CHECK(wv_waiting(&g, 1) && wv_waited(&g, 7001) == 1000);
-  CHECK(!wv_send(&g, 1, 7000, false, 7001, 5000)); // ... the whole generation, even fresh access units
-  CHECK(wv_send(&g, 2, 8000, true, 8001, 5000));   // the next IDR: going again
-  CHECK(!wv_waiting(&g, 2) && wv_waited(&g, 9000) == 0);
-  CHECK(wv_send(&g, 2, 0, false, 0xFFFFFFFFu, 0)); // no limit
-  wv_init(&g);
-  CHECK(wv_send(&g, 3, 0xFFFFFF00u, false, 100, 5000));  // across the wrap: 356 ms
+  wv_watch w;
+  wv_init(&w);
+  CHECK(wv_update(&w, false, true, false, 100) == VW_KEYFRAME);   // mirroring, no IDR yet
+  CHECK(wv_waited(&w, 5100) == 5000);
+  CHECK(wv_update(&w, false, false, true, 6000) == VW_OK);        // a whole chain: the page starts from its IDR
+  CHECK(wv_waited(&w, 9000) == 0);
+  CHECK(wv_update(&w, true, false, true, 7000) == VW_OK);         // on it
+  // The chain lost its start: the page that is on it goes on, however far behind (no skipping to an IDR that may
+  // never come: 2026-11-16, a page that caught up for 6 s was cut off and stayed black) ...
+  CHECK(wv_update(&w, true, false, false, 8000) == VW_OK);
+  // ... a page that is not (it joined late, reloaded, or fell a whole buffer behind) waits for the next IDR.
+  CHECK(wv_update(&w, false, false, false, 9000) == VW_FROZEN);
+  CHECK(wv_update(&w, false, false, false, 12000) == VW_FROZEN && wv_waited(&w, 12000) == 3000);  // since it froze
+  CHECK(wv_update(&w, false, false, true, 13000) == VW_OK);       // the next IDR (the phone turned): starts again
+  CHECK(wv_update(&w, false, true, false, 0xFFFFFF00u) == VW_KEYFRAME);  // an AU too big: the next IDR
+  CHECK(wv_waited(&w, 100) == 356);                               // across the wrap
 }
 
 // A deterministic stand-in for the board's random source: SHA-256 of a counter.

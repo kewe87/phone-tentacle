@@ -99,55 +99,87 @@ static void test_bplist_utf16(void) {
   CHECK(bp_get_string(&r, bp_dict_get(&r, top, "name"), s, sizeof s) && !strcmp(s, "H\xE2\x80\x99s"));
 }
 
+// Every kept AU of the chain still holds its own bytes (each AU k was filled with k & 0xff), and used adds up.
+static bool gop_intact(const gop_buf *g) {
+  size_t used = 0;
+  for (uint32_t k = g->first; k < gop_end(g); k++) {
+    const gop_au *a = gop_at(g, k);
+    if (!a || a->off + a->len > g->cap) return false;
+    for (uint32_t i = 0; i < a->len; i++)
+      if (g->arena[a->off + i] != (uint8_t)k) return false;
+    used += a->len;
+  }
+  return used == g->used;
+}
+
+static int push_k(gop_buf *g, size_t len, bool idr, uint32_t ts) {
+  static uint8_t au[128];
+  memset(au, (uint8_t)gop_end(g) * !idr, sizeof au);
+  return gop_push(g, au, len, idr, ts);
+}
+
 static void test_gop(void) {
   static uint8_t arena[100];
-  static gop_au aus[4];
+  static gop_au aus[8];
   gop_buf g;
   gop_init(&g, arena, sizeof arena, aus, 4);
-  uint8_t au[40] = {0, 0, 0, 1, 0x41};
-  CHECK(gop_push(&g, au, 10, false, 1) == -1);  // waits for the first IDR
-  CHECK(gop_push(&g, au, 30, true, 2) == 0);
-  CHECK(gop_push(&g, au, 30, false, 3) == 1);
-  CHECK(gop_push(&g, au, 30, false, 4) == 2 && g.used == 90);
-  // a stream whose decoder has the first n AUs of this GOP (IDR stamped 2) goes on at n; another GOP's: from scratch
+  CHECK(push_k(&g, 10, false, 1) == -1 && !gop_whole(&g));  // waits for the first IDR
+  CHECK(push_k(&g, 30, true, 2) == 0);
+  CHECK(push_k(&g, 30, false, 3) == 1);
+  CHECK(push_k(&g, 30, false, 4) == 2 && g.used == 90 && gop_whole(&g) && gop_end(&g) == 3);
+  // a stream whose decoder has the first n AUs of this chain (IDR stamped 2) goes on at n; another chain's: from scratch
   CHECK(gop_resume_at(&g, 2, 1) == 1 && gop_resume_at(&g, 2, 3) == 3);
   CHECK(gop_resume_at(&g, 2, 4) == -1 && gop_resume_at(&g, 2, 0) == -1 && gop_resume_at(&g, 3, 2) == -1);
   CHECK(gop_bytes_from(&g, 0) == 90 && gop_bytes_from(&g, 1) == 60 && gop_bytes_from(&g, 3) == 0);
+  CHECK(gop_at(&g, 2) && gop_at(&g, 2)->ts == 4 && !gop_at(&g, 3));
   uint32_t gen = g.gen;
-  CHECK(gop_push(&g, au, 30, false, 5) == -1 && g.n == 3 && g.frozen && !g.wait_idr && g.overflows == 1);
-  CHECK(gop_push(&g, au, 5, false, 6) == -1 && g.n == 3 && g.gen == gen);  // frozen: kept whole, nothing added
-  CHECK(gop_resume_at(&g, 2, 2) == -1);  // frozen: the AUs after it went to the tail
-  CHECK(gop_push(&g, au, 10, true, 7) == 0 && !g.frozen && g.gen != gen);
-  CHECK(gop_push(&g, arena, sizeof arena + 1, true, 8) == -1 && g.n == 0 && g.wait_idr && g.overflows == 2);
 
-  static uint8_t tarena[20];
-  static gop_au taus[2];
-  gop_buf t;
-  gop_init(&t, tarena, sizeof tarena, taus, 2);
-  CHECK(gop_append(&t, au, 10, false, 1) == 0 && gop_append(&t, au, 10, false, 2) == 1);
-  CHECK(gop_append(&t, au, 1, false, 3) == -1);
-  gop_clear(&t);
-  CHECK(t.n == 0 && t.used == 0 && gop_append(&t, au, 20, false, 4) == 0);
-  CHECK(gop_find(&t, 4) == 0 && gop_find(&t, 9) == -1);
-  gop_clear(&t);
-  for (int i = 0; i < 2; i++) au[i] = (uint8_t)(10 + i);
-  CHECK(gop_append(&t, au, 5, false, 11) == 0 && gop_append(&t, au + 1, 5, false, 12) == 1);
-  gop_drop_front(&t, 1);  // keeps the newer AU, moved to the front
-  CHECK(t.n == 1 && t.used == 5 && t.aus[0].off == 0 && t.aus[0].ts == 12 && t.arena[0] == 11 && gop_find(&t, 12) == 0);
-  gop_drop_front(&t, 5);
-  CHECK(t.n == 0 && t.used == 0);
+  // Full: the oldest goes, never the newest (2026-11-16: the GOP froze instead, a page that joined or fell behind
+  // after that stayed black until mirroring restarted). The chain lost its start: no new viewer, but a stream that
+  // has AU 0 goes on.
+  CHECK(push_k(&g, 30, false, 5) == 3 && g.first == 1 && g.n == 3 && !gop_whole(&g) && !g.wait_idr);
+  CHECK(g.overflows == 1 && g.gen == gen && gop_at(&g, 3)->off == 0 && gop_intact(&g));  // wrapped to the front
+  CHECK(!gop_at(&g, 0) && gop_at(&g, 1) && gop_at(&g, 3)->ts == 5);
+  CHECK(gop_resume_at(&g, 2, 1) == 1 && gop_resume_at(&g, 2, 4) == 4);  // AU 1 is still there; at the end: waits
+  CHECK(gop_bytes_from(&g, 0) == 90 && gop_bytes_from(&g, 2) == 60 && gop_bytes_from(&g, 3) == 30);
+  CHECK(push_k(&g, 30, false, 6) == 4 && g.first == 2 && g.overflows == 1 && gop_intact(&g));  // counted once a chain
+  CHECK(gop_resume_at(&g, 2, 1) == -1 && gop_resume_at(&g, 2, 2) == 2);  // AU 1 was dropped: that decoder starts over
 
-  // the tail past a frozen GOP is a ring: full drops the oldest, never refuses (2026-11-06: it broke instead,
-  // and the screen stayed frozen until mirroring restarted)
-  static uint8_t rarena[40];
-  static gop_au raus[8];
-  gop_buf r;
-  gop_init(&r, rarena, sizeof rarena, raus, 8);
-  for (uint32_t ts = 1; ts <= 8; ts++) CHECK(gop_append_ring(&r, au, 5, ts) == 0);
-  CHECK(r.n == 8 && gop_append_ring(&r, au, 5, 9) == 2);  // a quarter of 8 dropped
-  CHECK(r.n == 7 && r.aus[0].ts == 3 && gop_find(&r, 9) == 6 && gop_find(&r, 2) == -1);
-  CHECK(gop_append_ring(&r, au, 30, 10) == 7 && r.n == 1 && r.used == 30);  // bytes, not count, made it full
-  CHECK(gop_append_ring(&r, au, 41, 11) == -1 && r.n == 1);  // larger than the whole ring: refused, nothing lost
+  // A new IDR: a new chain, whole again; a decoder of the old one starts over.
+  CHECK(push_k(&g, 10, true, 7) == 0 && gop_whole(&g) && g.gen != gen && g.idr_ts == 7 && g.used == 10);
+  CHECK(gop_resume_at(&g, 2, 2) == -1 && gop_resume_at(&g, 7, 1) == 1);
+
+  // The AU list fills before the arena (a still screen, tiny AUs): the same.
+  gop_init(&g, arena, sizeof arena, aus, 4);
+  for (uint32_t i = 0; i < 4; i++) CHECK(push_k(&g, 5, i == 0, 10 + i) == (int)i);
+  CHECK(push_k(&g, 5, false, 14) == 4 && g.first == 1 && g.n == 4 && gop_intact(&g));
+  CHECK(gop_at(&g, 4) == &aus[0]);  // AU k in aus[k % max]
+
+  // Any mix of sizes: the ring never overwrites an AU it keeps, and always keeps the newest.
+  gop_init(&g, arena, sizeof arena, aus, 8);
+  CHECK(push_k(&g, 17, true, 1) == 0);
+  uint32_t seed = 1;
+  for (int i = 0; i < 5000; i++) {
+    seed = seed * 1103515245u + 12345u;
+    size_t len = 1 + (seed >> 16) % 50;
+    int k = push_k(&g, len, false, (uint32_t)i);
+    if (k < 0 || (uint32_t)k + 1 != gop_end(&g) || gop_at(&g, (uint32_t)k)->len != len || !gop_intact(&g)) {
+      CHECK(!"ring");
+      break;
+    }
+  }
+  CHECK(g.first > 0 && g.overflows == 1 && g.total >= g.used);
+  uint32_t last = gop_end(&g) - 1;
+  CHECK(gop_bytes_from(&g, last) == gop_at(&g, last)->len);
+
+  // An AU larger than the whole arena: nothing after it decodes; a new generation waits for the next IDR.
+  gen = g.gen;
+  uint8_t big[101] = {0};
+  CHECK(gop_push(&g, big, sizeof big, false, 20) == -1 && g.wait_idr && g.n == 0 && g.gen != gen && !gop_whole(&g));
+  CHECK(push_k(&g, 5, false, 21) == -1 && g.n == 0);
+  CHECK(gop_push(&g, big, sizeof big, true, 22) == -1 && g.wait_idr);  // an IDR too big as well
+  CHECK(push_k(&g, 100, true, 23) == 0 && !g.wait_idr && gop_whole(&g) && g.used == 100);  // exactly the arena
+  CHECK(push_k(&g, 1, false, 24) == 1 && g.first == 1 && g.n == 1 && gop_at(&g, 1)->off == 0 && gop_intact(&g));
 
   uint8_t idr[] = {0, 0, 0, 1, 0x67, 1, 0, 0, 0, 1, 0x65, 9};
   CHECK(annexb_has_idr(idr, sizeof idr));
@@ -158,18 +190,6 @@ static void test_gop(void) {
   CHECK(avcc_to_annexb(avcc, sizeof avcc) && !memcmp(avcc, want, sizeof want));
   uint8_t bad[] = {0, 0, 0, 9, 0x65};
   CHECK(!avcc_to_annexb(bad, sizeof bad));
-
-  // The AU list fills before the arena: freeze the same way, the next IDR restarts (a still screen, tiny AUs).
-  static uint8_t big[1000];
-  gop_init(&g, big, sizeof big, aus, 4);
-  for (uint32_t i = 0; i < 4; i++) CHECK(gop_push(&g, au, 5, i == 0, 10 + i) == (int)i);
-  CHECK(gop_push(&g, au, 5, false, 14) == -1 && g.frozen && g.n == 4);
-  CHECK(gop_find(&g, 13) == 3);  // what was kept stays findable while frozen
-  CHECK(gop_push(&g, au, 5, true, 15) == 0 && !g.frozen && g.n == 1);
-  // An IDR too big for the arena: wait for the next one that fits, never keep P-frames without their IDR.
-  CHECK(gop_push(&g, big, sizeof big + 1, true, 16) == -1 && g.wait_idr && g.n == 0);
-  CHECK(gop_push(&g, au, 5, false, 17) == -1 && g.n == 0);
-  CHECK(gop_push(&g, au, 5, true, 18) == 0 && !g.wait_idr && g.n == 1);
 }
 
 static void test_chunker(void) {

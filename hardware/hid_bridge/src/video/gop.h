@@ -1,4 +1,4 @@
-// GOP buffer (every access unit since the latest IDR) and the video chunker.
+// GOP buffer (the access units since the latest IDR, kept as a ring) and the video chunker.
 // Plain C with caller-provided memory so it can be unit-tested on the host.
 #pragma once
 #include <stddef.h>
@@ -15,42 +15,45 @@ enum { VF_START = 1, VF_END = 2, VF_IDR = 4, VF_CONFIG = 8, VF_BENCH = 16, VF_SN
 #define VCHUNK_HDR 3  // seq u16 LE + flags u8
 #define GOP_CFG_MAX 512
 
+// The chain of access units since the latest IDR, numbered from the IDR (0) on. When the arena or the AU list is
+// full the oldest are dropped, never the newest. While AU 0 is kept the chain is whole: a decoder can start from it
+// (a new viewer, a snap). Once it lost its start, a stream whose decoder already has the AUs before some number k
+// goes on from k, as long as AU k is kept; a new viewer needs the next IDR. iOS sends an IDR at the start of
+// mirroring and when the picture's format changes (a codec packet), so one chain may last the whole session.
 typedef struct {
   uint32_t off, len, ts;
-  bool idr;
+  uint32_t at;  // bytes of the chain before this AU (gop_bytes_from)
 } gop_au;
 
 typedef struct {
   uint8_t *arena;
-  size_t cap, used;
-  gop_au *aus;
-  int n, max;
+  size_t cap, used;  // used: bytes of the AUs kept
+  gop_au *aus;       // AU k at aus[k % max]
+  int n, max;        // n AUs kept: first .. first + n - 1
+  uint32_t first;    // the oldest AU kept; 0: the chain is whole
+  uint32_t total;    // bytes since the IDR, the dropped ones too
+  uint32_t idr_ts;   // AU 0's timestamp: names the chain for a stream that resumes
   uint8_t cfg[GOP_CFG_MAX];  // SPS+PPS, Annex-B
   size_t cfg_len;
   uint32_t cfg_ts;
-  bool wait_idr;    // start, or an IDR too big for the buffer: drop until the next IDR
-  bool frozen;      // full: the GOP stays decodable up to here, newer AUs are dropped until the next IDR
-  uint32_t gen;     // bumps whenever the buffer restarts
-  uint32_t overflows;
+  bool wait_idr;       // start, or an AU larger than the arena: drop until the next IDR
+  uint32_t gen;        // bumps with every IDR (a new chain)
+  uint32_t overflows;  // chains that lost their start, and AUs that did not fit at all
 } gop_buf;
 
 void gop_init(gop_buf *g, uint8_t *arena, size_t cap, gop_au *aus, int max);
 void gop_set_config(gop_buf *g, const uint8_t *annexb, size_t len, uint32_t ts);
-// Appends one Annex-B access unit. Returns its index, or -1 if it was dropped.
+// Appends one Annex-B access unit; an IDR starts a new chain. Returns the AU's number in its chain, or -1 if it was
+// dropped (no IDR yet, or larger than the whole arena).
 int gop_push(gop_buf *g, const uint8_t *annexb, size_t len, bool idr, uint32_t ts);
-// Appends without the IDR rules (a plain AU list, e.g. the AUs after a frozen GOP). -1 if full.
-int gop_append(gop_buf *g, const uint8_t *annexb, size_t len, bool idr, uint32_t ts);
-// Appends to a plain AU list kept as a ring: when full, drops the oldest (a quarter at a time: each drop moves
-// the arena). Returns how many AUs were dropped, -1 if the AU can't fit even alone.
-int gop_append_ring(gop_buf *g, const uint8_t *annexb, size_t len, uint32_t ts);
-// Empties the list, same generation.
-void gop_clear(gop_buf *g);
-int gop_find(const gop_buf *g, uint32_t ts);  // the last AU with this timestamp, -1 if none
-void gop_drop_front(gop_buf *g, int k);       // forget the oldest k AUs (a plain AU list, e.g. the tail)
-// Where a stream goes on whose decoder already has the first n AUs of the GOP that starts with the IDR stamped
-// idr_ts: n, or -1 if that GOP is gone (a newer IDR, a reboot), frozen, or shorter.
+static inline uint32_t gop_end(const gop_buf *g) { return g->first + (uint32_t)g->n; }  // the next AU's number
+static inline bool gop_whole(const gop_buf *g) { return !g->wait_idr && g->n > 0 && g->first == 0; }
+// AU k of the chain, NULL if it is not kept (dropped already, or not there yet). Its bytes: g->arena + au->off.
+const gop_au *gop_at(const gop_buf *g, uint32_t k);
+// Where a stream goes on whose decoder already has AUs 0 .. n-1 of the chain whose IDR is stamped idr_ts: n, or -1
+// if that chain is gone (a newer IDR, a reboot), AU n was dropped already, or n is past the end.
 int gop_resume_at(const gop_buf *g, uint32_t idr_ts, uint32_t n);
-size_t gop_bytes_from(const gop_buf *g, int i);  // bytes of AU i and all after it (0 past the end)
+size_t gop_bytes_from(const gop_buf *g, uint32_t k);  // bytes of AU k and the AUs after it (all kept from first)
 // True if the Annex-B data contains an IDR slice (NAL type 5).
 bool annexb_has_idr(const uint8_t *p, size_t len);
 // Rewrites AVCC (4-byte big-endian length prefixes) in place into Annex-B start codes.
