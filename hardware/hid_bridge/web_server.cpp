@@ -614,6 +614,9 @@ static void onMessage(const char *m) {
   unlock();
   if (res == WI_ERR) sendErr(why);
   else if (full) sendErr("busy");
+#if TENTACLE_DEBUG
+  if (res == WI_ERR || full) board_log("D web: '%.40s' refused: %s", m, full ? "queue full" : why);
+#endif
 }
 
 // A short text frame to fd, from the server's task, before the connection is closed: the page tells the person why.
@@ -961,6 +964,9 @@ bool web_loop() {
   }
   String rep = run(cmd);
   bool ok = rep == "ok";
+#if TENTACLE_DEBUG
+  board_log("D web: %s -> %s", cmd, rep.c_str());
+#endif
   lock();
   if (ok && !strcmp(cmd, "press")) webHolds = true;
   else if (ok && (!strcmp(cmd, "release") || !strncmp(cmd, "press_for", 9))) webHolds = false;
