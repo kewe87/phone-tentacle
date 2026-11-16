@@ -74,6 +74,37 @@ setup_line() {
   return 1
 }
 
+# show_qr ROWS: prints the setup Wi-Fi's QR code (the `qr` field: one hex string per row, first module in the top
+# bit) with half blocks, dark modules on a white background and a 4-module quiet zone, so a phone camera can scan it
+# from a dark or light terminal.
+show_qr() {
+  local IFS=, rows=() bits=() r h i x y n line t b
+  local up=$'\342\226\200' down=$'\342\226\204' full=$'\342\226\210' on=$'\033[30;107m' off=$'\033[0m'
+  read -r -a rows <<<"$1"
+  n=${#rows[@]}
+  (( n >= 21 )) || return 0
+  for r in "${rows[@]}"; do
+    line=""
+    for (( i = 0; i < ${#r}; i++ )); do
+      h=$((16#${r:i:1}))
+      line+=$(( h >> 3 & 1 ))$(( h >> 2 & 1 ))$(( h >> 1 & 1 ))$(( h & 1 ))
+    done
+    bits+=("$line")
+  done
+  for (( y = -4; y < n + 4; y += 2 )); do
+    line=""
+    for (( x = -4; x < n + 4; x++ )); do
+      t=0 b=0
+      if (( x >= 0 && x < n )); then
+        (( y >= 0 && y < n )) && t=${bits[y]:x:1}
+        (( y + 1 >= 0 && y + 1 < n )) && b=${bits[y + 1]:x:1}
+      fi
+      if (( t && b )); then line+=$full; elif (( t )); then line+=$up; elif (( b )); then line+=$down; else line+=" "; fi
+    done
+    printf '  %s%s%s\n' "$on" "$line" "$off"
+  done
+}
+
 # show_setup SECONDS PORT...: asks until one of the ports answers, then prints how to set the Wi-Fi up. A board that
 # says nothing (still in the bootloader, no data cable) only costs the timeout.
 show_setup() {
@@ -98,6 +129,11 @@ show_setup() {
     echo "  Setup Wi-Fi : $(field ssid)"
     echo "  Password    : $(field pass)"
     echo
+    if [[ -n $(field qr) ]]; then
+      show_qr "$(field qr)"
+      echo
+      echo "Scan this code with the phone's camera to join without typing the password."
+    fi
     echo "Join that Wi-Fi with a phone or laptop. The setup page opens by itself (or open $(field url))."
     echo "Choose your home Wi-Fi, enter its password, then press the BOOT button on the board within 30 s."
   else

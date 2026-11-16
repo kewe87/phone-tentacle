@@ -113,7 +113,8 @@ dabei das Board einstecken und noch einmal hochladen; die COM-Nummer kann sich �
 Name und Passwort des Setup-WLANs stehen danach auf dem OLED. Ohne OLED das Board über seine serielle
 Schnittstelle fragen: `arduino-cli monitor -p COM5 -c baudrate=115200` öffnen und `0 setup` senden. Das Board
 antwortet mit einer Zeile:
-`wifi-setup {"setup":1,"ssid":"Tentacle-1A2B","pass":"…","url":"http://192.168.4.1/"}`.
+`wifi-setup {"setup":1,"ssid":"Tentacle-1A2B","pass":"…","url":"http://192.168.4.1/","qr":"…"}`
+(`qr` ist der WLAN-QR-Code, eine Hex-Zeichenkette pro Zeile).
 
 ## 3. Das Board ins eigene WLAN bringen
 
@@ -121,6 +122,8 @@ Ein Board ohne gespeichertes WLAN öffnet ein eigenes: `Tentacle-XXXX`, WPA2, mi
 12-stelligen Passwort, das auf diesem Board erzeugt wurde. Es kann immer nur ein Gerät darin sein.
 
 1. Mit Handy oder Laptop ins WLAN `Tentacle-XXXX` gehen, mit dem Passwort aus dem Flash-Skript oder vom OLED.
+   Schneller: den QR-Code auf dem OLED oder in der Ausgabe des Flash-Skripts mit der Kamera des Handys scannen;
+   das Handy verbindet sich, ohne dass man das Passwort eintippt.
 2. Die Einrichtungsseite öffnet sich von selbst. Sonst `http://192.168.4.1/` aufrufen. Die Seite ist deutsch,
    wenn dein Browser Deutsch bevorzugt, sonst englisch.
 3. Das eigene WLAN aus der Liste wählen (die Punkte zeigen die Signalstärke) oder seinen Namen eingeben, dazu

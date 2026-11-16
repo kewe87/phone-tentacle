@@ -110,14 +110,17 @@ string (`-DBOARD_NAME=Desk`, `-DABS_POINTER=1`, `-DSAFETY_CONTROLS=0`, `-DAP_MAX
 
 The setup Wi-Fi's name and password are then on the OLED. Without an OLED, ask the board on its serial port:
 open `arduino-cli monitor -p COM5 -c baudrate=115200` and send `0 setup`. The board answers with one line:
-`wifi-setup {"setup":1,"ssid":"Tentacle-1A2B","pass":"…","url":"http://192.168.4.1/"}`.
+`wifi-setup {"setup":1,"ssid":"Tentacle-1A2B","pass":"…","url":"http://192.168.4.1/","qr":"…"}`
+(`qr` is the Wi-Fi QR code, one hex string per row).
 
 ## 3. Put the board on your Wi-Fi
 
 A board without a stored Wi-Fi opens its own: `Tentacle-XXXX`, WPA2, with a random 12-character password made
 on that board. One device can be on it at a time.
 
-1. Join `Tentacle-XXXX` with a phone or laptop, using the password from the flash script or the OLED.
+1. Join `Tentacle-XXXX` with a phone or laptop, using the password from the flash script or the OLED. Quicker:
+   scan the QR code on the OLED or in the flash script's output with the phone's camera; it joins without typing
+   the password.
 2. The setup page opens by itself. If not, open `http://192.168.4.1/`. The page is German if your browser
    prefers German, otherwise English.
 3. Choose your Wi-Fi from the list (the dots show the signal strength) or type its name, and enter its password.

@@ -11,6 +11,7 @@
 #include "dbg.h"
 #include "logbuf.h"
 #include "setup_portal.h"
+#include "wifi_qr.h"
 #include "src/setup/setup_text.h"
 
 #ifndef AP_MAX_CLIENTS
@@ -151,6 +152,7 @@ static void startWifi() {
     WiFi.mode(WIFI_AP_STA);  // the station side scans for the page's list and tries the chosen network
     WiFi.setAutoReconnect(false);
     WiFi.softAP(apSsid.c_str(), apPass.c_str(), 6, 0, AP_MAX_CLIENTS);
+    wifi_qr_make(apSsid, apPass);  // for the OLED and the wifi-setup line
     // The phone is centimetres away and powers the board: low TX power cuts the current peaks that made the
     // phone drop its USB power (the board then came back with reset reason "power-on").
     WiFi.setTxPower(WIFI_POWER_5dBm);
@@ -396,7 +398,7 @@ String net_ap_pass() { return apPass; }
 String net_setup_line() {
   if (mode == "ap")
     return "wifi-setup {\"setup\":1,\"ssid\":\"" + jsonEsc(apSsid) + "\",\"pass\":\"" + jsonEsc(apPass) + "\",\"url\":\"http://" +
-           WiFi.softAPIP().toString() + "/\"}";
+           WiFi.softAPIP().toString() + "/\"" + (wifi_qr_size() ? ",\"qr\":\"" + wifi_qr_hex() + "\"" : String()) + "}";
   return "wifi-setup {\"setup\":0,\"ssid\":\"" + jsonEsc(mode == "sta" ? staSsid : String()) + "\",\"ip\":\"" + net_ip() + "\"}";
 }
 

@@ -20,7 +20,8 @@ bool net_setup_active();
 String net_ap_ssid();                    // the setup hotspot's name and password (display)
 String net_ap_pass();
 // USB serial, at every Wi-Fi start and on `0 setup`; flash.sh / flash.ps1 read it after flashing:
-//   wifi-setup {"setup":1,"ssid":"Tentacle-1A2B","pass":"...","url":"http://192.168.4.1/"}
+//   wifi-setup {"setup":1,"ssid":"Tentacle-1A2B","pass":"...","url":"http://192.168.4.1/","qr":"fe0b...,..."}
+//   (qr: the hotspot as a Wi-Fi QR code, wifi_qr.h: one hex string per row, first module in the top bit)
 //   wifi-setup {"setup":0,"ssid":"<the stored Wi-Fi>","ip":"<address, 0.0.0.0 while not connected>"}
 String net_setup_line();
 

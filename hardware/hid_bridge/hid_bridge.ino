@@ -142,6 +142,31 @@ static int battery_pct() {
   return p < 0 ? 0 : (p > 100 ? 100 : p);
 }
 #endif
+#include "wifi_qr.h"
+// The setup hotspot while it is up: its QR code on the left (dark modules on a lit square, as scanners expect, 2 px
+// per module when it fits), its name, password and address on the right. false: no code to show.
+static bool display_setup_qr() {
+  int n = wifi_qr_size(), s = n && n * 2 <= 60 ? 2 : 1;  // keep at least 2 px of quiet zone on each side
+  if (!n || n * s > 60) return false;
+  int o = (64 - n * s) / 2;
+  g_oled.clearBuffer();
+  g_oled.drawBox(0, 0, 64, 64);
+  g_oled.setDrawColor(0);
+  for (int y = 0; y < n; y++)
+    for (int x = 0; x < n; x++)
+      if (wifi_qr_dark(x, y)) g_oled.drawBox(o + x * s, o + y * s, s, s);
+  g_oled.setDrawColor(1);
+  String ssid = net_ap_ssid(), pass = net_ap_pass(), ip = net_ip();
+  const char *lines[] = {"Wi-Fi setup", ssid.c_str(), "Password:", pass.c_str(), ip.c_str()};
+  const int ys[] = {8, 20, 34, 46, 61};
+  for (int i = 0; i < 5; i++) {  // 5x7 where it fits, else 4x6 (Tentacle-1A2B is 13 characters)
+    g_oled.setFont(u8g2_font_5x7_tr);
+    if (g_oled.getStrWidth(lines[i]) > 128 - 66) g_oled.setFont(u8g2_font_4x6_tr);
+    g_oled.drawStr(66, ys[i], lines[i]);
+  }
+  g_oled.sendBuffer();
+  return true;
+}
 static void display_begin() {
   Wire.begin();
   g_oled.begin();
@@ -165,6 +190,7 @@ static void display_poll() {  // ~2 Hz from loop()
     snprintf(l3, sizeof l3, "tentacle pair");
     snprintf(l4, sizeof l4, "%lu s left", (unsigned long)((left + 999) / 1000));
   } else if (net_setup_active()) {  // no Wi-Fi stored: how to reach the setup page
+    if (display_setup_qr()) return;
     snprintf(l1, sizeof l1, "Wi-Fi setup: join");
     snprintf(l2, sizeof l2, "%s", net_ap_ssid().c_str());
     snprintf(l3, sizeof l3, "PW %s", net_ap_pass().c_str());
