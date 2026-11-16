@@ -26,6 +26,7 @@ Vom leeren Board bis zum ersten Tipp auf dem Handy, und was Taste, LED und Displ
 13. [Fehlersuche](#13-fehlersuche)
 14. [Befehlsübersicht](#14-befehlsübersicht)
 15. [Sicherheit in Kürze](#15-sicherheit-in-kürze)
+16. [Die Weboberfläche](#16-die-weboberfläche)
 
 <p align="center"><img src="images/setup-steps.de.svg" alt="Einrichtung in sechs Schritten: flashen, WLAN, Koppeln öffnen, koppeln, iPhone, los" width="820"></p>
 
@@ -156,6 +157,7 @@ Ein Board ohne gespeichertes WLAN öffnet ein eigenes: `Tentacle-XXXX`, WPA2, mi
    wenn dein Browser Deutsch bevorzugt, sonst englisch.
 3. Das eigene WLAN aus der Liste wählen (die Punkte zeigen die Signalstärke) oder seinen Namen eingeben, dazu
    das Passwort.
+   Optional: ein Passwort für die [Weboberfläche](#16-die-weboberfläche) des Boards, zweimal.
 4. **Innerhalb von 30 Sekunden BOOT am Board drücken.** Die Seite zählt herunter, die LED blinkt schnell, das
    OLED zeigt `PRESS BOOT TO CONFIRM` und den Namen des Netzes. Vor diesem Druck wird nichts gespeichert.
 
@@ -434,9 +436,10 @@ Das Innenleben der CLI (der Hintergrundprozess, Verlauf, Intents, Gedächtnis, G
 - **Der Stopp-Taster** wirkt nur am Board; der Computer kann ihn nicht aufheben.
 - **Firmware-Updates über WLAN** kommen nur von einem gekoppelten Computer, und das Board nimmt nur Images, die mit
   dem Tentacle-Release-Schlüssel signiert sind. Ein `--debug`-Build nimmt auch unsignierte: nie weitergeben.
-- **Offen im eigenen Netz:** der AirPlay-Empfänger, Port 7202 und mDNS. Jeder im selben WLAN kann eine
-  Spiegelung zum Board starten oder versuchen, es zum Absturz zu bringen; den Bildschirm sehen oder Eingaben
-  schicken kann nur ein gekoppelter Computer.
+- **Offen im eigenen Netz:** der AirPlay-Empfänger, Port 7202, mDNS und die Weboberfläche (443, 80 leitet
+  weiter). Jeder im selben WLAN kann eine Spiegelung zum Board starten oder versuchen, es zum Absturz zu bringen;
+  den Bildschirm sehen oder Eingaben schicken kann nur ein gekoppelter Computer oder ein Browser mit dem
+  Web-Passwort.
 - **Ohne OLED** lässt sich der Koppel-Code nicht vergleichen. Die Tastendrücke sagen dann nur „jetzt darf ein
   Computer koppeln“.
 - **Wer das Board in der Hand hat, dem gehört es:** BOOT 10 s halten öffnet das Setup-WLAN, und USB-Seriell
@@ -446,6 +449,66 @@ Alles dazu, mit den offenen Punkten: [hardening.de.md](hardening.de.md). Ein Pro
 [SECURITY.md](../SECURITY.md).
 
 Nur Geräte und Konten automatisieren, die dir gehören oder die du benutzen darfst.
+
+## 16. Die Weboberfläche
+
+Ab Firmware 0.3.0 liefert das Board eine Webseite aus: den gespiegelten Bildschirm des iPhones, live, und das
+iPhone unter Maus und Tastatur. Nichts zu installieren; jeder aktuelle Chrome, Edge, Safari oder Firefox im selben
+WLAN.
+
+**Zuerst ein Passwort setzen.** Die Seite braucht eins, und es wird nur auf der Einrichtungsseite gesetzt, von
+jemandem am Board: in [Schritt 3](#3-das-board-ins-eigene-wlan-bringen) „Passwort für die Weboberfläche“ zweimal
+ausfüllen (8 bis 64 Zeichen). Ist das Board schon im WLAN: BOOT 10 s halten und Schritt 3 mit dem Passwort
+wiederholen. Bis ein Passwort gesetzt ist, erklärt die Seite nur das. Das Board speichert das Passwort als
+gesalzenen PBKDF2-SHA256-Hash, nie als Text.
+
+**Aufrufen** unter `https://tentacle.local/` oder `https://<Adresse des Boards>/` (Einrichtungsseite und OLED
+zeigen die Adresse; `http://` leitet auf `https://` weiter). Das Board hat sein eigenes Zertifikat erstellt,
+deshalb warnt der Browser beim ersten Mal: für diese Seite akzeptieren. Um sicherzugehen, dass es dein Board ist,
+den SHA-256-Fingerabdruck des Zertifikats im Browser mit dem unter Einstellungen > Netzwerk vergleichen (steht auch
+im Log des Boards).
+
+| Auf der Seite | Bewirkt |
+|---|---|
+| Klick ins Bild | Ein Tippen dort |
+| Ziehen | Ein Wischen (der Finger folgt der Maus) |
+| Rechtsklick | Langes Drücken |
+| Mausrad | Scrollt die Liste unter dem Zeiger |
+| Home, App-Umschalter, Kontrollzentrum, Mitteilungen | Die Systemgesten des iPhones |
+| Bildschirmtastatur | Zeigt oder versteckt die Tastatur des iPhones (`key eject`) |
+| Textfeld + Tippen | Tippt den Text (ASCII; andere Zeichen werden übersprungen) |
+| Tasten erfassen | Jede gedrückte Taste geht ans iPhone, mit Cmd / Strg / Alt / Shift, bis „Erfassen beenden“ |
+
+Klicks ins Bild brauchen den absoluten Zeiger (`flash.sh --abs`); hat die Firmware keinen, sagt die Seite das.
+Das Bild kommt als H.264 und wird vom Browser dekodiert (WebCodecs); eine Seite, die dazukommt, beginnt beim
+letzten Schlüsselbild. In der Ecke steht, wie alt das Bild ist. Ein langsamer Browser überspringt Bilder bis zum
+nächsten Schlüsselbild; die Spiegelung des iPhones wartet nie auf ihn.
+
+**Ein Browser und der Computer.** Immer nur eine Seite: Eine Anmeldung anderswo oder ein zweiter Tab beendet die
+ältere. Seite und CLI teilen sich das iPhone:
+
+- Hat seit 60 s kein Computer Eingaben geschickt, übernimmt die Seite beim Verbinden die Steuerung; sonst schaut
+  sie zu, bis du „Steuerung übernehmen“ klickst.
+- Solange die Seite steuert, bekommen Eingabebefehle des Computers `err busy: the web interface has control …`
+  (`ping`, Video, Status und alles andere laufen weiter). Die Steuerung geht zurück mit „Steuerung abgeben“, beim
+  Schließen der Seite oder 5 Minuten nach der letzten Eingabe der Seite.
+- Der Stopp-Taster (BOOT, kurz) stoppt auch die Eingaben der Seite und lässt eine gehaltene Taste los.
+
+**Einstellungen** (Zahnrad): der Name des Boards (Bildschirmsynchronisierung und CLI zeigen ihn mit seiner
+Kennung; gilt nach einem Neustart), die Tastaturbelegung des iPhones (`us`, `de`), die Sprache der Seite (Vorgabe:
+die des Browsers), das WLAN, der Fingerabdruck des Zertifikats und die Firmware.
+
+- **Passwort ändern:** das aktuelle, das neue zweimal, dann innerhalb von 30 s BOOT am Board drücken. Ohne diesen
+  Druck ändert sich nichts. Vergessen: BOOT 10 s halten und auf der Einrichtungsseite ein neues setzen.
+- **Firmware-Update:** die `.ino.bin` und ihre `.sig` wählen, wie bei `tentacle update`; es gelten dieselben
+  Prüfungen (nur signierte Images, außer bei einem `--debug`-Build). Das Board startet damit neu: danach die
+  Bildschirmsynchronisierung am iPhone neu starten. „Nach Updates suchen“ kann noch nirgends nachsehen, weil das
+  Repository des Projekts privat ist; neue Versionen gibt es beim Maintainer.
+
+Anmeldung: Nach 5 falschen Passwörtern sperrt das Board sie für 30 s, verdoppelt bis 15 Minuten. Das Cookie ist
+`HttpOnly; Secure; SameSite=Strict` und endet nach 12 Stunden ohne Nutzung; Anfragen und den WebSocket nimmt das
+Board nur von seiner eigenen Seite an (`Origin`). Port 443 (und 80, der weiterleitet) ist im WLAN nur offen,
+solange das Board darin ist; das Setup-WLAN behält seine einfache `http`-Seite.
 
 ---
 

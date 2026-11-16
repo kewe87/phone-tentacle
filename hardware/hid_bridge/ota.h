@@ -13,6 +13,11 @@ void ota_setup();                                    // setup(): the lock, and w
 String ota_command(const String &arg, const String &id);  // loop(): `update ...` from the session; "" when it
                                                      // replied itself (end: then it restarts the board)
 void ota_poll();                                     // loop(): deadlines, the session, the trial
+// The same commands from the web interface (web_server.cpp): `begin ...`, `state`, `abort`, `end`. It does not
+// restart: after "ok restarting ..." the caller replies, then restarts. Its chunks go to ota_web_chunk(). One update
+// at a time, from either side.
+String ota_web(const String &arg);
+void ota_web_chunk(const uint8_t *p, size_t n);       // as ota_chunk(), for the web's update
 String ota_json();                                   // the state for `dbg state`
 #endif
 

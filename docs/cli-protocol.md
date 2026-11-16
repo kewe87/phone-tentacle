@@ -179,6 +179,13 @@ All but `ping` and `pace` answer `err stopped (safety button)` while the stop to
 `err phone usb asleep (unlock the phone)` when the phone suspended USB and does not wake. When the session ends,
 the board lets go of a button the session held.
 
+While the board's web interface has control of the phone (firmware 0.3.0, docs/manual.md "The web interface"),
+every command of this session except `ping` and `pace` that reaches the HID code answers
+`err busy: the web interface has control of the phone (release it there, or it lapses 5 min after the page's last
+input)`. Control goes back when the page releases it, closes, or sends no input for 5 minutes; the page takes it by
+itself only after 60 s without input from the session. Board commands (`stream`, `snap`, `net`, `update`, …) are
+not affected.
+
 Board:
 
 | Command | Behavior |
@@ -283,7 +290,7 @@ stream `A` (frame `0x12`), and the CLI transcribes them (`tentacle listen`, whis
     is not reachable meanwhile: hold BOOT 10 s for the setup hotspot.
   - `ap`: forgets the stored Wi-Fi and opens the **setup hotspot** (mode `ap`; the same as holding BOOT 10 s):
     WPA2, the board's own random password, and on it a setup page (port 80, captive portal) where a network is
-    chosen and then confirmed with the BOOT button. Port 80 is closed in every other mode. A new board is set up
+    chosen and then confirmed with the BOOT button. In mode `sta` port 80 only forwards to the web interface on `https://` (443), once the board has an address. A new board is set up
     there; the CLI reaches a board on its hotspot too (join it, the board is at 192.168.4.1).
   - `pass` is the setup hotspot's password in mode `ap` and empty in mode `sta`: a stored Wi-Fi password never
     leaves the board.

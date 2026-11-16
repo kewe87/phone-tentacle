@@ -32,6 +32,7 @@ A thumbnail-sized ESP32-S3 board on the iPhone's USB-C port. Your computer drive
 - **Hands:** the board is a USB mouse and keyboard; with AssistiveTouch the pointer taps like a finger
 - **Eyes:** it receives the phone's Screen Mirroring (AirPlay) and passes the picture on
 - **From the computer:** the `tentacle` command line, for you or an AI assistant
+- **From the browser:** the board's own web page shows the phone live and takes mouse and keyboard
 - **Wi-Fi only:** the computer finds the board by itself and talks to it on one encrypted port
 - **Someone has to be at the board:** setup and pairing are confirmed with its BOOT button
 - **A stop button:** one short press, and the board sends no more input
@@ -122,7 +123,6 @@ Every step in detail, wiring and troubleshooting: **[the manual](docs/manual.md)
 ## Roadmap
 
 - **First run on hardware**, then fixes
-- **Web remote on the board:** live picture, mouse and keyboard in the browser
 - **Android:** the same board as the hands, screenshots over ADB ([docs/android.md](docs/android.md))
 
 More: [ROADMAP.md](ROADMAP.md).

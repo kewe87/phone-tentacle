@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Tentacle</title>
+<link rel="icon" href="/icon.svg">
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header>
+  <img src="/icon.svg" alt="">
+  <h1 id="name">Tentacle</h1>
+  <span id="p-ap" class="pill" hidden></span>
+  <span id="p-ctl" class="pill" hidden></span>
+  <span class="grow"></span>
+  <button id="b-theme" data-t="theme" title=""></button>
+  <button id="b-settings" data-i="settings" hidden></button>
+  <button id="b-logout" data-i="logout" hidden></button>
+</header>
+
+<main id="v-load"><div class="card"><p class="muted" data-i="loading"></p></div></main>
+
+<main id="v-nopw" hidden>
+  <div class="card">
+    <h2 data-i="nopwTitle"></h2>
+    <p data-i="nopw1"></p>
+    <ol>
+      <li data-i="nopw2"></li>
+      <li data-i="nopw3"></li>
+      <li data-i="nopw4"></li>
+    </ol>
+    <p class="muted small" data-i="nopw5"></p>
+  </div>
+</main>
+
+<main id="v-login" hidden>
+  <form class="card" id="f-login">
+    <h2 data-i="signIn"></h2>
+    <label for="l-pw" data-i="password"></label>
+    <input id="l-pw" type="password" autocomplete="current-password" required>
+    <p id="l-err" class="err" hidden></p>
+    <button class="primary" data-i="signInGo"></button>
+    <p class="muted small" data-i="loginHint"></p>
+  </form>
+</main>
+
+<main id="v-app" hidden>
+  <section class="stage" id="stage">
+    <canvas id="cv" width="480" height="1040" tabindex="0"></canvas>
+    <div id="overlay" class="overlay"></div>
+    <div id="age" class="age" hidden></div>
+  </section>
+  <aside class="panel">
+    <div class="box">
+      <h3 data-i="control"></h3>
+      <p id="ctl-text" class="small"></p>
+      <button id="b-take" class="primary" data-i="take" hidden></button>
+      <button id="b-release" data-i="release" hidden></button>
+    </div>
+    <div class="box">
+      <h3 data-i="system"></h3>
+      <div class="grid2">
+        <button data-btn="home" data-i="home"></button>
+        <button data-btn="switcher" data-i="switcher"></button>
+        <button data-btn="control" data-i="cc"></button>
+        <button data-btn="notifications" data-i="nc"></button>
+        <button data-btn="keyboard" data-i="kbdToggle"></button>
+        <button id="capture" data-i="capture"></button>
+      </div>
+      <p class="muted small" id="capture-hint" data-i="captureHint" hidden></p>
+    </div>
+    <div class="box">
+      <h3 data-i="typing"></h3>
+      <form class="row" id="f-text">
+        <input id="t-text" autocomplete="off" spellcheck="false" maxlength="500">
+        <button data-i="send"></button>
+      </form>
+      <div class="keys">
+        <button data-key="enter">⏎</button>
+        <button data-key="backspace">⌫</button>
+        <button data-key="tab">⇥</button>
+        <button data-key="esc">esc</button>
+        <button data-key="left">←</button>
+        <button data-key="up">↑</button>
+        <button data-key="down">↓</button>
+        <button data-key="right">→</button>
+        <button data-key="cmd+a">⌘A</button>
+        <button data-key="cmd+c">⌘C</button>
+        <button data-key="cmd+v">⌘V</button>
+        <button data-key="cmd+z">⌘Z</button>
+        <button data-key="cmd+space">⌘␣</button>
+      </div>
+      <p class="muted small" data-i="mouseHint"></p>
+    </div>
+    <div class="box">
+      <h3 data-i="stream"></h3>
+      <dl class="stats">
+        <dt data-i="airplay"></dt><dd id="s-ap">–</dd>
+        <dt data-i="frameAge"></dt><dd id="s-age">–</dd>
+        <dt data-i="rate"></dt><dd id="s-rate">–</dd>
+        <dt data-i="phoneUsb"></dt><dd id="s-usb">–</dd>
+      </dl>
+    </div>
+  </aside>
+</main>
+
+<dialog id="d-settings">
+  <div class="head"><h2 data-i="settings"></h2><button id="b-close" data-i="close"></button></div>
+  <div class="body">
+    <section>
+      <h3 data-i="board"></h3>
+      <label for="s-name" data-i="boardName"></label>
+      <div class="row"><input id="s-name" maxlength="20" pattern="[A-Za-z0-9 ._\-]{1,20}"><span id="s-suffix" class="muted"></span></div>
+      <label for="s-kbd" data-i="kbdLayout"></label>
+      <select id="s-kbd"><option value="us">US (QWERTY)</option><option value="de">Deutsch (QWERTZ)</option></select>
+      <label for="s-lang" data-i="language"></label>
+      <select id="s-lang"><option value="" data-i="langAuto"></option><option value="en">English</option><option value="de">Deutsch</option></select>
+      <div class="row"><button id="b-save" class="primary" data-i="save"></button><span id="save-msg" class="small"></span></div>
+    </section>
+    <section>
+      <h3 data-i="network"></h3>
+      <dl class="stats" id="s-net"></dl>
+      <p class="muted small" data-i="certHint"></p>
+    </section>
+    <section>
+      <h3 data-i="changePw"></h3>
+      <label for="pw-old" data-i="pwOld"></label><input id="pw-old" type="password" autocomplete="current-password">
+      <label for="pw-new" data-i="pwNew"></label><input id="pw-new" type="password" autocomplete="new-password">
+      <label for="pw-new2" data-i="pwNew2"></label><input id="pw-new2" type="password" autocomplete="new-password">
+      <div class="row"><button id="b-pw" data-i="pwGo"></button><span id="pw-msg" class="small"></span></div>
+    </section>
+    <section>
+      <h3 data-i="firmware"></h3>
+      <p id="fw-now" class="small"></p>
+      <label for="ota-bin" data-i="otaBin"></label><input id="ota-bin" type="file" accept=".bin">
+      <label for="ota-sig" data-i="otaSig"></label><input id="ota-sig" type="file" accept=".sig">
+      <div class="row"><button id="b-ota" data-i="otaGo"></button><button id="b-check" data-i="check"></button></div>
+      <progress id="ota-prog" value="0" max="1" hidden></progress>
+      <p id="ota-msg" class="small"></p>
+      <p class="note small" data-i="otaHint"></p>
+      <div class="row"><button id="b-restart" data-i="restart"></button></div>
+    </section>
+  </div>
+</dialog>
+</body>
+</html>

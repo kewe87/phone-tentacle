@@ -7,10 +7,13 @@
 #include "netcfg.h"
 #include "version.h"
 #include "src/setup/setup_text.h"
+#include "src/web/web_auth.h"
+#include <esp_random.h>
 
 struct Text {
   const char *lang, *title, *intro, *net, *choose, *open, *rescan, *scanning, *manual, *pass, *go, *hint;
   const char *badSsid, *badPass, *busy;
+  const char *web, *webPw, *webPw2, *webHint, *badWeb, *badWeb2;  // the web interface's password (optional)
   const char *wait, *trying, *ok, *expired, *failed, *notFound, *idle, *lost, *back;  // %s: the network, %u: seconds
 };
 
@@ -31,9 +34,18 @@ static const Text EN = {
   "Choose a network or type its name (at most 32 characters).",
   "The password needs 8 to 63 characters (or none for an open network).",
   "The board is busy right now. Try again in a moment.",
+  "Remote control in the browser",
+  "Password for the web interface (optional)",
+  "Repeat the password",
+  "With a password the board's web page (https://tentacle.local/) shows the phone and controls it. 8 to 64 "
+  "characters. Leave both empty to keep the current one (none on a new board: the web page then only explains how "
+  "to set one).",
+  "The web interface's password needs 8 to 64 characters, no line breaks (or leave both fields empty).",
+  "The two web interface passwords differ.",
   "Now press the BOOT button on the board to confirm “%s” (%u s left).",
   "Confirmed. Connecting to “%s”…",
-  "Connected: the board is on “%s” now, at %s. The setup hotspot switches off; you can close this page.",
+  "Connected: the board is on “%s” now, at %s. The setup hotspot switches off; you can close this page. Its web "
+  "interface: https://%s/ (in that network).",
   "The button was not pressed in time. Nothing was stored.",
   "Could not connect. Is the password right? Nothing was stored.",
   "That network was not found. Nothing was stored.",
@@ -60,10 +72,18 @@ static const Text DE = {
   "Bitte ein WLAN auswählen oder den Namen eingeben (höchstens 32 Zeichen).",
   "Das Passwort braucht 8 bis 63 Zeichen (oder keins bei offenem WLAN).",
   "Das Board ist gerade beschäftigt. Bitte gleich noch einmal versuchen.",
+  "Fernsteuerung im Browser",
+  "Passwort für die Weboberfläche (optional)",
+  "Passwort wiederholen",
+  "Mit einem Passwort zeigt die Webseite des Boards (https://tentacle.local/) das iPhone und steuert es. 8 bis 64 "
+  "Zeichen. Beide Felder leer lassen, um das bisherige zu behalten (ein neues Board hat keins: die Webseite erklärt "
+  "dann nur, wie man eins setzt).",
+  "Das Passwort der Weboberfläche braucht 8 bis 64 Zeichen, ohne Zeilenumbruch (oder beide Felder leer lassen).",
+  "Die beiden Passwörter der Weboberfläche sind verschieden.",
   "Jetzt den BOOT-Taster am Board drücken, um „%s“ zu bestätigen (noch %u s).",
   "Bestätigt. Verbinde mit „%s“…",
   "Verbunden: Das Board ist jetzt in „%s“, Adresse %s. Das Einrichtungs-WLAN schaltet sich ab; diese Seite kann "
-  "geschlossen werden.",
+  "geschlossen werden. Seine Weboberfläche: https://%s/ (in diesem Netz).",
   "Der Taster wurde nicht rechtzeitig gedrückt. Es wurde nichts gespeichert.",
   "Verbindung fehlgeschlagen. Stimmt das Passwort? Es wurde nichts gespeichert.",
   "Dieses WLAN wurde nicht gefunden. Es wurde nichts gespeichert.",
@@ -73,7 +93,7 @@ static const Text DE = {
   "Zurück",
 };
 
-enum { ERR_NONE = 0, ERR_SSID = SETUP_BAD_SSID, ERR_PASS = SETUP_BAD_PASS, ERR_BUSY };
+enum { ERR_NONE = 0, ERR_SSID = SETUP_BAD_SSID, ERR_PASS = SETUP_BAD_PASS, ERR_BUSY, ERR_WEB, ERR_WEB2 };
 const int NETS_MAX = 16;
 
 static WebServer server(80);
@@ -168,7 +188,7 @@ static void pageHead(String &h, const Text &t, const char *extra) {
 
 static void pageTitle(String &b, const Text &t) {
   b += "<h1>";
-  b += esc(BOARD_NAME_TEXT);
+  b += esc(board_name().c_str());
   b += " – ";
   b += t.title;
   b += "</h1>";
@@ -194,7 +214,7 @@ static void sendForm(int err) {
   pageTitle(h, t);
   if (err) {
     h += "<p class=e>";
-    h += err == ERR_SSID ? t.badSsid : err == ERR_PASS ? t.badPass : t.busy;
+    h += err == ERR_SSID ? t.badSsid : err == ERR_PASS ? t.badPass : err == ERR_WEB ? t.badWeb : err == ERR_WEB2 ? t.badWeb2 : t.busy;
     h += "</p>";
   }
   h += "<p>";
@@ -233,7 +253,13 @@ static void sendForm(int err) {
   h += "</label><input id=s name=ssid maxlength=32 autocapitalize=none autocorrect=off spellcheck=false>"
        "<label for=p>";
   h += t.pass;
-  h += "</label><input id=p name=pass type=password maxlength=63 autocomplete=off><button>";
+  h += "</label><input id=p name=pass type=password maxlength=63 autocomplete=off><label for=w>";
+  h += t.webPw;
+  h += "</label><input id=w name=webpw type=password maxlength=64 autocomplete=new-password><label for=w2>";
+  h += t.webPw2;
+  h += "</label><input id=w2 name=webpw2 type=password maxlength=64 autocomplete=new-password><p class=h>";
+  h += t.webHint;
+  h += "</p><button>";
   h += t.go;
   h += "</button></form><p class=h>";
   h += t.hint;
@@ -258,7 +284,7 @@ static void stateText(const Text &t, const NetSetup &s, char *out, size_t cap) {
   switch (s.state) {
     case NS_WAIT: snprintf(out, cap, t.wait, s.ssid, (unsigned)((s.left_ms + 999) / 1000)); break;
     case NS_TRYING: snprintf(out, cap, t.trying, s.ssid); break;
-    case NS_OK: snprintf(out, cap, t.ok, s.ssid, s.ip); break;
+    case NS_OK: snprintf(out, cap, t.ok, s.ssid, s.ip, s.ip); break;
     case NS_EXPIRED: strlcpy(out, t.expired, cap); break;
     case NS_FAILED: strlcpy(out, t.failed, cap); break;
     case NS_NOT_FOUND: strlcpy(out, t.notFound, cap); break;
@@ -270,7 +296,7 @@ static void sendWait() {
   const Text &t = text();
   NetSetup s;
   net_setup_status(&s);
-  char msg[320], lost[2 * 320];
+  char msg[400], lost[2 * 320];
   stateText(t, s, msg, sizeof msg);
   setup_json_esc(t.lost, lost, sizeof lost);
   String head, h;
@@ -302,7 +328,7 @@ static void sendWait() {
 static void sendStatus() {
   NetSetup s;
   net_setup_status(&s);
-  char msg[320], m[2 * 320], ssid[6 * 33];
+  char msg[400], m[2 * 400], ssid[6 * 33];
   stateText(text(), s, msg, sizeof msg);
   setup_json_esc(msg, m, sizeof m);
   setup_json_esc(s.ssid, ssid, sizeof ssid);
@@ -323,7 +349,20 @@ static void onJoin() {
   }
   int bad = pass.length() > 63 ? SETUP_BAD_PASS : setup_check(ssid, pass.c_str());
   if (bad) return sendForm(bad);
-  if (!net_setup_submit(ssid, pass.c_str())) return sendForm(ERR_BUSY);
+  // The web interface's password: optional; only its salted hash (web_auth.h) leaves this function.
+  String web = server.arg("webpw"), web2 = server.arg("webpw2");
+  static uint8_t rec[WA_REC_LEN];  // only this task uses it
+  bool withWeb = web.length() || web2.length();
+  if (withWeb) {
+    if (web != web2) return sendForm(ERR_WEB2);
+    if (wa_check_new(web.c_str()) != WA_OK) return sendForm(ERR_WEB);
+    uint8_t salt[WA_SALT_LEN];
+    esp_fill_random(salt, sizeof salt);  // the radio is on: a true random source
+    bool made = wa_make(web.c_str(), salt, WA_ITERATIONS, rec);
+    for (size_t i = 0; i < web.length(); i++) web[i] = 0, web2[i] = 0;
+    if (!made) return sendForm(ERR_BUSY);
+  }
+  if (!net_setup_submit(ssid, pass.c_str(), withWeb ? rec : nullptr)) return sendForm(ERR_BUSY);
   redirect("/wait");
 }
 

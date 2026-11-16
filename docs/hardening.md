@@ -29,7 +29,8 @@ The BOOT button is the proof that someone is there. Three things need it:
 **1. Storing a Wi-Fi from the setup page.** A board without a Wi-Fi opens its own: `Tentacle-XXXX`, WPA2, with a
 random 12-character password made on that board (shown by the flash script and on the OLED). Only one device can
 be on it at a time. Choosing a network on the page stores nothing until BOOT is pressed within 30 s. Once the
-board is on your Wi-Fi the hotspot and port 80 are gone, and they do not come back by themselves when your Wi-Fi
+board is on your Wi-Fi the hotspot and its setup page are gone (port 80 then only forwards to the web
+interface on 443), and they do not come back by themselves when your Wi-Fi
 is down: only holding BOOT for 10 s (or a paired computer's `tentacle net hotspot`) brings them back.
 
 **2. Opening pairing.** The board ignores pairing requests unless BOOT was **double-pressed** in the last 60 s.
