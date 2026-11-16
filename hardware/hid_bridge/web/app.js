@@ -265,7 +265,9 @@ $('b-release').onclick = () => send('release');
 const VF_START = 1, VF_END = 2, VF_IDR = 4, VF_CONFIG = 8;
 const video = {
   w: 0, h: 0, parts: [], flags: 0, ts: 0, cfg: null, dec: null, needKey: true, lastTs: 0, offset: null,
-  decoded: false, barsAt: 0, bars: '', ctx: null,
+  decoded: false, barsAt: 0, bars: '', ctx: null, probe: null,
+  // The part of the frame shown (letterboxing cut off, e.g. a landscape picture in a portrait frame), in frame pixels.
+  crop: { x: 0, y: 0, w: 0, h: 0 },
   reset() { this.parts = []; this.needKey = true; this.cfg = null; },
   sync(boardNow) { this.offset = boardNow - performance.now(); },
   chunk(b) {
@@ -312,25 +314,34 @@ const video = {
   },
   draw(f) {
     const cv = $('cv');
-    if (cv.width !== f.displayWidth || cv.height !== f.displayHeight || !this.w) {
-      cv.width = this.w = f.displayWidth;
-      cv.height = this.h = f.displayHeight;
-      this.ctx = null;
+    if (f.displayWidth !== this.w || f.displayHeight !== this.h || !this.w) {
+      this.w = f.displayWidth;
+      this.h = f.displayHeight;
+      this.crop = { x: 0, y: 0, w: this.w, h: this.h };
+      this.probe = null;
       send('size ' + this.w + ' ' + this.h);
       this.barsAt = 0;
     }
+    const now = performance.now();
+    if (now - this.barsAt > 2000) {  // the whole frame, to see its black bars
+      this.barsAt = now;
+      if (!this.probe) { this.probe = document.createElement('canvas'); this.probe.width = this.w; this.probe.height = this.h; }
+      const p = this.probe.getContext('2d', { alpha: false, willReadFrequently: true });
+      p.drawImage(f, 0, 0);
+      this.measureBars(p);
+    }
+    const c = this.crop;
+    if (cv.width !== c.w || cv.height !== c.h) { cv.width = c.w; cv.height = c.h; this.ctx = null; }
     this.ctx = this.ctx || cv.getContext('2d', { alpha: false });
-    this.ctx.drawImage(f, 0, 0);
+    this.ctx.drawImage(f, c.x, c.y, c.w, c.h, 0, 0, c.w, c.h);
     f.close();
     this.decoded = true;
     this.shown = Number(f.timestamp) / 1000;
-    const now = performance.now();
-    if (now - this.barsAt > 2000) { this.barsAt = now; this.measureBars(); }
     this.showState();
   },
   // Black rows / columns at the edges (letterboxing): the board decides whether they are bars (web_input.h).
-  measureBars() {
-    const c = this.ctx, w = this.w, h = this.h, dark = (d, i) => d[i] + d[i + 1] + d[i + 2] < 48;
+  measureBars(c) {
+    const w = this.w, h = this.h, dark = (d, i) => d[i] + d[i + 1] + d[i + 2] < 48;
     const run = (d, step) => { let n = 0; for (let i = 0; i < d.length && dark(d, i); i += step) n++; return n; };
     let l = w, r = w, tp = h, b = h;
     for (const f of [0.3, 0.5, 0.7]) {
@@ -342,6 +353,11 @@ const video = {
     }
     const s = [l, tp, r, b].map((x) => (x >= w || x >= h ? 0 : x)).join(' ');
     if (s !== this.bars) { this.bars = s; send('bars ' + s); }
+    // Shown without the bars when they frame the picture evenly (as the board's wi_screen() judges them).
+    const [bl, bt, br, bb] = s.split(' ').map(Number);
+    const even = (a, b, n) => a >= 2 && b >= 2 && Math.abs(a - b) <= Math.max(2, n / 200) && a + b < n / 2;
+    const x = even(bl, br, w) ? bl : 0, y = even(bt, bb, h) ? bt : 0;
+    this.crop = { x, y, w: w - (x ? bl + br : 0), h: h - (y ? bt + bb : 0) };
   },
   showState() {
     const name = state.name || 'Tentacle', age = $('age');
@@ -386,11 +402,12 @@ function inside(e) {
   const f = fit(), x = (e.clientX - f.x0) / f.s, y = (e.clientY - f.y0) / f.s;
   return x >= 0 && y >= 0 && x < cv.width && y < cv.height;
 }
+// In the frame's pixels (the board knows the frame's size and bars), the cut-off bars added back.
 function at(e) {
   const f = fit();
   const x = Math.min(cv.width - 1, Math.max(0, (e.clientX - f.x0) / f.s));
   const y = Math.min(cv.height - 1, Math.max(0, (e.clientY - f.y0) / f.s));
-  return Math.round(x) + ' ' + Math.round(y);
+  return Math.round(x + video.crop.x) + ' ' + Math.round(y + video.crop.y);
 }
 // Input while only watching takes control first: a click into the picture means "I drive now". The board lets the
 // page take it (the session then gets "busy"); the stop toggle still wins.
