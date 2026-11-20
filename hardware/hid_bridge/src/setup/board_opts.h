@@ -15,9 +15,12 @@ extern "C" {
 //   battery      none | GPIO       LiPo voltage through a divider on an ADC1 pin (1-10, not the OLED's 5 and 6)
 //   battery_div  1.00-10.00        that divider's ratio (two equal resistors: 2)
 //   lang         auto | en | de    the OLED's texts; auto: the web interface's language if one is set, else en
+//   sdlog        off | log | video the session recording on the microSD card (boards with a slot, board_hw.h;
+//                                  sdlog.h): the log, or the log and the mirrored screen. "on" means video.
 
 enum { BO_DISPLAY_AUTO = 0, BO_DISPLAY_ON = 1, BO_DISPLAY_OFF = 2 };
 enum { BO_LANG_AUTO = 0, BO_LANG_EN = 1, BO_LANG_DE = 2 };
+enum { BO_SD_OFF = 0, BO_SD_LOG = 1, BO_SD_VIDEO = 2 };
 #define BO_BAT_NONE (-1)
 #define BO_DIV_DEFAULT 200  // hundredths
 #define BO_DIV_MIN 100
@@ -31,9 +34,11 @@ typedef struct {
   int bat_pin;  // a GPIO, or BO_BAT_NONE
   int bat_div;  // hundredths
   int lang;     // BO_LANG_*
+  int sdlog;    // BO_SD_*
 } board_opts;
 
-// The defaults: what a board without these keys in NVS does (OLED auto, absolute pointer, no battery, 2:1, auto).
+// The defaults: what a board without these keys in NVS does (OLED auto, absolute pointer, no battery, 2:1, auto,
+// no SD log).
 void bo_defaults(board_opts *o);
 
 enum { BO_OK = 0, BO_UNKNOWN_KEY, BO_BAD_VALUE };

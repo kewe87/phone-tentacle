@@ -501,6 +501,8 @@ static void loadOpts() {
   if (div >= BO_DIV_MIN && div <= BO_DIV_MAX) o.bat_div = div;
   uint8_t l = prefs.getUChar("oled_lang", BO_LANG_AUTO);
   if (l <= BO_LANG_DE) o.lang = l;
+  o.sdlog = prefs.getUChar("sdlog", 0);
+  if (o.sdlog > BO_SD_VIDEO) o.sdlog = BO_SD_OFF;
   portENTER_CRITICAL(&optsMux);
   opts = o;
   portEXIT_CRITICAL(&optsMux);
@@ -521,6 +523,7 @@ int cfg_set_opt(const char *key, const char *value) {
   else if (!strcmp(key, "abs")) prefs.putUChar("abs", o.abs);
   else if (!strcmp(key, "battery")) prefs.putChar("bat", o.bat_pin);
   else if (!strcmp(key, "battery_div")) prefs.putUShort("bat_div", o.bat_div);
+  else if (!strcmp(key, "sdlog")) prefs.putUChar("sdlog", o.sdlog);
   else prefs.putUChar("oled_lang", o.lang);
   portENTER_CRITICAL(&optsMux);
   opts = o;

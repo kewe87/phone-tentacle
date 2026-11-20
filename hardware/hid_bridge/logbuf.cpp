@@ -1,6 +1,7 @@
 #include "logbuf.h"
 #include <stdarg.h>
 #include "src/log/logring.h"
+#include "sdlog.h"
 
 static const size_t RING_SIZE = 8192;
 static const size_t PAGE_MAX = 400;  // escaped text per reply; under the reply cap (514) with the header
@@ -15,6 +16,7 @@ void board_log_keep(const char *line) {
   portENTER_CRITICAL(&mux);
   logring_add(&ring, stamped);
   portEXIT_CRITICAL(&mux);
+  sdlog_line(line);  // the session log on the card stamps it itself
 }
 
 void board_log(const char *fmt, ...) {

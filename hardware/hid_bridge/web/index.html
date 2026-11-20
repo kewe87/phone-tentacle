@@ -110,6 +110,10 @@
       <div class="row"><select id="h-bat"><option value="none" data-i="hwNone"></option><option>1</option><option>2</option><option>3</option><option>4</option><option>7</option><option>8</option><option>9</option><option>10</option></select><span id="h-batpct" class="muted small"></span></div>
       <label for="h-div" data-i="hwDivider"></label>
       <input id="h-div" inputmode="decimal" maxlength="5" pattern="\d{1,2}(\.\d{1,2})?">
+      <div id="h-sdrow" hidden>
+        <label for="h-sd" data-i="hwSdlog"></label>
+        <div class="row"><select id="h-sd"><option value="off" data-i="hwSdOff"></option><option value="log" data-i="hwSdLog"></option><option value="video" data-i="hwSdVideo"></option></select><span id="h-sdstate" class="muted small"></span></div>
+      </div>
       <div class="row"><button id="b-hw" class="primary" data-i="save"></button><span id="hw-msg" class="small"></span></div>
     </section>
     <section>

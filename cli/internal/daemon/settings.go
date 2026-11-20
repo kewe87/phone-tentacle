@@ -9,7 +9,7 @@ import (
 )
 
 // settingKeys are the board's settings (`config`, docs/cli-protocol.md), in the order `device settings` shows them.
-var settingKeys = []string{"name", "display", "abs", "battery", "battery_div", "lang"}
+var settingKeys = []string{"name", "display", "abs", "battery", "battery_div", "lang", "sdlog"}
 
 // settings shows the board's settings (text "") or stores one ("KEY VALUE"): the status OLED, the pointer, the
 // battery pin and its divider, the OLED's language, the name. Firmware 0.4.0 or later.
@@ -45,6 +45,16 @@ func (s *Server) settings(ctx context.Context, c *Conn, text string) Response {
 		out["message"] = "a changed name or pointer (abs) takes effect when the board restarts (unplug it, or the web page's restart)"
 	} else if key == "abs" {
 		out["message"] = "the pointer is already as set"
+	}
+	if key == "sdlog" && out["sdlog"] != "off" {
+		switch out["sd"] {
+		case "none":
+			out["message"] = "this board has no microSD slot"
+		case "nocard":
+			out["message"] = "no card in the slot (or not FAT32)"
+		case "err":
+			out["message"] = "the card cannot be written"
+		}
 	}
 	if key == "display" && out["display"] != "off" && num(out["oled"]) != 1 {
 		out["message"] = "no display answers on I2C (GPIO5 SDA, GPIO6 SCL at 0x3C/0x3D)"

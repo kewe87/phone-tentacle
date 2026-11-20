@@ -36,6 +36,9 @@ struct Sink {
   bool (*send)(const uint8_t *p, size_t n);  // one chunk
   uint32_t (*sessGen)();                     // bumps with every new receiver (session, page): it starts over
   const char *name;                          // for the log
+  // Whole access units instead of chunks (the microSD recording, sdlog.h): p, n, VF_CONFIG / VF_IDR, the timestamp.
+  // room() then only says whether it takes any (1) or not (0).
+  bool (*au)(const uint8_t *p, size_t n, uint8_t flags, uint32_t ts);
   uint8_t *chunk;                            // VCHUNK_HDR + its largest payload
   uint8_t *scratch;  // the AU being sent
   uint8_t cfg[GOP_CFG_MAX];
@@ -57,8 +60,10 @@ struct Sink {
 };
 
 static gop_buf gop;
-static Sink sink, webSink;  // the session's, the web's (webSink.task stays NULL until a page first asks)
-static Sink *const sinks[] = {&sink, &webSink};
+// the session's, the web's (webSink.task stays NULL until a page first asks), the microSD card's (sdSink.task stays
+// NULL until a recording of the screen starts)
+static Sink sink, webSink, sdSink;
+static Sink *const sinks[] = {&sink, &webSink, &sdSink};
 static SemaphoreHandle_t lock;
 static uint8_t cliChunk[VCHUNK_HDR + VIDEO_PAYLOAD];
 static uint32_t winStart, winBytes, winFrames, lastIdr;
@@ -72,6 +77,7 @@ static size_t cliRoom() { return min(cli_video_room(), VIDEO_PAYLOAD); }
 
 // One access unit as chunks. A failed chunk still consumes its seq, so the receiver sees a gap.
 static bool sendAu(Sink &s, const uint8_t *p, size_t n, uint8_t flags, uint32_t ts) {
+  if (s.au) return s.au(p, n, flags, ts);
   size_t room = s.room();
   if (room < 5) return false;
   vchunk c;
@@ -431,4 +437,24 @@ int video_web_state(uint32_t *waitedMs) {
   int st = wv_update(&webWatch, following, waitIdr, whole, now);
   *waitedMs = wv_waited(&webWatch, now);
   return st;
+}
+
+// ---- The microSD card's recording -------------------------------------------------------------------------------
+bool video_sd_begin(size_t (*room)(), bool (*au)(const uint8_t *, size_t, uint8_t, uint32_t), uint32_t (*gen)()) {
+  if (sdSink.task) return true;
+  if (!lock) return false;
+  if (!sdSink.scratch) sdSink.scratch = (uint8_t *)heap_caps_malloc(SCRATCH_CAP, MALLOC_CAP_SPIRAM);
+  if (!sdSink.scratch) return false;
+  sdSink.room = room;
+  sdSink.au = au;
+  sdSink.sessGen = gen;
+  sdSink.name = "SD card's";
+  sdSink.cliGen = gen();
+  sdSink.streaming = true;  // room() says whether a file is open
+  // Below the computer's stream (2), next to the web's; the card's writes block this task only. More stack: FAT.
+  return xTaskCreatePinnedToCore(videoTask, "video_sd", 6 * 1024, &sdSink, 1, &sdSink.task, 1) == pdPASS;
+}
+
+void video_sd_kick() {
+  if (sdSink.task) xTaskNotifyGive(sdSink.task);
 }

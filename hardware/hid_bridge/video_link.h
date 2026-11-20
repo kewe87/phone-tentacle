@@ -40,3 +40,11 @@ void video_web_stream(bool on);
 bool video_web_stream_at(uint32_t idrTs, uint32_t n);
 // What the page's picture waits for (src/web/web_ctl.h: VW_OK, VW_KEYFRAME, VW_FROZEN); waitedMs: since when.
 int video_web_state(uint32_t *waitedMs);
+
+// ---- The microSD card's recording of the screen (sdlog.h): whole access units, from the chain's IDR on, in order
+// (it never skips ahead either). Its own task and 512 KB PSRAM, made on first use. room: 1 while a file is open, au:
+// one unit (VF_CONFIG: SPS/PPS; VF_IDR), false if it could not be written; gen: bumps with every new file (it starts
+// over from the next whole chain). A card too slow for a whole buffer (minutes) waits for the next keyframe.
+bool video_sd_begin(size_t (*room)(), bool (*au)(const uint8_t *p, size_t n, uint8_t flags, uint32_t ts),
+                    uint32_t (*gen)());
+void video_sd_kick();  // a file opened: look now

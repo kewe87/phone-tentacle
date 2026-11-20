@@ -127,6 +127,9 @@ func TestPairInfoAndErrors(t *testing.T) {
 	if got := strings.Join(b.Commands, ","); got != "stream on,key enter,type hi" {
 		t.Fatalf("board got %s", got)
 	}
+	if len(b.Clock) == 0 || !strings.HasPrefix(b.Clock[0], "time ") || len(strings.Fields(b.Clock[0])) != 3 {
+		t.Fatalf("the session did not set the board's clock: %q", b.Clock)
+	}
 	if r, _ := call(t, c, Request{Cmd: "button", Text: "VOLUME_UP"}); r.Status != "error" {
 		t.Fatal("volume button accepted")
 	}

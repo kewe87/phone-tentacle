@@ -21,10 +21,11 @@ static void test_defaults(void) {
   CHECK(bo_get(&o, "battery", v, sizeof v) && !strcmp(v, "none"));
   CHECK(bo_get(&o, "battery_div", v, sizeof v) && !strcmp(v, "2.00"));
   CHECK(bo_get(&o, "lang", v, sizeof v) && !strcmp(v, "auto"));
+  CHECK(bo_get(&o, "sdlog", v, sizeof v) && !strcmp(v, "off") && o.sdlog == 0);
   CHECK(!bo_get(&o, "name", v, sizeof v));
   int n = 0;
   for (const char *const *k = BO_KEYS; *k; k++, n++) CHECK(bo_values(*k) && bo_get(&o, *k, v, sizeof v));
-  CHECK(n == 5);
+  CHECK(n == 6);
 }
 
 static void test_set(void) {
@@ -35,6 +36,13 @@ static void test_set(void) {
   CHECK(bo_set(&o, "display", "yes") == BO_BAD_VALUE && o.display == BO_DISPLAY_ON);
   CHECK(bo_set(&o, "abs", "off") == BO_OK && o.abs == 0);
   CHECK(bo_set(&o, "abs", "1") == BO_OK && o.abs == 1);
+  CHECK(bo_set(&o, "sdlog", "on") == BO_OK && o.sdlog == BO_SD_VIDEO);  // REC means video
+  char v[16];
+  CHECK(bo_get(&o, "sdlog", v, sizeof v) && !strcmp(v, "video"));
+  CHECK(bo_set(&o, "sdlog", "log") == BO_OK && o.sdlog == BO_SD_LOG);
+  CHECK(bo_get(&o, "sdlog", v, sizeof v) && !strcmp(v, "log"));
+  CHECK(bo_set(&o, "sdlog", "yes") == BO_BAD_VALUE && o.sdlog == BO_SD_LOG);
+  CHECK(bo_set(&o, "sdlog", "0") == BO_OK && o.sdlog == 0);
   CHECK(bo_set(&o, "abs", "") == BO_BAD_VALUE && bo_set(&o, "abs", NULL) == BO_BAD_VALUE && o.abs == 1);
   // ADC1 pins only, not the OLED's I2C pins, not the BOOT button (0) or the LED (21)
   CHECK(bo_set(&o, "battery", "1") == BO_OK && o.bat_pin == 1);
@@ -53,7 +61,6 @@ static void test_set(void) {
   CHECK(bo_set(&o, "battery_div", "2.") == BO_BAD_VALUE && bo_set(&o, "battery_div", ".") == BO_BAD_VALUE);
   CHECK(bo_set(&o, "battery_div", "2.125") == BO_BAD_VALUE && bo_set(&o, "battery_div", "2,5") == BO_BAD_VALUE);
   CHECK(bo_set(&o, "battery_div", "1.2.3") == BO_BAD_VALUE && o.bat_div == 1000);
-  char v[16];
   CHECK(bo_set(&o, "battery_div", ".5") == BO_BAD_VALUE);  // below 1
   CHECK(bo_set(&o, "battery_div", "2.05") == BO_OK && bo_get(&o, "battery_div", v, sizeof v) && !strcmp(v, "2.05"));
   CHECK(bo_set(&o, "lang", "de") == BO_OK && o.lang == BO_LANG_DE);

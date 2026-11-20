@@ -6,6 +6,8 @@
 // minds the BOOT confirmation of a new password. The web's video task (video_link.cpp, core 1) hands each chunk to
 // the server's task and waits for it. loop() (core 1) runs the page's input. One mutex (mu) guards the shared state.
 #include "web_server.h"
+#include "sdlog.h"
+#include "wallclock.h"
 #include <WiFi.h>
 #include <Preferences.h>
 #include <esp_random.h>
@@ -401,6 +403,11 @@ static esp_err_t onSettingsPost(httpd_req_t *r) {
         renamed = true;
         board_log("web: board name set to \"%s\" (after a restart)", v);
       }
+    } else if (!strcmp(k, "clock")) {  // "EPOCH OFFSET_MIN": the page sets the board's clock when it opens
+      long long epoch = 0;
+      int offset = 0;
+      if (sscanf(v, "%lld %d", &epoch, &offset) != 2 || !clock_set(epoch, offset, "web"))
+        return reply(r, "400 Bad Request", "{\"err\":\"clock\"}");
     } else if (!strcmp(k, "kbd")) {
       if (!kbd_layout_set(v)) return reply(r, "400 Bad Request", "{\"err\":\"kbd\"}");
     } else if (!strcmp(k, "lang")) {
@@ -408,7 +415,7 @@ static esp_err_t onSettingsPost(httpd_req_t *r) {
       web_set_lang(v);
       display_reconfigure();  // the OLED's language may follow the page's
     } else if (!strcmp(k, "display") || !strcmp(k, "abs") || !strcmp(k, "battery") || !strcmp(k, "battery_div") ||
-               !strcmp(k, "oled_lang")) {
+               !strcmp(k, "oled_lang") || !strcmp(k, "sdlog")) {
       if (settings_set(strcmp(k, "oled_lang") ? k : "lang", v).length()) {
         String e = String("{\"err\":\"") + k + "\"}";
         return reply(r, "400 Bad Request", e.c_str());
@@ -973,6 +980,7 @@ bool web_loop() {
     return true;
   }
   String rep = run(cmd);
+  sdlog_input('w', cmd, rep.c_str());
   bool ok = rep == "ok";
 #if TENTACLE_DEBUG
   board_log("D web: %s -> %s", cmd, rep.c_str());

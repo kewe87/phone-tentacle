@@ -27,7 +27,8 @@ type FakeBoard struct {
 	mu       sync.Mutex
 	keys     map[string][]byte // client_id hex → K
 	conn     *fakeConn
-	Commands []string // every command accepted on stream C, in order
+	Commands []string // every command accepted on stream C, in order, but `time` (the clock the CLI sets)
+	Clock    []string // the `time` commands
 }
 
 func NewFakeBoard(id []byte) *FakeBoard {
@@ -180,7 +181,11 @@ func (c *fakeConn) Write(f []byte) error {
 			return nil
 		}
 		id, cmd, _ := strings.Cut(string(plain[1:]), " ")
-		b.Commands = append(b.Commands, cmd)
+		if strings.HasPrefix(cmd, "time ") {
+			b.Clock = append(b.Clock, cmd)
+		} else {
+			b.Commands = append(b.Commands, cmd)
+		}
 		if reply := b.Handle(cmd); reply != "" {
 			c.sealB('r', id+" "+reply)
 		}

@@ -2,11 +2,12 @@
 #include "board_settings.h"
 #include "logbuf.h"
 #include "netcfg.h"
+#include "sdlog.h"
 #include "status_display.h"
 #include "src/setup/board_opts.h"
 
 static const char *const USAGE = "err usage: config [display auto|on|off | abs on|off | battery none|GPIO | "
-                                  "battery_div 1.00-10.00 | lang auto|en|de | name NAME]";
+                                  "battery_div 1.00-10.00 | lang auto|en|de | sdlog off|log|video | name NAME]";
 
 String settings_json() {
   board_opts o;
@@ -18,6 +19,7 @@ String settings_json() {
     j += String("\"") + *k + "\":\"" + v + "\",";
     if (!strcmp(*k, "display")) j += String("\"oled\":") + (display_present() ? 1 : 0) + ",";
     if (!strcmp(*k, "abs")) j += String("\"abs_active\":") + (cfg_abs_active() ? 1 : 0) + ",";
+    if (!strcmp(*k, "sdlog")) j += String("\"sd\":\"") + sdlog_state_name() + "\",\"sd_file\":\"" + sdlog_file() + "\",";
     if (!strcmp(*k, "battery_div") && battery_percent() >= 0) j += String("\"bat\":") + battery_percent() + ",";
   }
   String saved = board_name_saved();  // [A-Za-z0-9 ._-] only: nothing to escape
@@ -36,6 +38,7 @@ String settings_set(const char *key, const char *value) {
   if (r != BO_OK) return String("bad value for ") + key + ": " + bo_values(key);
   board_log("settings: %s %s%s", key, value, !strcmp(key, "abs") ? " (after a restart)" : "");
   if (!strcmp(key, "display") || !strcmp(key, "lang")) display_reconfigure();
+  if (!strcmp(key, "sdlog")) sdlog_reconfigure();
   return "";
 }
 

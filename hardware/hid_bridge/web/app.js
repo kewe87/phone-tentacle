@@ -48,6 +48,8 @@ const T = {
     hwPointer: 'Pointer', hwAbs: 'Absolute (taps on the picture, no calibration)', hwRel: 'Relative (classic mouse)',
     hwBattery: 'Battery voltage pin (GPIO)', hwNone: 'None', hwBatPct: 'now {p} %',
     hwDivider: 'Voltage divider (battery volts per pin volt, 1.00 to 10.00)', hwBadDiv: 'Divider: 1.00 to 10.00',
+    hwSdlog: 'Recording on the microSD card (typed text never goes into the log; the video shows what the screen shows)', hwSdOff: 'Off', hwSdLog: 'Log', hwSdVideo: 'Log and screen video',
+    sd_rec: 'recording: {f}', sd_nocard: 'no card (or not FAT32)', sd_err: 'card cannot be written', sd_off: '',
     hwRestart: 'Saved. The pointer changes after a restart.',
     network: 'Network', ssid: 'Wi-Fi', ip: 'Address', rssi: 'Signal', host: 'Name', fp: 'Certificate SHA-256',
     memory: 'Free memory', uptime: 'Running for',
@@ -109,6 +111,8 @@ const T = {
     hwPointer: 'Zeiger', hwAbs: 'Absolut (Tippen ins Bild, keine Kalibrierung)', hwRel: 'Relativ (klassische Maus)',
     hwBattery: 'Pin der Akkuspannung (GPIO)', hwNone: 'Keiner', hwBatPct: 'jetzt {p} %',
     hwDivider: 'Spannungsteiler (Akku-Volt je Pin-Volt, 1.00 bis 10.00)', hwBadDiv: 'Teiler: 1.00 bis 10.00',
+    hwSdlog: 'Aufzeichnung auf der microSD-Karte (getippter Text kommt nie ins Protokoll; das Video zeigt, was der Bildschirm zeigt)', hwSdOff: 'Aus', hwSdLog: 'Protokoll', hwSdVideo: 'Protokoll und Bildschirmvideo',
+    sd_rec: 'zeichnet auf: {f}', sd_nocard: 'keine Karte (oder nicht FAT32)', sd_err: 'Karte nicht beschreibbar', sd_off: '',
     hwRestart: 'Gespeichert. Der Zeiger wechselt nach einem Neustart.',
     network: 'Netzwerk', ssid: 'WLAN', ip: 'Adresse', rssi: 'Signal', host: 'Name', fp: 'Zertifikat SHA-256',
     memory: 'Freier Speicher', uptime: 'Läuft seit',
@@ -180,6 +184,9 @@ async function start() {
   if (!state.auth) { view('v-login'); $('l-pw').focus(); return; }
   view('v-app');
   connect();
+  // the board's clock (session log time stamps): UTC seconds and this computer's offset in minutes
+  const now = new Date();
+  api('/api/settings', 'clock=' + Math.floor(now.getTime() / 1000) + ' ' + -now.getTimezoneOffset()).catch(() => {});
 }
 
 $('f-login').onsubmit = async (e) => {
@@ -574,6 +581,9 @@ async function loadSettings() {
     $('h-bat').value = hw.battery;
     $('h-batpct').textContent = hw.bat === undefined ? '' : t('hwBatPct', { p: hw.bat });
     $('h-div').value = hw.battery_div;
+    $('h-sdrow').hidden = !hw.sd || hw.sd === 'none';  // only boards with a microSD slot
+    if (hw.sdlog) $('h-sd').value = hw.sdlog;
+    $('h-sdstate').textContent = hw.sd && hw.sd !== 'none' ? t('sd_' + hw.sd, { f: hw.sd_file || '' }) : '';
   }
 }
 
@@ -581,7 +591,8 @@ $('b-hw').onclick = async () => {
   const div = $('h-div').value.trim(), msg = $('hw-msg');
   if (!/^\d{1,2}(\.\d{1,2})?$/.test(div) || +div < 1 || +div > 10) { msg.textContent = t('hwBadDiv'); return; }
   const j = await api('/api/settings', 'display=' + $('h-display').value + '\noled_lang=' + $('h-lang').value + '\nabs=' +
-    $('h-abs').value + '\nbattery=' + $('h-bat').value + '\nbattery_div=' + div);
+    $('h-abs').value + '\nbattery=' + $('h-bat').value + '\nbattery_div=' + div +
+    ($('h-sdrow').hidden ? '' : '\nsdlog=' + $('h-sd').value));
   msg.textContent = j.ok ? t(j.restart ? 'hwRestart' : 'saved') : t('failed');
   if (j.ok) setTimeout(loadSettings, 1500);  // the display is looked for again from the board's loop
 };

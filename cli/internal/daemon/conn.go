@@ -139,6 +139,11 @@ func (c *Conn) start() error {
 			log.Printf("%s: video replays the GOP from its IDR", c.ID)
 		}
 	}
+	if err == nil { // the board's clock, for its session log; a board before 0.4.1 answers "unknown command"
+		now := time.Now()
+		_, off := now.Zone()
+		c.Send(ctx, fmt.Sprintf("time %d %d", now.Unix(), off/60))
+	}
 	if err == nil && c.rawWanted != nil && c.rawWanted() {
 		c.Send(ctx, "listen raw on") // the board forgets it with every session
 	}

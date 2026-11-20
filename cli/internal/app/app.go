@@ -42,10 +42,12 @@ const usage = `tentacle: see and drive an iPhone through a Tentacle board, over 
   io button HOME
   screencapture --format h264|mjpeg   video to stdout
   device info                      board status
-  device settings                  the board's settings: name, display, abs, battery, battery_div, lang
+  device settings                  the board's settings: name, display, abs, battery, battery_div, lang, sdlog
   device set KEY VALUE             one of them, kept on the board: display auto|on|off (status OLED), abs on|off
                                    (absolute pointer, after a restart), battery none|GPIO, battery_div 1.00-10.00,
-                                   lang auto|en|de (the OLED's texts), name NAME (after a restart)
+                                   lang auto|en|de (the OLED's texts), sdlog off|log|video (recording on the
+                                   microSD card, boards with a slot: the session log, or the log and the screen;
+                                   on = video), name NAME (after a restart)
   keyboard layout [us|de]          the iPhone's hardware keyboard layout the board types for (default us); must
                                    match Settings > General > Keyboard > Hardware Keyboard on the iPhone
   web password                     a new password for the board's web interface (asked twice, not shown); counts
@@ -255,7 +257,7 @@ func (a *App) Run(args []string) int {
 		case len(pos) >= 3 && pos[0] == "set": // a name may hold spaces
 			return a.call(daemon.Request{Cmd: "settings", Device: *dev, Text: pos[1] + " " + strings.Join(pos[2:], " ")})
 		case len(pos) >= 1 && pos[0] == "set":
-			return a.fail(errors.New("usage: tentacle device set KEY VALUE (display, abs, battery, battery_div, lang, name)"))
+			return a.fail(errors.New("usage: tentacle device set KEY VALUE (display, abs, battery, battery_div, lang, sdlog, name)"))
 		}
 		if len(pos) == 0 || pos[0] != "info" {
 			return a.fail(errUnsupported)

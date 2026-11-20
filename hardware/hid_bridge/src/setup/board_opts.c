@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-const char *const BO_KEYS[] = {"display", "abs", "battery", "battery_div", "lang", NULL};
+const char *const BO_KEYS[] = {"display", "abs", "battery", "battery_div", "lang", "sdlog", NULL};
 
 void bo_defaults(board_opts *o) {
   o->display = BO_DISPLAY_AUTO;
@@ -11,6 +11,7 @@ void bo_defaults(board_opts *o) {
   o->bat_pin = BO_BAT_NONE;
   o->bat_div = BO_DIV_DEFAULT;
   o->lang = BO_LANG_AUTO;
+  o->sdlog = 0;
 }
 
 bool bo_bat_pin_ok(int pin) { return pin >= 1 && pin <= 10 && pin != BO_OLED_SDA && pin != BO_OLED_SCL; }
@@ -60,6 +61,7 @@ const char *bo_values(const char *key) {
   if (!strcmp(key, "battery")) return "none|1-10 (a GPIO; not 5, 6)";
   if (!strcmp(key, "battery_div")) return "1.00-10.00";
   if (!strcmp(key, "lang")) return "auto|en|de";
+  if (!strcmp(key, "sdlog")) return "off|log|video";
   return NULL;
 }
 
@@ -83,6 +85,11 @@ int bo_set(board_opts *o, const char *key, const char *v) {
   } else if (!strcmp(key, "battery_div")) {
     if (!hundredths(v, &n)) return BO_BAD_VALUE;
     o->bat_div = n;
+  } else if (!strcmp(key, "sdlog")) {
+    if (!strcmp(v, "log")) o->sdlog = BO_SD_LOG;
+    else if (!strcmp(v, "video") || !strcmp(v, "on") || !strcmp(v, "1")) o->sdlog = BO_SD_VIDEO;  // REC is video
+    else if (!strcmp(v, "off") || !strcmp(v, "0")) o->sdlog = BO_SD_OFF;
+    else return BO_BAD_VALUE;
   } else {  // lang
     if (!strcmp(v, "auto")) o->lang = BO_LANG_AUTO;
     else if (!strcmp(v, "en")) o->lang = BO_LANG_EN;
@@ -101,6 +108,7 @@ bool bo_get(const board_opts *o, const char *key, char *out, size_t cap) {
     else snprintf(out, cap, "%d", o->bat_pin);
   } else if (!strcmp(key, "battery_div")) snprintf(out, cap, "%d.%02d", o->bat_div / 100, o->bat_div % 100);
   else if (!strcmp(key, "lang")) snprintf(out, cap, "%s", bo_lang_name(o->lang));
+  else if (!strcmp(key, "sdlog")) snprintf(out, cap, "%s", o->sdlog == BO_SD_VIDEO ? "video" : o->sdlog == BO_SD_LOG ? "log" : "off");
   else return false;
   return true;
 }

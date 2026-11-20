@@ -34,6 +34,9 @@
 #include "src/cli/cli_proto.h"
 #include "logbuf.h"
 #include "button.h"
+#include "board_hw.h"
+#include "sdlog.h"
+#include "wallclock.h"
 #include "dbg.h"
 #include "ota.h"
 #include "kbd_layout.h"
@@ -213,6 +216,7 @@ String drive(const String &line, char who) {
   if (who == FROM_CLI)
     if (const char *busy = web_cli_gate(line.c_str())) return busy;  // the web interface drives (web_server.h)
   String reply = run(line);
+  if (cmd != "ping" && cmd != "pace") sdlog_input(who, line.c_str(), reply.c_str());
   if (reply.startsWith("ok") && cmd != "ping" && cmd != "pace" && cmd != "reset") {
     lastInputMs = millis();
     if (!lastInputMs) lastInputMs = 1;
@@ -362,6 +366,7 @@ String board(const String &line, const String &id, char who) {
     if (who != FROM_CLI) return NEEDS_SESSION;
     return settings_command(arg);
   }
+  if (cmd == "time") return clock_command(arg, who == FROM_CLI ? "cli" : "serial");  // wallclock.h
   if (cmd == "kbd") {  // the phone's hardware keyboard layout (kbd_layout.h), kept in NVS
     if (arg == "layout") return String("ok ") + kbd_layout_get();
     if (!arg.startsWith("layout ")) return String("err usage: kbd layout [") + kbd_layout_codes() + "]";
@@ -577,6 +582,7 @@ static void advertiseState() {  // loop(): the TXT record follows pair / unpair 
 
 void setup() {
   Serial.begin(115200);
+  board_hw_begin();  // first: on battery the Waveshare e-paper board needs its power latch set at once
 #if DEBUG_SERIAL
   for (int i = 0; i < 30 && !Serial; i++) delay(100);  // give a serial monitor 3 s to catch the boot lines
 #endif
@@ -596,7 +602,10 @@ void setup() {
   button_begin();
 
   net_begin();       // reads the settings too
-  display_begin();   // the status OLED, if the setting `display` and the I2C bus say so
+  display_begin();   // the status OLED (setting `display`, I2C) or the e-paper panel of a board with one
+  clock_begin();     // the wall clock from the RTC, on a board with one
+  sdlog_begin();     // the session log on a board with a microSD slot (setting `sdlog`)
+  board_log("board: %s (probe %d)", board_hw_name(), board_hw_probe());
   board_log("usb: %s pointer (setting abs)", mouse.absolute() ? "absolute" : "relative");
   if (!video_begin()) board_log("video: no PSRAM for the GOP buffer");
   link_begin();
