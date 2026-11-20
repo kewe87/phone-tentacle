@@ -1,5 +1,6 @@
 // Board settings in NVS and the Wi-Fi link, see netcfg.h.
 #include "netcfg.h"
+#include "board_hw.h"
 #include <WiFi.h>
 #include <Preferences.h>
 #include <esp_mac.h>
@@ -160,11 +161,13 @@ static void startWifi() {
   } else {
     WiFi.mode(WIFI_AP_STA);  // the station side scans for the page's list and tries the chosen network
     WiFi.setAutoReconnect(false);
-    WiFi.softAP(apSsid.c_str(), apPass.c_str(), 6, 0, AP_MAX_CLIENTS);
+    bool apUp = WiFi.softAP(apSsid.c_str(), apPass.c_str(), 6, 0, AP_MAX_CLIENTS);
+    if (!apUp) board_log("wifi: the setup hotspot did not start");
     wifi_qr_make(apSsid, apPass);  // for the OLED and the wifi-setup line
     // The phone is centimetres away and powers the board: low TX power cuts the current peaks that made the
-    // phone drop its USB power (the board then came back with reset reason "power-on").
-    WiFi.setTxPower(WIFI_POWER_5dBm);
+    // phone drop its USB power (the board then came back with reset reason "power-on"). Not on the Waveshare
+    // e-paper board: its chip antenna at 5 dBm did not reach a phone at all (2026-11-20).
+    WiFi.setTxPower(board_hw() == BOARD_WS_EPD154 ? WIFI_POWER_15dBm : WIFI_POWER_5dBm);
     captiveDhcp();
     suSet(SU_IDLE, NS_IDLE);
     scanWanted = true;
@@ -205,6 +208,8 @@ static void pollScan() {
         e.open = WiFi.encryptionType(i) == WIFI_AUTH_OPEN;
       }
       xSemaphoreGive(suLock);
+      // what the board hears: an antenna problem shows as few networks, all weak
+      board_log("wifi: scan: %d networks, strongest %d dBm", n, n > 0 ? (int)WiFi.RSSI(0) : 0);
     }
     WiFi.scanDelete();
     scanning = false;

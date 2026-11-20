@@ -240,29 +240,24 @@ static void epdFrame() {
     epdCenter(176, a);
     return;
   }
-  if (net_setup_active()) {  // no Wi-Fi stored: the setup hotspot, its QR code on top
+  if (net_setup_active()) {  // no Wi-Fi stored: the setup hotspot's QR code, as large as fits below the head
     int n = wifi_qr_size();
-    int s = n ? 118 / n : 0;
-    if (s > 4) s = 4;
-    int y0 = 30;
+    // a quiet zone of 2 modules on each side (the head above is black); the panel's 6x12 text was too small to read
+    int s = n ? (EPD_H - 26) / (n + 4) : 0;
     if (s >= 2) {
-      int q = n * s, x0 = (EPD_W - q) / 2;
+      int q = n * s, x0 = (EPD_W - q) / 2, y0 = 26 + (EPD_H - 26 - q) / 2;
       for (int y = 0; y < n; y++)
         for (int x = 0; x < n; x++)
           if (wifi_qr_dark(x, y)) g_epd.drawBox(x0 + x * s, y0 + y * s, s, s);
-      y0 += q + 4;
-    } else {
+    } else {  // no code: the hotspot's name and password as text
+      String ssid = net_ap_ssid(), pass = net_ap_pass();
       g_epd.setFont(u8g2_font_helvB10_tr);
-      epdCenter(50, oled_text(lang, OT_SETUP_JOIN));
-      y0 = 60;
+      epdCenter(60, oled_text(lang, OT_SETUP_JOIN));
+      oled_ascii(ssid.c_str(), a, sizeof a);
+      epdCenter(100, a);
+      snprintf(b, sizeof b, oled_text(lang, OT_PASS), pass.c_str());
+      epdCenter(124, b);
     }
-    String ssid = net_ap_ssid(), pass = net_ap_pass(), ip = net_ip();
-    g_epd.setFont(u8g2_font_6x12_tr);
-    epdCenter(y0 + 12, ssid.c_str());
-    snprintf(a, sizeof a, oled_text(lang, OT_PASS), pass.c_str());
-    epdCenter(y0 + 26, a);
-    snprintf(a, sizeof a, "http://%s", ip.c_str());
-    epdCenter(y0 + 40, a);
     return;
   }
   // running or stopped, big; stopped on black
