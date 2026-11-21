@@ -1,6 +1,9 @@
 // Board settings in NVS and the Wi-Fi link, see netcfg.h.
 #include "netcfg.h"
 #include "board_hw.h"
+#include "kbd_layout.h"
+#include "sdlog.h"
+#include "status_display.h"
 #include <WiFi.h>
 #include <Preferences.h>
 #include <esp_mac.h>
@@ -97,6 +100,8 @@ static int suLast = NS_IDLE;  // how the last attempt ended: NS_IDLE, NS_EXPIRED
 static String trySsid, tryPass, suIp;
 static uint8_t tryWeb[WA_REC_LEN];  // the web interface's password (web_auth.h), if the page set one
 static bool tryWebSet;
+static SetupExtras tryExtras;  // the page's other settings, stored with the network
+static bool restartWhenDone;   // a new name: it takes effect on a restart
 static uint32_t suAt, tryAt;
 static bool tryNotFound;
 static NetScan scanList[SCAN_MAX];
@@ -230,6 +235,18 @@ static void tryBegin() {
   tryAt = millis();
 }
 
+// The page's other settings, once the network is stored. Each was checked on submit; an empty one keeps what is set.
+static void storeExtras() {
+  const SetupExtras &x = tryExtras;
+  if (x.name[0] && String(x.name) != board_name_saved() && board_set_name(x.name)) restartWhenDone = true;
+  if (x.lang[0]) web_set_lang(x.lang);
+  if (x.kbd[0]) kbd_layout_set(x.kbd);
+  if (x.sdlog[0] && cfg_set_opt("sdlog", x.sdlog) == BO_OK) sdlog_reconfigure();
+  if (x.lang[0]) display_reconfigure();
+  board_log("wifi: setup settings: name %s, language %s, keyboard %s, sd %s", x.name[0] ? x.name : "-",
+            x.lang[0] ? x.lang : "-", x.kbd[0] ? x.kbd : "-", x.sdlog[0] ? x.sdlog : "-");
+}
+
 // From SU_TRYING on only loop() touches trySsid / tryPass (the page may submit in SU_IDLE and SU_WAIT only).
 static void pollSetup() {
   if (su == SU_OFF) return;
@@ -263,6 +280,7 @@ static void pollSetup() {
       prefs.putString("sta_ssid", staSsid);
       prefs.putString("sta_pass", staPass);
       if (tryWebSet) prefs.putBytes("web_pw", tryWeb, WA_REC_LEN);  // left empty on the page: the old one stays
+      storeExtras();
       prefs.putString("mode", "sta");  // last: without it the board still counts as not set up
       xSemaphoreTake(suLock, portMAX_DELAY);
       suIp = WiFi.localIP().toString();
@@ -281,6 +299,11 @@ static void pollSetup() {
       tryBegin();
     }
   } else if (su == SU_OK && now - suAt >= DONE_MS) {
+    if (restartWhenDone) {  // the new name goes into mDNS, AirPlay and the display on the next boot
+      board_log("wifi: setup done, restarting for the new name");
+      delay(200);
+      ESP.restart();
+    }
     mode = "sta";
     startWifi();  // the hotspot and the page go; from here on the board is only a client
   }
@@ -434,7 +457,7 @@ int net_setup_scan(NetScan *out, int cap, bool *running) {
   return n;
 }
 
-bool net_setup_submit(const char *ssid, const char *pass, const uint8_t *webPw) {
+bool net_setup_submit(const char *ssid, const char *pass, const uint8_t *webPw, const SetupExtras *extras) {
   if (setup_check(ssid, pass) != SETUP_OK) return false;
   char shown[CF_TEXT];  // for the display, whose font is ASCII
   size_t n = 0;
@@ -447,6 +470,8 @@ bool net_setup_submit(const char *ssid, const char *pass, const uint8_t *webPw) 
     tryPass = pass;
     tryWebSet = webPw != nullptr;
     if (webPw) memcpy(tryWeb, webPw, WA_REC_LEN);
+    if (extras) tryExtras = *extras;
+    else memset(&tryExtras, 0, sizeof tryExtras);
     su = SU_WAIT;
     ok = true;
   }
@@ -574,7 +599,7 @@ void cfg_ed25519_seed(uint8_t seed[32]) {
 }
 
 // ---- The board's name and the web interface's settings (NVS "agent" too) ----------------------------------------
-static bool nameOk(const String &n) {
+bool board_name_ok(const String &n) {
   if (n.length() < 1 || n.length() > 20 || n[0] == ' ' || n[n.length() - 1] == ' ') return false;
   for (char c : n)
     if (!isalnum((unsigned char)c) && c != ' ' && c != '-' && c != '_' && c != '.') return false;
@@ -585,18 +610,18 @@ String board_name() {  // read once: a new name takes effect on the next boot (a
   static String name;
   if (!name.length()) {
     String n = prefs.getString("name", "");
-    name = nameOk(n) ? n : String(BOARD_NAME_TEXT);
+    name = board_name_ok(n) ? n : String(BOARD_NAME_TEXT);
   }
   return name;
 }
 
 String board_name_saved() {
   String n = prefs.getString("name", "");
-  return nameOk(n) ? n : String(BOARD_NAME_TEXT);
+  return board_name_ok(n) ? n : String(BOARD_NAME_TEXT);
 }
 
 bool board_set_name(const String &name) {
-  if (!nameOk(name)) return false;
+  if (!board_name_ok(name)) return false;
   if (name == BOARD_NAME_TEXT) prefs.remove("name");
   else prefs.putString("name", name);
   return true;

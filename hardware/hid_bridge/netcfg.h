@@ -36,7 +36,17 @@ void net_setup_rescan();
 // A network from the page: held in RAM until BOOT is pressed (30 s), then tried, stored only if it works.
 // webPw: the web interface's password (a record of src/web/web_auth.h, 53 bytes), stored with the network; NULL
 // keeps the one stored before. false: bad lengths, an attempt is running, or another confirmation is open.
-bool net_setup_submit(const char *ssid, const char *pass, const uint8_t *webPw = nullptr);
+// extras: the board's other first settings from the page, stored with the network (only once BOOT confirmed it and
+// the network let the board in); an empty field keeps what is set.
+struct SetupExtras {
+  char name[21];  // the board's name (a new one restarts the board when the setup is done)
+  char lang[3];   // "en" / "de": the web interface's language (and with lang auto the display's)
+  char kbd[4];    // the phone's keyboard layout (kbd_layout.h)
+  char sdlog[6];  // off / log / video (boards with a card slot)
+};
+bool net_setup_submit(const char *ssid, const char *pass, const uint8_t *webPw = nullptr,
+                      const SetupExtras *extras = nullptr);
+bool board_name_ok(const String &name);  // 1-20 of A-Z a-z 0-9 space . _ -, no space at either end
 
 enum { NS_OFF, NS_IDLE, NS_WAIT, NS_TRYING, NS_OK, NS_EXPIRED, NS_FAILED, NS_NOT_FOUND };
 struct NetSetup {

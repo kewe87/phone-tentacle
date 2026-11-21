@@ -103,17 +103,30 @@ body:has(#v-app:not([hidden])) { overflow: hidden; }
 .stats { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; font-size: .82em; margin: 0; }
 .stats dt { color: var(--muted); } .stats dd { margin: 0; }
 
-dialog { width: min(640px, 94vw); max-height: 90vh; padding: 0; border: 1px solid var(--line); border-radius: 18px;
-  background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
-dialog::backdrop { background: rgba(0,0,0,.55); }
-dialog .head { display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-dialog .head h2 { margin: 0; flex: 1; font-size: 1.1em; }
-dialog .body { padding: 6px 18px 18px; overflow-y: auto; max-height: calc(90vh - 64px); }
-dialog section { padding: 12px 0; border-bottom: 1px solid var(--line); }
-dialog section:last-child { border-bottom: 0; }
-dialog h3 { margin: 4px 0 10px; font-size: 1em; }
-dialog label { display: block; margin: 10px 0 4px; font-weight: 600; font-size: .92em; }
-dialog .row { margin-top: 10px; }
+/* the tabs in the head: the phone, the settings */
+.tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); }
+.tabs button { border: 0; background: none; min-height: 32px; padding: 4px 14px; border-radius: 9px; color: var(--muted);
+  font-weight: 600; }
+.tabs button.on { background: var(--accent); color: var(--on-accent); }
+
+/* the recording on the card: one click starts or stops it */
+.rec { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 4px 12px; font-weight: 800;
+  letter-spacing: .04em; }
+.rec .dot { width: 11px; height: 11px; border-radius: 50%; border: 2px solid currentColor; box-sizing: border-box; }
+.rec.on { color: #fff; background: var(--bad); border-color: var(--bad); }
+.rec.on .dot { background: #fff; border-color: #fff; animation: rec 1.2s ease-in-out infinite; }
+.rec:disabled { opacity: .45; }
+@keyframes rec { 50% { opacity: .25; } }
+
+/* the settings: their own page, cards side by side as they fit */
+.settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; padding: 16px;
+  align-items: start; max-width: 1200px; margin: 0 auto; }
+.settings section { padding: 16px 18px 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+.settings h3 { margin: 0 0 8px; font-size: 1.05em; }
+.settings h3::after { content: ""; display: block; width: 40px; height: 3px; margin-top: 8px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.settings label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: .92em; }
+.settings .row { margin-top: 12px; }
 progress { width: 100%; height: 10px; margin-top: 10px; accent-color: var(--accent); }
 .note { padding: 10px 12px; border-left: 4px solid var(--accent); border-radius: 0 10px 10px 0; background: var(--panel2);
   margin: 10px 0; }
@@ -123,4 +136,6 @@ progress { width: 100%; height: 10px; margin-top: 10px; accent-color: var(--acce
   body:has(#v-app:not([hidden])) { overflow: auto; }
   .stage { height: 70vh; }
   header .pill { display: none; }
+  header { flex-wrap: wrap; }
+  .settings { grid-template-columns: 1fr; padding: 12px; }
 }

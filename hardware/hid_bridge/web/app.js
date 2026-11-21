@@ -5,7 +5,8 @@
 
 const T = {
   en: {
-    loading: 'Connecting to the board…', settings: 'Settings', logout: 'Sign out', theme: 'Theme',
+    loading: 'Connecting to the board…', settings: 'Settings', tabPhone: 'iPhone',
+    recStart: 'Record to the microSD card (log and screen video)', recStop: 'Recording to {f}: click to stop', logout: 'Sign out', theme: 'Theme',
     nopwTitle: 'Set a password first',
     nopw1: 'The web interface controls your phone, so it needs a password. It is set on the board\'s Wi-Fi setup page, together with the Wi-Fi:',
     nopw2: 'Hold the BOOT button on the board for 10 seconds. It forgets its Wi-Fi and opens its setup hotspot (name and password on its display).',
@@ -68,7 +69,8 @@ const T = {
     themeAuto: 'Theme: system', themeDark: 'Theme: dark', themeLight: 'Theme: light',
   },
   de: {
-    loading: 'Verbinde mit dem Board…', settings: 'Einstellungen', logout: 'Abmelden', theme: 'Darstellung',
+    loading: 'Verbinde mit dem Board…', settings: 'Einstellungen', tabPhone: 'iPhone',
+    recStart: 'Auf die microSD-Karte aufzeichnen (Protokoll und Bildschirmvideo)', recStop: 'Zeichnet auf in {f}: Klick beendet', logout: 'Abmelden', theme: 'Darstellung',
     nopwTitle: 'Zuerst ein Passwort setzen',
     nopw1: 'Die Weboberfläche steuert dein iPhone und braucht deshalb ein Passwort. Es wird auf der WLAN-Einrichtungsseite des Boards gesetzt, zusammen mit dem WLAN:',
     nopw2: 'Den BOOT-Taster am Board 10 Sekunden halten. Es vergisst sein WLAN und öffnet sein Einrichtungs-WLAN (Name und Passwort stehen im Display).',
@@ -170,8 +172,12 @@ async function api(path, body) {
 }
 
 function view(id) {
-  for (const v of ['v-load', 'v-nopw', 'v-login', 'v-app']) $(v).hidden = v !== id;
-  $('b-settings').hidden = $('b-logout').hidden = id !== 'v-app';
+  for (const v of ['v-load', 'v-nopw', 'v-login', 'v-app', 'v-settings']) $(v).hidden = v !== id;
+  const inside = id === 'v-app' || id === 'v-settings';
+  $('tabs').hidden = $('b-logout').hidden = !inside;
+  $('t-phone').classList.toggle('on', id === 'v-app');
+  $('t-settings').classList.toggle('on', id === 'v-settings');
+  if (!inside) $('b-rec').hidden = true;
 }
 
 async function start() {
@@ -184,6 +190,7 @@ async function start() {
   if (!state.auth) { view('v-login'); $('l-pw').focus(); return; }
   view('v-app');
   connect();
+  recPoll();
   // the board's clock (session log time stamps): UTC seconds and this computer's offset in minutes
   const now = new Date();
   api('/api/settings', 'clock=' + Math.floor(now.getTime() / 1000) + ' ' + -now.getTimezoneOffset()).catch(() => {});
@@ -548,9 +555,43 @@ document.addEventListener('keydown', (e) => {
 }, true);
 
 // ---- Settings ----------------------------------------------------------------------------------------------------
-const dlg = $('d-settings');
-$('b-settings').onclick = async () => { await loadSettings(); dlg.showModal(); };
-$('b-close').onclick = () => dlg.close();
+$('t-phone').onclick = () => view('v-app');
+$('t-settings').onclick = async () => { view('v-settings'); await loadSettings(); };
+
+// ---- The recording on the microSD card: the button in the head (boards with a slot) -------------------------------
+let recState = null, recBusy = false;
+function showRec(hw) {
+  const b = $('b-rec');
+  if (!hw || !hw.sd || hw.sd === 'none') { b.hidden = true; return; }
+  recState = hw;
+  b.hidden = false;
+  const on = hw.sd === 'rec';
+  b.classList.toggle('on', on);
+  b.disabled = recBusy || (!on && (hw.sd === 'nocard' || hw.sd === 'err'));
+  b.title = on ? t('recStop', { f: (hw.sd_file || '').split('/').pop() }) : hw.sd === 'nocard' ? t('sd_nocard') :
+    hw.sd === 'err' ? t('sd_err') : t('recStart');
+}
+async function recPoll() {
+  if ($('tabs').hidden) return;
+  try { const s = await api('/api/settings'); if (s.hw) showRec(s.hw); } catch (e) { /* the next one */ }
+  setTimeout(recPoll, 10000);
+}
+$('b-rec').onclick = async () => {
+  if (!recState) return;
+  const on = recState.sd === 'rec';
+  // stop: off; start: the mode last used (video unless the log alone was chosen in the settings)
+  const mode = on ? 'off' : store('recMode') || 'video';
+  if (on && recState.sdlog !== 'off') store('recMode', recState.sdlog);
+  recBusy = true;
+  showRec(recState);
+  try {
+    const j = await api('/api/settings', 'sdlog=' + mode);
+    if (!j.ok) flash(t('failed'));
+    const s = await api('/api/settings');
+    recBusy = false;
+    if (s.hw) { showRec(s.hw); if (!$('v-settings').hidden) loadSettings(); }
+  } catch (e) { recBusy = false; showRec(recState); }
+};
 
 function fmtUp(s) { const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return h + ' h ' + m + ' min'; }
 
@@ -584,6 +625,7 @@ async function loadSettings() {
     $('h-sdrow').hidden = !hw.sd || hw.sd === 'none';  // only boards with a microSD slot
     if (hw.sdlog) $('h-sd').value = hw.sdlog;
     $('h-sdstate').textContent = hw.sd && hw.sd !== 'none' ? t('sd_' + hw.sd, { f: hw.sd_file || '' }) : '';
+    showRec(hw);
   }
 }
 

@@ -5,6 +5,9 @@
 #include <DNSServer.h>
 #include "dbg.h"
 #include "netcfg.h"
+#include "kbd_layout.h"
+#include "sdlog.h"
+#include "src/setup/board_opts.h"
 #include "version.h"
 #include "src/setup/setup_text.h"
 #include "src/web/web_auth.h"
@@ -15,6 +18,8 @@ struct Text {
   const char *badSsid, *badPass, *busy;
   const char *web, *webPw, *webPw2, *webHint, *badWeb, *badWeb2;  // the web interface's password (optional)
   const char *wait, *trying, *ok, *expired, *failed, *notFound, *idle, *lost, *back;  // %s: the network, %u: seconds
+  // the board's first settings, stored with the network
+  const char *board, *name, *nameHint, *language, *kbd, *kbdHint, *sd, *sdOff, *sdLog, *sdVideo, *badName;
 };
 
 static const Text EN = {
@@ -53,6 +58,18 @@ static const Text EN = {
   "No answer from the board. If the setup hotspot is gone, the board has joined your Wi-Fi. If not, join the "
   "hotspot again and reload this page.",
   "Back",
+  "The board",
+  "Name",
+  "How the board shows up: in Screen Mirroring, on the display, on the network. 1 to 20 letters, digits, space, "
+  ". _ -",
+  "Language (this page, the web interface, the display)",
+  "The iPhone's keyboard layout",
+  "As set on the iPhone under Settings > General > Keyboard > Hardware Keyboard: the board types for it.",
+  "Recording on the microSD card",
+  "Off",
+  "Log (inputs and events; typed text never)",
+  "Log and screen video",
+  "The name needs 1 to 20 letters, digits, spaces or . _ - and no space at either end.",
 };
 
 static const Text DE = {
@@ -91,9 +108,21 @@ static const Text DE = {
   "Keine Antwort vom Board. Wenn das Einrichtungs-WLAN verschwunden ist, hat sich das Board mit deinem WLAN "
   "verbunden. Sonst erneut mit dem Einrichtungs-WLAN verbinden und diese Seite neu laden.",
   "Zurück",
+  "Das Board",
+  "Name",
+  "So erscheint das Board: in der Bildschirmsynchronisierung, auf dem Display, im Netz. 1 bis 20 Buchstaben, "
+  "Ziffern, Leerzeichen, . _ -",
+  "Sprache (diese Seite, die Weboberfläche, das Display)",
+  "Tastaturlayout des iPhones",
+  "Wie am iPhone unter Einstellungen > Allgemein > Tastatur > Hardwaretastatur eingestellt: dafür tippt das Board.",
+  "Aufzeichnung auf der microSD-Karte",
+  "Aus",
+  "Protokoll (Eingaben und Ereignisse; getippter Text nie)",
+  "Protokoll und Bildschirmvideo",
+  "Der Name braucht 1 bis 20 Buchstaben, Ziffern, Leerzeichen oder . _ - und kein Leerzeichen am Anfang oder Ende.",
 };
 
-enum { ERR_NONE = 0, ERR_SSID = SETUP_BAD_SSID, ERR_PASS = SETUP_BAD_PASS, ERR_BUSY, ERR_WEB, ERR_WEB2 };
+enum { ERR_NONE = 0, ERR_SSID = SETUP_BAD_SSID, ERR_PASS = SETUP_BAD_PASS, ERR_BUSY, ERR_WEB, ERR_WEB2, ERR_NAME };
 const int NETS_MAX = 16;
 
 static WebServer server(80);
@@ -101,7 +130,13 @@ static DNSServer dns;
 static volatile bool want, up;
 static TaskHandle_t task;
 
-static const Text &text() { return setup_lang_de(server.header("Accept-Language").c_str()) ? DE : EN; }
+// The page's language: chosen on the page (lang=de|en, kept in the form), else the browser's.
+static bool pageDe() {
+  String l = server.arg("lang");
+  if (l == "de" || l == "en") return l == "de";
+  return setup_lang_de(server.header("Accept-Language").c_str());
+}
+static const Text &text() { return pageDe() ? DE : EN; }
 
 static String esc(const char *s) {
   size_t cap = strlen(s) * 6 + 1;  // every character as its longest entity
@@ -141,6 +176,7 @@ static const char LOOK[] =
   "background:linear-gradient(#1d1724,#0d0a12)}"
   "svg{display:block;border-radius:22%}"
   "h1{font-size:1.35em;font-weight:800;margin:14px 0 18px}"
+  "h2{font-size:1.1em;font-weight:800;margin:30px 0 4px}"
   "h1:after{content:'';display:block;width:56px;height:4px;margin-top:10px;border-radius:2px;"
   "background:linear-gradient(90deg,#ffb03a,#ff6a4d,#ff3d8b)}"
   "label{display:block;margin:18px 0 6px;font-weight:600}"
@@ -202,6 +238,49 @@ static void sendPage(const String &head, const String &body) {
   server.sendContent(body);
 }
 
+static void option(String &h, const char *value, const char *label, bool selected) {
+  h += "<option value=";
+  h += value;
+  if (selected) h += " selected";
+  h += ">";
+  h += label;
+  h += "</option>";
+}
+
+// The board's first settings: name, language, the phone's keyboard, the card (boards with a slot).
+static void boardFields(String &h, const Text &t, bool de) {
+  h += "<h2>";
+  h += t.board;
+  h += "</h2><label for=bn>";
+  h += t.name;
+  h += "</label><input id=bn name=bname maxlength=20 autocapitalize=none autocorrect=off spellcheck=false value=\"";
+  h += esc(board_name_saved().c_str());
+  h += "\"><p class=h>";
+  h += t.nameHint;
+  h += "</p><label for=kb>";
+  h += t.kbd;
+  h += "</label><select id=kb name=kbd>";
+  // the stored layout; a new board (us) on a German page: probably de
+  String cur = kbd_layout_get();
+  if (cur == "us" && de) cur = "de";
+  option(h, "us", de ? "Englisch (US)" : "English (US)", cur == "us");
+  option(h, "de", de ? "Deutsch" : "German", cur == "de");
+  h += "</select><p class=h>";
+  h += t.kbdHint;
+  h += "</p>";
+  if (sdlog_state() != SDLOG_NONE) {
+    board_opts o;
+    cfg_opts(&o);
+    h += "<label for=sd>";
+    h += t.sd;
+    h += "</label><select id=sd name=sdlog>";
+    option(h, "off", t.sdOff, o.sdlog == BO_SD_OFF);
+    option(h, "log", t.sdLog, o.sdlog == BO_SD_LOG);
+    option(h, "video", t.sdVideo, o.sdlog == BO_SD_VIDEO);
+    h += "</select>";
+  }
+}
+
 static void sendForm(int err) {
   const Text &t = text();
   static NetScan nets[NETS_MAX];  // only this task uses it
@@ -214,12 +293,20 @@ static void sendForm(int err) {
   pageTitle(h, t);
   if (err) {
     h += "<p class=e>";
-    h += err == ERR_SSID ? t.badSsid : err == ERR_PASS ? t.badPass : err == ERR_WEB ? t.badWeb : err == ERR_WEB2 ? t.badWeb2 : t.busy;
+    h += err == ERR_SSID ? t.badSsid : err == ERR_PASS ? t.badPass : err == ERR_WEB ? t.badWeb : err == ERR_WEB2 ? t.badWeb2
+         : err == ERR_NAME ? t.badName : t.busy;
     h += "</p>";
   }
-  h += "<p>";
+  bool de = pageDe();
+  h += "<p class=h><a href=\"/?lang=de\">";
+  h += de ? "<b>Deutsch</b>" : "Deutsch";
+  h += "</a> · <a href=\"/?lang=en\">";
+  h += de ? "English" : "<b>English</b>";
+  h += "</a></p><p>";
   h += t.intro;
-  h += "</p><form method=post action=/join><label for=n>";
+  h += "</p><form method=post action=/join><input type=hidden name=lang value=";
+  h += de ? "de" : "en";
+  h += "><label for=n>";
   h += t.net;
   h += "</label><select id=n name=net><option value=\"\">";
   h += running && !n ? t.scanning : t.choose;
@@ -241,7 +328,9 @@ static void sendForm(int err) {
     }
     h += "</option>";
   }
-  h += "</select><p class=h><a href=\"/?scan=1\">";
+  h += "</select><p class=h><a href=\"/?scan=1&amp;lang=";
+  h += de ? "de" : "en";
+  h += "\">";
   h += t.rescan;
   h += "</a>";
   if (running && n) {
@@ -259,7 +348,9 @@ static void sendForm(int err) {
   h += t.webPw2;
   h += "</label><input id=w2 name=webpw2 type=password maxlength=64 autocomplete=new-password><p class=h>";
   h += t.webHint;
-  h += "</p><button>";
+  h += "</p>";
+  boardFields(h, t, de);
+  h += "<button>";
   h += t.go;
   h += "</button></form><p class=h>";
   h += t.hint;
@@ -306,7 +397,9 @@ static void sendWait() {
   pageTitle(h, t);
   h += "<p id=m>";
   h += esc(msg);
-  h += "</p><p><a href=\"/\">";
+  h += "</p><p><a href=\"/?lang=";
+  h += pageDe() ? "de" : "en";
+  h += "\">";
   h += t.back;
   h += "</a></p>";
   if (live) {  // poll /status once a second; textContent only, so nothing from the board is parsed as HTML
@@ -314,7 +407,7 @@ static void sendWait() {
     h += lost;
     h += "\",n=0,d=0,m=document.getElementById('m');"
          "function r(){if(++n>=4&&!d)m.textContent=L;if(n<90)setTimeout(p,1500)}"
-         "function p(){var x=new XMLHttpRequest();x.open('GET','/status',true);x.timeout=3000;"
+         "function p(){var x=new XMLHttpRequest();x.open('GET','/status'+location.search,true);x.timeout=3000;"
          "x.onload=function(){var s;try{s=JSON.parse(x.responseText)}catch(e){return r()}"
          "n=0;m.textContent=s.msg;d=s.state=='ok';"
          "if(d||s.state=='wait'||s.state=='try')setTimeout(p,1000)};"
@@ -362,8 +455,17 @@ static void onJoin() {
     for (size_t i = 0; i < web.length(); i++) web[i] = 0, web2[i] = 0;
     if (!made) return sendForm(ERR_BUSY);
   }
-  if (!net_setup_submit(ssid, pass.c_str(), withWeb ? rec : nullptr)) return sendForm(ERR_BUSY);
-  redirect("/wait");
+  SetupExtras x = {};
+  String name = server.arg("bname"), kbd = server.arg("kbd"), sd = server.arg("sdlog"), lang = server.arg("lang");
+  name.trim();
+  if (name.length() && !board_name_ok(name)) return sendForm(ERR_NAME);
+  strlcpy(x.name, name.c_str(), sizeof x.name);
+  if (lang == "de" || lang == "en") strlcpy(x.lang, lang.c_str(), sizeof x.lang);
+  if (kbd.length() && strstr(kbd_layout_codes(), kbd.c_str()) && kbd.length() < sizeof x.kbd)
+    strlcpy(x.kbd, kbd.c_str(), sizeof x.kbd);
+  if (sd == "off" || sd == "log" || sd == "video") strlcpy(x.sdlog, sd.c_str(), sizeof x.sdlog);
+  if (!net_setup_submit(ssid, pass.c_str(), withWeb ? rec : nullptr, &x)) return sendForm(ERR_BUSY);
+  redirect(lang == "de" || lang == "en" ? "/wait?lang=" + lang : String("/wait"));
 }
 
 static void routes() {
@@ -372,7 +474,8 @@ static void routes() {
   server.on("/", HTTP_GET, [] {
     if (server.hasArg("scan")) {
       net_setup_rescan();
-      return redirect("/");  // so a reload does not search again
+      String l = server.arg("lang");  // so a reload does not search again
+      return redirect(l == "de" || l == "en" ? "/?lang=" + l : String("/"));
     }
     sendForm(ERR_NONE);
   });

@@ -15,9 +15,13 @@
   <h1 id="name">Tentacle</h1>
   <span id="p-ap" class="pill" hidden></span>
   <span id="p-ctl" class="pill" hidden></span>
+  <nav id="tabs" class="tabs" hidden>
+    <button id="t-phone" class="on" data-i="tabPhone"></button>
+    <button id="t-settings" data-i="settings"></button>
+  </nav>
   <span class="grow"></span>
+  <button id="b-rec" class="rec" hidden><span class="dot"></span><span>REC</span></button>
   <button id="b-theme" data-t="theme" title=""></button>
-  <button id="b-settings" data-i="settings" hidden></button>
   <button id="b-logout" data-i="logout" hidden></button>
 </header>
 
@@ -85,10 +89,8 @@
   </aside>
 </main>
 
-<dialog id="d-settings">
-  <div class="head"><h2 data-i="settings"></h2><button id="b-close" data-i="close"></button></div>
-  <div class="body">
-    <section>
+<main id="v-settings" class="settings" hidden>
+  <section>
       <h3 data-i="board"></h3>
       <label for="s-name" data-i="boardName"></label>
       <div class="row"><input id="s-name" maxlength="20" pattern="[A-Za-z0-9 ._\-]{1,20}"><span id="s-suffix" class="muted"></span></div>
@@ -97,8 +99,8 @@
       <label for="s-lang" data-i="language"></label>
       <select id="s-lang"><option value="" data-i="langAuto"></option><option value="en">English</option><option value="de">Deutsch</option></select>
       <div class="row"><button id="b-save" class="primary" data-i="save"></button><span id="save-msg" class="small"></span></div>
-    </section>
-    <section>
+  </section>
+  <section>
       <h3 data-i="hardware"></h3>
       <label for="h-display" data-i="hwDisplay"></label>
       <div class="row"><select id="h-display"><option value="auto" data-i="hwAuto"></option><option value="on" data-i="hwOn"></option><option value="off" data-i="hwOff"></option></select><span id="h-oled" class="muted small"></span></div>
@@ -115,20 +117,20 @@
         <div class="row"><select id="h-sd"><option value="off" data-i="hwSdOff"></option><option value="log" data-i="hwSdLog"></option><option value="video" data-i="hwSdVideo"></option></select><span id="h-sdstate" class="muted small"></span></div>
       </div>
       <div class="row"><button id="b-hw" class="primary" data-i="save"></button><span id="hw-msg" class="small"></span></div>
-    </section>
-    <section>
+  </section>
+  <section>
       <h3 data-i="network"></h3>
       <dl class="stats" id="s-net"></dl>
       <p class="muted small" data-i="certHint"></p>
-    </section>
-    <section>
+  </section>
+  <section>
       <h3 data-i="changePw"></h3>
       <label for="pw-old" data-i="pwOld"></label><input id="pw-old" type="password" autocomplete="current-password">
       <label for="pw-new" data-i="pwNew"></label><input id="pw-new" type="password" autocomplete="new-password">
       <label for="pw-new2" data-i="pwNew2"></label><input id="pw-new2" type="password" autocomplete="new-password">
       <div class="row"><button id="b-pw" data-i="pwGo"></button><span id="pw-msg" class="small"></span></div>
-    </section>
-    <section>
+  </section>
+  <section>
       <h3 data-i="firmware"></h3>
       <p id="fw-now" class="small"></p>
       <label for="ota-bin" data-i="otaBin"></label><input id="ota-bin" type="file" accept=".bin">
@@ -137,8 +139,7 @@
       <p id="ota-msg" class="small"></p>
       <p class="note small" data-i="otaHint"></p>
       <div class="row"><button id="b-restart" data-i="restart"></button></div>
-    </section>
-  </div>
-</dialog>
+  </section>
+</main>
 </body>
 </html>

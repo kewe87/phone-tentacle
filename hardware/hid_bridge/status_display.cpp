@@ -13,6 +13,7 @@
 #include "netcfg.h"
 #include "version.h"
 #include "wifi_qr.h"
+#include "epd_logo.h"
 #include "src/airplay/airplay.h"
 #include <WiFi.h>
 #include <initializer_list>
@@ -292,6 +293,8 @@ static int epdBars() {
 }
 
 // Seconds left, in steps of 5 (each step is a refresh of the panel).
+static const uint32_t SPLASH_MS = 4000;  // the start picture, until Wi-Fi is mostly up
+
 static unsigned long left5(uint32_t ms) { return (ms + 4999) / 5000 * 5; }
 
 static void epdFrame() {
@@ -301,12 +304,21 @@ static void epdFrame() {
   bool stopped = stop_active();
   g_epd.clearBuffer();
   g_epd.setDrawColor(1);
+  if (millis() < SPLASH_MS) {  // just switched on: the mark, big, and the name of the thing
+    g_epd.drawXBM((EPD_W - LOGO_BIG_W) / 2, 22, LOGO_BIG_W, LOGO_BIG_H, LOGO_BIG);
+    g_epd.setFont(u8g2_font_helvB24_tf);
+    epdCenter(168, "Tentacle");
+    g_epd.setFont(u8g2_font_helvB10_tf);
+    epdCenter(190, FW_VERSION);
+    return;
+  }
   // the head: the board's name on black, the battery (if there is one) on the right
   g_epd.drawBox(0, 0, EPD_W, 26);
   g_epd.setDrawColor(0);
+  g_epd.drawXBM(3, 2, LOGO_SMALL_W, LOGO_SMALL_H, LOGO_SMALL);
   g_epd.setFont(u8g2_font_helvB14_tf);
   oled_ascii(board_name().c_str(), a, sizeof a);
-  g_epd.drawStr(5, 20, a);
+  g_epd.drawStr(30, 20, a);
   int bat = batPct;
   if (bat >= 0) epdBattery(EPD_W - 32, 7, bat);
   g_epd.setDrawColor(1);
@@ -405,6 +417,11 @@ static void epdPoll() {
   static uint32_t last = 0;
   if (!epaperOn || millis() - last < 500) return;
   last = millis();
+  static bool splashOver;
+  if (!splashOver && millis() >= SPLASH_MS) {  // from the start picture to the status: a full refresh, no ghost
+    splashOver = true;
+    epdShownValid = false;
+  }
   epdFrame();
   if (epdShownValid && !memcmp(epdBuf, epdShown, EPD_BYTES)) return;  // unchanged: the panel keeps it
   epd_show(epdBuf, !epdShownValid);  // the first picture (and after a setting changed) with a full refresh
