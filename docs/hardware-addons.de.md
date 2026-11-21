@@ -44,6 +44,39 @@ Misst die Akkuspannung über einen Spannungsteiler an einem Analog-Pin und zeigt
 - Die Prozentkurve ist grob 3,3 V = 0 % … 4,2 V = 100 %; für den eigenen Akku kalibrieren.
 - Der XIAO ESP32-S3 lädt einen LiPo an seinen BAT-Pads, so laufen Board + Handy auch unterwegs.
 
+## Waveshare ESP32-S3-ePaper-1.54 (E-Paper, Uhr, microSD)
+
+Ein fertiges Board statt XIAO plus Teilen: [Waveshare ESP32-S3-ePaper-1.54](https://www.waveshare.com/esp32-s3-epaper-1.54.htm)
+(V2: ESP32-S3-PICO-1-N8R8, 8 MB Flash, 8 MB PSRAM, natives USB), ein 1,54″-E-Paper mit 200×200 Pixeln in
+Schwarz-Weiß, eine Echtzeituhr PCF85063, ein microSD-Slot (dazu Codec, Mikrofon und Lautsprecher, die die Firmware
+nicht nutzt). Es läuft dasselbe Firmware-Image; es erkennt das Board beim Start selbst (Gehäuse des Chips und die
+Uhr an I²C 47/48) und nutzt dann:
+
+- **Das E-Paper** als Statusanzeige, mit Symbolen ([Handbuch](manual.de.md#10-das-display)): keine Verdrahtung,
+  Einstellung `display` wie beim OLED. Der QR-Code des Setup-WLANs füllt es aus.
+- **Die Uhr:** die CLI stellt die Zeit beim Start einer Sitzung, die Webseite beim Öffnen (`time EPOCH OFFSET`,
+  [Protokoll](cli-protocol.md#commands)); die Uhr behält sie, solange das Board Strom hat (über USB oder den
+  Akku-Anschluss; ohne Knopfzelle beginnt sie danach bei der zuletzt gestellten Zeit). Sie stempelt die Aufzeichnung.
+- **Die microSD-Karte** (FAT32; das Board formatiert sie nie): Einstellung `sdlog` oder REC auf der Webseite.
+  - `log`: `/tentacle/sNNNNN.log`, bei jedem Start eine neue Nummer: das Protokoll des Boards und jede Eingabe an
+    das iPhone (von der CLI, der Webseite, USB-Seriell: Befehl und Antwort), mit Uhrzeit. Getippter Text nie: nur
+    seine Länge.
+  - `video`: das Protokoll und der gespiegelte Bildschirm als `/tentacle/sNNNNN.ts` (H.264 in einem
+    MPEG-Transportstrom: VLC, mpv, ffmpeg spielen ihn ab; eine durch Ziehen der Karte abgeschnittene Datei spielt
+    trotzdem). Es beginnt beim letzten Keyframe, eventuell Minuten früher, wenn die Spiegelung schon lief, und
+    läuft in Echtzeit. Über 3,9 GB (FAT32) geht es in `sNNNNN_2.ts`, `_3` … weiter; zum Durchspielen die Teile
+    aneinanderhängen (`copy /b` unter Windows, sonst `cat`).
+  - **Das Video enthält alles, was der Bildschirm zeigt**, auch Passwörter, soweit das iPhone sie anzeigt. Es ist
+    aus, bis es eingeschaltet wird, und E-Paper und Webseite zeigen `REC`, solange es läuft.
+  - Eine langsame Karte hält weder das iPhone noch die Spiegelung auf: das Board puffert Minuten; erst wenn die
+    Karte einen ganzen Puffer zurückliegt, wartet das Video auf den nächsten Keyframe (das Protokoll sagt es).
+  - Vor dem Ziehen der Karte ausschalten (`sdlog off` oder REC noch einmal), damit die Dateien geschlossen sind.
+
+Flashen: das Board erscheint als zwei USB-Ports, der der Tentacle-Firmware und der des Chips selbst
+(Download-Modus). Findet ein Upload das Board nicht, BOOT beim Einstecken halten und den dann erscheinenden Port
+nehmen. Das Setup-WLAN sendet auf diesem Board mit 15 dBm (beim XIAO 5 dBm): seine Chipantenne erreichte mit 5 dBm
+kein Handy.
+
 ## Gehäuse
 Auf Etsy/Printables gibt es Gehäuse für den XIAO ESP32-S3 (einfache Version, USB-C-Seite offen). Mit OLED oder
 Akku ein Gehäuse mit OLED-Fenster bzw. Akkufach wählen oder drucken lassen.

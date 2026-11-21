@@ -168,6 +168,7 @@ Hardware):
 | `battery_div` | `1.00` to `10.00` | `2.00` | battery volts per pin volt (2.00 for a 2:1 divider) |
 | `lang` | `auto`, `en`, `de` | `auto` | the OLED's language; `auto` is the web interface's language when one is set, else English |
 | `name` | 1-20 of `A-Z a-z 0-9 space . _ -` | `Tentacle` | as on the web interface; takes effect after a restart |
+| `sdlog` | `off`, `log`, `video` (`on` = `video`) | `off` | the recording on the microSD card, boards with a slot only ([Waveshare e-paper board](hardware-addons.md#waveshare-esp32-s3-epaper-154-e-paper-clock-microsd)): `log` the board's log and every input (typed text only as its length), `video` the log and the mirrored screen |
 
 #### Windows
 
@@ -237,6 +238,10 @@ on that board. One device can be on it at a time.
    prefers German, otherwise English.
 3. Choose your Wi-Fi from the list (the dots show the signal strength) or type its name, and enter its password.
    Optional: a password for the board's [web interface](#16-the-web-interface), twice.
+   Under **The board**: its name, the iPhone's keyboard layout and, on a board with a microSD slot, the recording.
+   "Deutsch · English" at the top switches the page; the language you choose is also the web interface's and the
+   display's. All of it is stored with the network, only after the press of BOOT; a new name restarts the board
+   once the setup is done.
 4. **Press BOOT on the board within 30 seconds.** The page counts down, the LED blinks fast, the OLED says
    `PRESS BOOT TO CONFIRM` with the network's name. Nothing is stored before that press.
 
@@ -419,6 +424,14 @@ In German: `ZUM BESTAETIGEN: BOOT`, `WLAN beitreten?`, `noch 27 s`, `KOPPELN OFF
 `GESTOPPT`, `Akku 87%`.
 
 > Photo follows after the first hardware test: the four views of the OLED.
+
+**The e-paper of the Waveshare board** ([hardware-addons.md](hardware-addons.md#waveshare-esp32-s3-epaper-154-e-paper-clock-microsd))
+shows the same as symbols, in the board's language (with umlauts): the Tentacle mark and the name in the head (a
+battery on the right with `battery` set); `running` with a play triangle or `STOPPED` on black; a Wi-Fi symbol
+(its waves the signal strength, crossed out without Wi-Fi), a phone (screen filled while it mirrors) and a computer
+(screen filled while the CLI is connected); the address in large type; at the foot `● REC` and the file, or the
+card's state. While the setup Wi-Fi is open it shows only the QR code, large; requests and the pairing window as
+on the OLED, in larger type. For 4 s after power-on it shows the Tentacle mark as a start picture.
 
 ## 11. Change or forget the Wi-Fi
 
@@ -617,7 +630,11 @@ older one. The page and the CLI share the phone:
   the page, or 5 minutes after the page's last input.
 - The stop toggle (BOOT, short press) stops the page's input too, and lets go of a held button.
 
-**Settings** (gear button): the board's name (Screen Mirroring and the CLI show it with its id; it applies after
+**REC** (boards with a microSD slot): the button in the head starts and stops the recording on the card (the
+setting `sdlog`; a click starts the mode last used, the log and the screen video unless you chose the log alone).
+Red with a blinking dot while it records; greyed out without a card.
+
+**Settings** (the tab next to "iPhone"; the picture keeps running behind it): the board's name (Screen Mirroring and the CLI show it with its id; it applies after
 a restart), the phone's keyboard layout (`us`, `de`), the page's language (default: the browser's), the Wi-Fi,
 the certificate's fingerprint and the firmware.
 

@@ -173,6 +173,7 @@ mit `tentacle device set SCHLÜSSEL WERT` (`tentacle device settings` zeigt sie)
 | `battery_div` | `1.00` bis `10.00` | `2.00` | Akku-Volt je Pin-Volt (2.00 bei einem 2:1-Teiler) |
 | `lang` | `auto`, `en`, `de` | `auto` | Sprache des OLEDs; `auto` ist die Sprache der Weboberfläche, wenn eine eingestellt ist, sonst Englisch |
 | `name` | 1-20 aus `A-Z a-z 0-9 Leerzeichen . _ -` | `Tentacle` | wie in der Weboberfläche; gilt nach einem Neustart |
+| `sdlog` | `off`, `log`, `video` (`on` = `video`) | `off` | die Aufzeichnung auf der microSD-Karte, nur Boards mit Kartenslot ([Waveshare-E-Paper-Board](hardware-addons.de.md#waveshare-esp32-s3-epaper-154-e-paper-uhr-microsd)): `log` das Protokoll des Boards und jede Eingabe (getippter Text nur als Länge), `video` das Protokoll und der gespiegelte Bildschirm |
 
 #### Windows
 
@@ -248,6 +249,10 @@ Ein Board ohne gespeichertes WLAN öffnet ein eigenes: `Tentacle-XXXX`, WPA2, mi
 3. Das eigene WLAN aus der Liste wählen (die Punkte zeigen die Signalstärke) oder seinen Namen eingeben, dazu
    das Passwort.
    Optional: ein Passwort für die [Weboberfläche](#16-die-weboberfläche) des Boards, zweimal.
+   Unter **Das Board**: sein Name, das Tastaturlayout des iPhones und, bei einem Board mit microSD-Slot, die
+   Aufzeichnung. „Deutsch · English“ oben schaltet die Seite um; die gewählte Sprache gilt auch für die
+   Weboberfläche und das Display. Alles wird mit dem Netz gespeichert, erst nach dem Druck auf BOOT; ein neuer Name
+   startet das Board nach der Einrichtung einmal neu.
 4. **Innerhalb von 30 Sekunden BOOT am Board drücken.** Die Seite zählt herunter, die LED blinkt schnell, das
    OLED zeigt `PRESS BOOT TO CONFIRM` und den Namen des Netzes. Vor diesem Druck wird nichts gespeichert.
 
@@ -437,6 +442,15 @@ Auf Englisch: `PRESS BOOT TO CONFIRM`, `Join this Wi-Fi?`, `27 s left`, `PAIRING
 `bat 87%`.
 
 > Foto folgt nach dem ersten Hardwaretest: die vier Ansichten des OLEDs.
+
+**Das E-Paper des Waveshare-Boards** ([hardware-addons.de.md](hardware-addons.de.md#waveshare-esp32-s3-epaper-154-e-paper-uhr-microsd))
+zeigt dasselbe als Symbole, in der Sprache des Boards (mit Umlauten): das Tentacle-Zeichen und den Namen im Kopf
+(rechts ein Akku, wenn `battery` gesetzt ist); `läuft` mit einem Play-Dreieck oder `GESTOPPT` auf Schwarz; ein
+WLAN-Symbol (die Bögen zeigen die Signalstärke, durchgestrichen ohne WLAN), ein iPhone (Bildschirm gefüllt, solange
+es spiegelt) und einen Computer (Bildschirm gefüllt, solange die CLI verbunden ist); die Adresse in großer Schrift;
+unten `● REC` und die Datei oder den Zustand der Karte. Solange das Setup-WLAN offen ist, zeigt es nur den
+QR-Code, groß; Anfragen und das Koppelfenster wie auf dem OLED, in größerer Schrift. 4 s nach dem Einschalten
+zeigt es das Tentacle-Zeichen als Startbild.
 
 ## 11. WLAN wechseln oder vergessen
 
@@ -646,7 +660,11 @@ starten.
   Schließen der Seite oder 5 Minuten nach der letzten Eingabe der Seite.
 - Der Stopp-Taster (BOOT, kurz) stoppt auch die Eingaben der Seite und lässt eine gehaltene Taste los.
 
-**Einstellungen** (Zahnrad): der Name des Boards (Bildschirmsynchronisierung und CLI zeigen ihn mit seiner
+**REC** (Boards mit microSD-Slot): der Knopf im Kopf startet und stoppt die Aufzeichnung auf der Karte (die
+Einstellung `sdlog`; ein Klick startet die zuletzt genutzte Art, Protokoll und Bildschirmvideo, außer es wurde
+nur das Protokoll gewählt). Rot mit blinkendem Punkt, solange aufgezeichnet wird; ausgegraut ohne Karte.
+
+**Einstellungen** (der Tab neben „iPhone“; das Bild läuft dahinter weiter): der Name des Boards (Bildschirmsynchronisierung und CLI zeigen ihn mit seiner
 Kennung; gilt nach einem Neustart), die Tastaturbelegung des iPhones (`us`, `de`), die Sprache der Seite (Vorgabe:
 die des Browsers), das WLAN, der Fingerabdruck des Zertifikats und die Firmware.
 

@@ -4,6 +4,25 @@ Tentacle's own history starts here. It is derived from
 [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan (the state of its tag
 `v1.0.6`: board firmware 0.2.5, CLI 0.1.5); that project's history is in its repository.
 
+## 0.4.1 (firmware): Waveshare e-paper board, recording on microSD – unreleased
+
+Runs on the board (flashed and on Wi-Fi 2026-11-21); the screen recording has not been played back from a card yet.
+
+- **The Waveshare ESP32-S3-ePaper-1.54** ([hardware-addons.md](docs/hardware-addons.md#waveshare-esp32-s3-epaper-154-e-paper-clock-microsd)):
+  the same image finds it by itself and uses its e-paper, clock and microSD slot.
+- **The e-paper** shows the status as symbols in the board's language: the Tentacle mark and the name, running or
+  stopped, Wi-Fi with its strength, the phone mirroring, the CLI connected, the address in large type, the
+  recording, the battery. The setup Wi-Fi's QR code fills it; the Tentacle mark is the start picture.
+- **A wall clock:** the command `time EPOCH OFFSET`; the CLI and the web page set it, the board's clock keeps it.
+- **Recording on the card** (setting `sdlog off|log|video`): the log and every input (typed text only as its
+  length) as `/tentacle/sNNNNN.log`, and with `video` the mirrored screen as `sNNNNN.ts` (H.264 in MPEG-TS, our
+  own muxer, tested on the host with ffprobe), in parts of 3.9 GB.
+- **The web interface:** the settings are a tab of their own instead of a dialog; a REC button in the head starts
+  and stops the recording.
+- **The setup page** also asks for the board's name, the language (it switches the page), the keyboard layout and
+  the recording; stored with the network after the press of BOOT, as before.
+- **The setup hotspot sends at 15 dBm on this board** (5 dBm on the XIAO): at 5 dBm phones did not see it.
+
 ## Video buffer as a ring, the web picture recovers by itself (firmware) – unreleased
 
 Not run on hardware yet.
