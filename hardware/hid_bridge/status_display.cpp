@@ -13,6 +13,9 @@
 #include "netcfg.h"
 #include "version.h"
 #include "wifi_qr.h"
+#include "src/airplay/airplay.h"
+#include <WiFi.h>
+#include <initializer_list>
 #include "src/setup/board_opts.h"
 #include "src/ui/oled_text.h"
 
@@ -187,10 +190,105 @@ static bool showSetupQr() {
   return true;
 }
 
-// One line centred at baseline y in the current font.
+// One line centred at baseline y in the current font (UTF-8).
 static void epdCenter(int y, const char *t) {
-  int w = g_epd.getStrWidth(t);
-  g_epd.drawStr(w >= EPD_W ? 0 : (EPD_W - w) / 2, y, t);
+  int w = g_epd.getUTF8Width(t);
+  g_epd.drawUTF8(w >= EPD_W ? 0 : (EPD_W - w) / 2, y, t);
+}
+
+// Centred in the largest of the fonts (largest first) it fits in, with 4 px to spare on each side.
+static void epdFit(int y, const char *t, std::initializer_list<const uint8_t *> fonts) {
+  for (const uint8_t *f : fonts) {
+    g_epd.setFont(f);
+    if (g_epd.getUTF8Width(t) <= EPD_W - 8) break;
+  }
+  epdCenter(y, t);
+}
+
+// The panel's own words, in the board's language (the setting lang; auto: the web interface's).
+enum { EW_RUNNING, EW_STOPPED, EW_NO_WIFI, EW_SD_OFF, EW_SD_NOCARD, EW_SD_ERR, EW_N };
+static const char *const EPD_WORDS[2][EW_N] = {
+    {"running", "STOPPED", "no Wi-Fi: hold BOOT 10 s", "SD off", "no card", "card error"},
+    {"läuft", "GESTOPPT", "kein WLAN: BOOT 10 s halten", "SD aus", "keine Karte", "Kartenfehler"},
+};
+static const char *epdWord(int w) { return EPD_WORDS[lang == BO_LANG_DE ? 1 : 0][w]; }
+
+// A thick arc around (cx, cy) from 45 to 135 degrees (upwards): the Wi-Fi symbol's waves.
+static void epdArc(int cx, int cy, int r, int th) {
+  for (int rr = r; rr < r + th; rr++)
+    for (int i = 0; i <= 90; i++) {
+      float a = (45 + i) * (float)M_PI / 180;
+      g_epd.drawPixel(cx + (int)lroundf(rr * cosf(a)), cy - (int)lroundf(rr * sinf(a)));
+    }
+}
+
+// Wi-Fi: a dot and three waves, the reached ones thick, the others thin; no Wi-Fi: thin and crossed out.
+static void epdWifi(int cx, int cy, int bars, bool up) {
+  g_epd.drawDisc(cx, cy, 3);
+  for (int i = 0; i < 3; i++) {
+    int r = 9 + i * 8;
+    if (up && i < bars) epdArc(cx, cy, r, 4);
+    else epdArc(cx, cy, r + 1, 1);
+  }
+  if (!up) {
+    for (int d = -1; d <= 1; d++) {
+      g_epd.drawLine(cx - 14 + d, cy - 30, cx + 14 + d, cy - 2);
+      g_epd.drawLine(cx + 14 + d, cy - 30, cx - 14 + d, cy - 2);
+    }
+  }
+}
+
+// The phone: its screen filled while it mirrors to the board, empty otherwise.
+static void epdPhone(int x, int y, bool on) {
+  g_epd.drawRFrame(x, y, 24, 42, 5);
+  g_epd.drawRFrame(x + 1, y + 1, 22, 40, 4);
+  g_epd.drawBox(x + 9, y + 3, 6, 2);  // the speaker
+  if (on) g_epd.drawBox(x + 4, y + 7, 16, 28);
+  else g_epd.drawFrame(x + 4, y + 7, 16, 28);
+  g_epd.drawDisc(x + 12, y + 38, 1);
+}
+
+// The computer: its screen filled while the CLI is connected.
+static void epdLaptop(int x, int y, bool on) {
+  g_epd.drawRFrame(x, y, 36, 26, 3);
+  g_epd.drawRFrame(x + 1, y + 1, 34, 24, 2);
+  if (on) g_epd.drawBox(x + 4, y + 4, 28, 18);
+  g_epd.drawRBox(x - 5, y + 27, 46, 5, 2);
+  g_epd.setDrawColor(0);
+  g_epd.drawHLine(x + 13, y + 28, 10);  // the touchpad's notch
+  g_epd.setDrawColor(1);
+}
+
+// A microSD card: cut corner, contacts.
+static void epdCard(int x, int y) {
+  const int w = 18, h = 24;
+  for (int t = 0; t < 2; t++) {
+    g_epd.drawLine(x + t, y + 6, x + 6, y + t);
+    g_epd.drawLine(x + 6, y + t, x + w - t, y + t);
+    g_epd.drawLine(x + w - t, y, x + w - t, y + h);
+    g_epd.drawLine(x + t, y + h - t, x + w, y + h - t);
+    g_epd.drawLine(x + t, y + 6, x + t, y + h);
+  }
+  for (int i = 0; i < 3; i++) g_epd.drawBox(x + 6 + i * 4, y + 4, 2, 5);
+}
+
+// A battery, white on the black head: outline, nub, filled by the charge.
+static void epdBattery(int x, int y, int pct) {
+  g_epd.drawFrame(x, y, 24, 12);
+  g_epd.drawBox(x + 24, y + 3, 2, 6);
+  int f = pct * 20 / 100;
+  if (f > 0) g_epd.drawBox(x + 2, y + 2, f, 8);
+}
+
+// Signal bars from the RSSI, held for 10 s so the panel does not refresh for every dB.
+static int epdBars() {
+  static int bars = -1;
+  static uint32_t at;
+  if (bars >= 0 && millis() - at < 10000) return bars;
+  int rssi = WiFi.RSSI();
+  bars = rssi >= -60 ? 3 : rssi >= -70 ? 2 : rssi >= -80 ? 1 : 0;
+  at = millis();
+  return bars;
 }
 
 // Seconds left, in steps of 5 (each step is a refresh of the panel).
@@ -203,38 +301,34 @@ static void epdFrame() {
   bool stopped = stop_active();
   g_epd.clearBuffer();
   g_epd.setDrawColor(1);
-  // the head: the board's name on black, the firmware on the right
+  // the head: the board's name on black, the battery (if there is one) on the right
   g_epd.drawBox(0, 0, EPD_W, 26);
   g_epd.setDrawColor(0);
-  g_epd.setFont(u8g2_font_helvB12_tr);
+  g_epd.setFont(u8g2_font_helvB14_tf);
   oled_ascii(board_name().c_str(), a, sizeof a);
-  g_epd.drawStr(4, 19, a);
-  g_epd.setFont(u8g2_font_5x7_tr);
-  g_epd.drawStr(EPD_W - 4 - g_epd.getStrWidth(FW_VERSION), 19, FW_VERSION);
+  g_epd.drawStr(5, 20, a);
+  int bat = batPct;
+  if (bat >= 0) epdBattery(EPD_W - 32, 7, bat);
   g_epd.setDrawColor(1);
 
   if (confirm_open(c1, c2, &left)) {  // a request waits for the BOOT button
     g_epd.drawFrame(2, 32, EPD_W - 4, 164);
     g_epd.drawFrame(3, 33, EPD_W - 6, 162);
-    g_epd.setFont(u8g2_font_helvB10_tr);
-    epdCenter(58, oled_text(lang, OT_CONFIRM));
-    g_epd.setFont(u8g2_font_helvR10_tr);
+    epdFit(62, oled_text(lang, OT_CONFIRM), {u8g2_font_helvB14_tf, u8g2_font_helvB12_tf, u8g2_font_helvB10_tf});
     oled_ascii(oled_request(lang, c1), a, sizeof a);
-    epdCenter(92, a);
+    epdFit(98, a, {u8g2_font_helvB14_tf, u8g2_font_helvB12_tf, u8g2_font_helvB10_tf});
     oled_ascii(oled_request(lang, c2), a, sizeof a);
-    epdCenter(114, a);
+    epdFit(124, a, {u8g2_font_helvB14_tf, u8g2_font_helvB12_tf, u8g2_font_helvB10_tf});
     g_epd.setFont(u8g2_font_helvB18_tr);
     snprintf(a, sizeof a, oled_text(lang, OT_LEFT), left5(left));
     epdCenter(170, a);
     return;
   }
   if (pair_window_open(&left)) {  // BOOT was double-pressed
-    g_epd.setFont(u8g2_font_helvB14_tr);
-    epdCenter(62, oled_text(lang, OT_PAIR_OPEN));
-    g_epd.setFont(u8g2_font_helvR10_tr);
-    epdCenter(96, oled_text(lang, OT_PAIR_RUN));
-    g_epd.setFont(u8g2_font_courB12_tr);
-    epdCenter(124, "tentacle pair");
+    epdFit(62, oled_text(lang, OT_PAIR_OPEN), {u8g2_font_helvB18_tf, u8g2_font_helvB14_tf, u8g2_font_helvB12_tf});
+    epdFit(98, oled_text(lang, OT_PAIR_RUN), {u8g2_font_helvB14_tf, u8g2_font_helvB12_tf, u8g2_font_helvB10_tf});
+    g_epd.setFont(u8g2_font_courB18_tf);
+    epdCenter(132, "tentacle pair");
     g_epd.setFont(u8g2_font_helvB18_tr);
     snprintf(a, sizeof a, oled_text(lang, OT_LEFT), left5(left));
     epdCenter(176, a);
@@ -260,39 +354,50 @@ static void epdFrame() {
     }
     return;
   }
-  // running or stopped, big; stopped on black
-  g_epd.setFont(u8g2_font_helvB18_tr);
-  const char *state = oled_text(lang, stopped ? OT_STOPPED : OT_RUNNING);
+  // running (a play triangle) or stopped (a square, on black): the same size as before
+  const char *state = epdWord(stopped ? EW_STOPPED : EW_RUNNING);
+  g_epd.setFont(u8g2_font_helvB18_tf);
+  int tw = g_epd.getUTF8Width(state), x0 = (EPD_W - (18 + 10 + tw)) / 2;
   if (stopped) {
-    g_epd.drawBox(0, 34, EPD_W, 40);
+    g_epd.drawBox(0, 30, EPD_W, 34);
     g_epd.setDrawColor(0);
-    epdCenter(63, state);
-    g_epd.setDrawColor(1);
-  } else epdCenter(63, state);
-  g_epd.setFont(u8g2_font_6x12_tr);
-  snprintf(a, sizeof a, oled_text(lang, OT_NET), net_mode(), net_ip().c_str());
-  g_epd.drawStr(6, 98, a);
-  if (!net_up()) snprintf(a, sizeof a, "%s", oled_text(lang, OT_NO_WIFI));
-  else snprintf(a, sizeof a, oled_text(lang, OT_PEERS), net_peers(), (int)cli_up());
-  g_epd.drawStr(6, 116, a);
-  int bat = batPct;
-  if (bat >= 0) {
-    snprintf(b, sizeof b, oled_text(lang, OT_BAT), "", bat);
-    g_epd.drawStr(6, 134, b + 2);  // without the state (shown above) and its two spaces
-  }
-  // the foot: the session log on the card
-  g_epd.drawHLine(0, 170, EPD_W);
+    g_epd.drawBox(x0, 38, 18, 18);
+  } else g_epd.drawTriangle(x0, 37, x0, 57, x0 + 18, 47);
+  g_epd.drawUTF8(x0 + 28, 56, state);
+  g_epd.setDrawColor(1);
+
+  // Wi-Fi, the phone mirroring, the computer (CLI) connected
+  bool up = net_up();
+  epdWifi(36, 116, up ? epdBars() : 0, up);
+  epdPhone(88, 76, airplay_state() == AIRPLAY_STREAMING);
+  epdLaptop(146, 84, cli_up());
+
+  // the address to open in a browser, big; without Wi-Fi how to set it up
+  if (up) {
+    String ip = net_ip();
+    epdFit(150, ip.c_str(), {u8g2_font_helvB18_tf, u8g2_font_helvB14_tf});
+  } else epdFit(150, epdWord(EW_NO_WIFI), {u8g2_font_helvB12_tf, u8g2_font_helvB10_tf});
+
+  // the foot: the recording on the card
   int sd = sdlog_state();
+  if (sd == SDLOG_NONE) return;
+  g_epd.drawHLine(0, 164, EPD_W);
+  g_epd.drawHLine(0, 165, EPD_W);
   if (sd == SDLOG_REC) {
-    g_epd.drawDisc(14, 185, 7);
-    g_epd.setFont(u8g2_font_helvB12_tr);
-    g_epd.drawStr(26, 191, "REC");
-    g_epd.setFont(u8g2_font_6x12_tr);
+    g_epd.drawDisc(16, 183, 9);
+    g_epd.setFont(u8g2_font_helvB14_tf);
+    g_epd.drawStr(32, 190, "REC");
     const char *f = strrchr(sdlog_file(), '/');
-    g_epd.drawStr(70, 190, f ? f + 1 : "");
-  } else if (sd != SDLOG_NONE) {
-    g_epd.setFont(u8g2_font_6x12_tr);
-    g_epd.drawStr(6, 190, sd == SDLOG_NOCARD ? "SD: -" : sd == SDLOG_ERR ? "SD: error" : "SD log off");
+    g_epd.setFont(u8g2_font_helvB12_tf);
+    if (f) g_epd.drawStr(EPD_W - 6 - g_epd.getStrWidth(f + 1), 189, f + 1);
+  } else {
+    epdCard(8, 171);
+    if (sd != SDLOG_OFF) {  // no card, an error: crossed out
+      g_epd.drawLine(4, 197, 30, 169);
+      g_epd.drawLine(5, 197, 31, 169);
+    }
+    g_epd.setFont(u8g2_font_helvB14_tf);
+    g_epd.drawUTF8(38, 190, epdWord(sd == SDLOG_NOCARD ? EW_SD_NOCARD : sd == SDLOG_ERR ? EW_SD_ERR : EW_SD_OFF));
   }
 }
 
