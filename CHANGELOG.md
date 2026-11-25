@@ -22,6 +22,9 @@ Runs on the board (flashed and on Wi-Fi 2026-11-21); the screen recording has no
 - **The setup page** also asks for the board's name, the language (it switches the page), the keyboard layout and
   the recording; stored with the network after the press of BOOT, as before.
 - **The setup hotspot sends at 15 dBm on this board** (5 dBm on the XIAO): at 5 dBm phones did not see it.
+- **The release key:** firmware is now signed with the release key instead of the development key of 16 November.
+  A board that runs an older build takes 0.4.1 only over USB (`tentacle-flash`), not as a network update.
+- **`tentacle-flash`** names both boards in its messages and on its page.
 
 ## Video buffer as a ring, the web picture recovers by itself (firmware) – unreleased
 

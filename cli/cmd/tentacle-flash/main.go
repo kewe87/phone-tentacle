@@ -1,4 +1,4 @@
-// tentacle-flash installs the Tentacle firmware on a Seeed XIAO ESP32-S3 over USB, with nothing else to install.
+// tentacle-flash installs the Tentacle firmware on a Tentacle board (Seeed XIAO ESP32-S3, Waveshare ESP32-S3-ePaper-1.54) over USB, with nothing else to install.
 //
 // Started without arguments (a double click) it opens an installer page in the browser. With --yes it installs
 // right away on the command line.
@@ -28,7 +28,8 @@ var version = "dev"
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
-const usage = `tentacle-flash %s: installs the Tentacle firmware on a Seeed XIAO ESP32-S3 over USB.
+const usage = `tentacle-flash %s: installs the Tentacle firmware on a Tentacle board (Seeed XIAO ESP32-S3,
+Waveshare ESP32-S3-ePaper-1.54) over USB.
 
   tentacle-flash                       open the installer in the browser
   tentacle-flash --yes [options]       install without questions, on the command line

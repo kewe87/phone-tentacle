@@ -26,7 +26,7 @@ const (
 	otadataSize      = 0x2000
 	appOffset        = 0x10000
 	sector           = 0x1000
-	// MinFlash is the flash every Tentacle board has (Seeed XIAO ESP32-S3).
+	// MinFlash is the flash every Tentacle board has (Seeed XIAO ESP32-S3, Waveshare ESP32-S3-ePaper-1.54).
 	MinFlash = 8 << 20
 )
 

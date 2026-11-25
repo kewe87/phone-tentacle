@@ -36,12 +36,12 @@ func msg(code string, err error, args ...any) *Msg { return &Msg{Code: code, Arg
 // messages: code -> {English, German}.
 var messages = map[string][2]string{
 	"no_board": {
-		"No board found. Plug the Tentacle board (Seeed XIAO ESP32-S3) into this computer with a USB-C data cable (a charge-only cable does not work), then try again.",
-		"Kein Board gefunden. Steck das Tentacle-Board (Seeed XIAO ESP32-S3) mit einem USB-C-Datenkabel an diesen Computer (ein reines Ladekabel geht nicht) und versuch es dann noch einmal.",
+		"No board found. Plug the Tentacle board (Seeed XIAO ESP32-S3 or Waveshare ESP32-S3-ePaper-1.54) into this computer with a USB-C data cable (a charge-only cable does not work), then try again.",
+		"Kein Board gefunden. Steck das Tentacle-Board (Seeed XIAO ESP32-S3 oder Waveshare ESP32-S3-ePaper-1.54) mit einem USB-C-Datenkabel an diesen Computer (ein reines Ladekabel geht nicht) und versuch es dann noch einmal.",
 	},
 	"uart_board": {
-		"Found %s, a USB serial adapter, but no ESP32-S3 with its own USB port. Tentacle needs the Seeed XIAO ESP32-S3; classic ESP32 boards cannot act as mouse and keyboard.",
-		"Gefunden: %s, ein USB-Seriell-Wandler, aber kein ESP32-S3 mit eigenem USB-Anschluss. Tentacle braucht den Seeed XIAO ESP32-S3; klassische ESP32-Boards können nicht Maus und Tastatur sein.",
+		"Found %s, a USB serial adapter, but no ESP32-S3 with its own USB port. Tentacle needs an ESP32-S3 board such as the Seeed XIAO ESP32-S3 or the Waveshare ESP32-S3-ePaper-1.54; classic ESP32 boards cannot act as mouse and keyboard.",
+		"Gefunden: %s, ein USB-Seriell-Wandler, aber kein ESP32-S3 mit eigenem USB-Anschluss. Tentacle braucht ein ESP32-S3-Board wie den Seeed XIAO ESP32-S3 oder das Waveshare ESP32-S3-ePaper-1.54; klassische ESP32-Boards können nicht Maus und Tastatur sein.",
 	},
 	"several": {
 		"Several boards are connected (%s). Unplug the others, or choose the port under Advanced (--port).",
@@ -60,16 +60,16 @@ var messages = map[string][2]string{
 		"Die Verbindung zum Board ist abgerissen (%v). Steck es wieder ein, am besten direkt statt über einen Hub, und versuch es noch einmal.",
 	},
 	"wrong_chip": {
-		"Wrong chip: this board has an %s. Tentacle runs only on the ESP32-S3 (Seeed XIAO ESP32-S3).",
-		"Falscher Chip: Auf diesem Board sitzt ein %s. Tentacle läuft nur auf dem ESP32-S3 (Seeed XIAO ESP32-S3).",
+		"Wrong chip: this board has an %s. Tentacle runs only on the ESP32-S3 (Seeed XIAO ESP32-S3, Waveshare ESP32-S3-ePaper-1.54).",
+		"Falscher Chip: Auf diesem Board sitzt ein %s. Tentacle läuft nur auf dem ESP32-S3 (Seeed XIAO ESP32-S3, Waveshare ESP32-S3-ePaper-1.54).",
 	},
 	"secure": {
 		"Secure boot or flash encryption is switched on in this chip's eFuses. Such a chip takes only images signed with its own key; Tentacle cannot be installed on it.",
 		"In den eFuses dieses Chips ist Secure Boot oder Flash-Verschlüsselung eingeschaltet. So ein Chip nimmt nur Images mit seinem eigenen Schlüssel; Tentacle lässt sich darauf nicht installieren.",
 	},
 	"flash_small": {
-		"The board has %s of flash; Tentacle needs %s. Use the Seeed XIAO ESP32-S3 (8 MB flash).",
-		"Das Board hat %s Flash; Tentacle braucht %s. Nimm den Seeed XIAO ESP32-S3 (8 MB Flash).",
+		"The board has %s of flash; Tentacle needs %s. Use the Seeed XIAO ESP32-S3 or the Waveshare ESP32-S3-ePaper-1.54 (8 MB flash each).",
+		"Das Board hat %s Flash; Tentacle braucht %s. Nimm den Seeed XIAO ESP32-S3 oder das Waveshare ESP32-S3-ePaper-1.54 (je 8 MB Flash).",
 	},
 	"write": {
 		"Writing failed (%v). Plug the board in again and try again; if it keeps failing, try another USB cable or port.",
@@ -101,8 +101,8 @@ var messages = map[string][2]string{
 	},
 	// warnings
 	"no_psram": {
-		"No embedded PSRAM listed in the chip's eFuses. Tentacle needs the 8 MB PSRAM of the XIAO ESP32-S3; on another board it may not start.",
-		"In den eFuses des Chips ist kein eingebautes PSRAM eingetragen. Tentacle braucht die 8 MB PSRAM des XIAO ESP32-S3; auf einem anderen Board startet es womöglich nicht.",
+		"No embedded PSRAM listed in the chip's eFuses. Tentacle needs 8 MB PSRAM (the XIAO ESP32-S3 and the Waveshare ESP32-S3-ePaper-1.54 have it); on another board it may not start.",
+		"In den eFuses des Chips ist kein eingebautes PSRAM eingetragen. Tentacle braucht 8 MB PSRAM (XIAO ESP32-S3 und Waveshare ESP32-S3-ePaper-1.54 haben es); auf einem anderen Board startet es womöglich nicht.",
 	},
 	"flash_unknown": {
 		"The flash size could not be read; writing as if it were %s.",

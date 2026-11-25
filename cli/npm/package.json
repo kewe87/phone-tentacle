@@ -1,6 +1,6 @@
 {
   "name": "phone-tentacle",
-  "version": "0.1.0",
+  "version": "0.4.1",
   "description": "See and drive an iPhone through a Tentacle board over Wi-Fi (CLI + MCP server for coding agents)",
   "license": "MIT",
   "repository": {
