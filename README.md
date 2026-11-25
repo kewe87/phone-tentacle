@@ -10,20 +10,20 @@
 <p align="center">
   <a href="https://github.com/kewe87/phone-tentacle/actions/workflows/ci.yml"><img src="https://github.com/kewe87/phone-tentacle/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="#origin-and-license"><img src="https://img.shields.io/badge/license-MIT%20%2B%20GPL--3.0%20(AirPlay%20part)-c7361f" alt="License: MIT, AirPlay part GPL-3.0"></a>
-  <img src="https://img.shields.io/badge/status-not%20yet%20tested%20on%20hardware-c7361f" alt="Status: not yet tested on hardware">
+  <img src="https://img.shields.io/badge/status-early%2C%20first%20hardware%20tests-d98a1c" alt="Status: early, first hardware tests">
 </p>
 
 <p align="center"><img src="docs/images/demo.gif" alt="Three tentacle commands are typed on the computer, the board passes them on, and on a schematic phone the pointer moves, taps and types hello" width="800"></p>
 
-<sub>The animations on this page are illustrations, not recordings; the phone is a schematic on purpose. Real recordings follow after the first hardware test.</sub>
+<sub>The animations on this page are illustrations, not recordings; the phone is a schematic on purpose. Real recordings follow.</sub>
 
 > **Based on [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agent) by Henry Yuan (MIT).**
 > Tentacle is a separate project derived from it, not affiliated with or endorsed by it:
 > [Origin and license](#origin-and-license).
 
 > [!WARNING]
-> **Not yet tested on hardware.** Everything compiles and passes its tests on the computer, but no build has run
-> on a real board yet. First hardware test: 17 November 2026.
+> **Early.** Runs on a XIAO ESP32S3 with an iPhone since 16 November 2026: setup, pairing, screen mirroring,
+> screenshots, taps, typing, the stop button. Expect rough edges; [what is open](ROADMAP.md).
 
 ## What is Tentacle?
 
@@ -87,9 +87,10 @@ What is left open: [docs/hardening.md](docs/hardening.md) and [SECURITY.md](SECU
 | | |
 |---|---|
 | **Board** | Seeed Studio XIAO ESP32S3 (the plain version, not Sense, not Plus) |
+| **or** | [Waveshare ESP32-S3-ePaper-1.54](docs/hardware-addons.md#waveshare-esp32-s3-epaper-154-e-paper-clock-microsd) (V2): a ready board, no soldering, with an e-paper display, a clock and a microSD slot that can record the session. Same firmware. Newer: the screen recording is not yet tested on hardware |
 | **Cable** | USB-C to USB-C, a data cable |
 | **Phone** | iPhone with USB-C, iOS 18 or later |
-| **Display** | 0.96″ OLED (SSD1306, I²C), recommended: without it the pairing code cannot be compared |
+| **Display** | XIAO: 0.96″ OLED (SSD1306, I²C), recommended: without it the pairing code cannot be compared |
 | **Computer** | Windows, macOS or Linux on the same Wi-Fi (2.4 GHz), with [arduino-cli](https://arduino.github.io/arduino-cli/), [Go](https://go.dev/dl/) and `ffmpeg` |
 
 <p align="center"><img src="docs/images/wiring-oled.svg" alt="Wiring the OLED to the XIAO ESP32S3: 3V3 to VCC, GND to GND, D4 to SDA, D5 to SCL" width="820"></p>
